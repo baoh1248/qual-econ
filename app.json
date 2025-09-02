@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "Qual-Econ USA",
+    "slug": "Qual-Econ USA",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/qelogo.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/qelogo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#000000"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.anonymous.Natively",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/qelogo.png",
+        "backgroundColor": "#000000"
+      },
+      "package": "com.anonymous.Natively"
+    },
+    "web": {
+      "favicon": "./assets/images/qelogo.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-font",
+      "expo-router"
+    ],
+    "scheme": "natively",
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {}
+    }
+  }
+}
