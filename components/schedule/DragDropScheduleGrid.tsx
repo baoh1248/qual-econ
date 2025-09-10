@@ -305,11 +305,15 @@ const DragDropScheduleGrid = memo(({
     },
     onActive: (event, context) => {
       try {
-        translateX.value = context.startX + event.translationX;
-        translateY.value = context.startY + event.translationY;
+        // Add proper type assertions
+        const startX = context.startX as number;
+        const startY = context.startY as number;
         
-        // Find drop target based on absolute position
-        const target = runOnJS(findDropTarget)(event.absoluteX, event.absoluteY);
+        translateX.value = startX + event.translationX;
+        translateY.value = startY + event.translationY;
+        
+        // Find drop target and set it
+        const target = findDropTarget(event.absoluteX, event.absoluteY);
         if (target) {
           runOnJS(setDropTarget)(target);
         }
