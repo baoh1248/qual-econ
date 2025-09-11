@@ -1,6 +1,6 @@
 
 import React, { memo, useState } from 'react';
-import { View, Text, Modal, ScrollView, TouchableOpacity, TextInput, StyleSheet, Switch } from 'react-native';
+import { View, Text, Modal, ScrollView, TouchableOpacity, TextInput, StyleSheet, Switch, Platform } from 'react-native';
 import { colors, spacing, typography, commonStyles } from '../../styles/commonStyles';
 import Button from '../Button';
 import Icon from '../Icon';
@@ -17,7 +17,8 @@ interface RecurringPattern {
 
 interface RecurringTaskData {
   clientBuilding: ClientBuilding;
-  cleanerName: string;
+  cleanerName: string; // Keep for backward compatibility
+  cleanerNames?: string[]; // New field for multiple cleaners
   hours: number;
   startTime: string;
   pattern: RecurringPattern;
@@ -44,6 +45,7 @@ const RecurringTaskModal = memo(({
   // Form state
   const [selectedBuilding, setSelectedBuilding] = useState<ClientBuilding | null>(null);
   const [cleanerName, setCleanerName] = useState('');
+  const [selectedCleaners, setSelectedCleaners] = useState<string[]>([]); // New state for multiple cleaners
   const [hours, setHours] = useState('');
   const [startTime, setStartTime] = useState('');
   const [notes, setNotes] = useState('');
@@ -75,6 +77,7 @@ const RecurringTaskModal = memo(({
   const resetForm = () => {
     setSelectedBuilding(null);
     setCleanerName('');
+    setSelectedCleaners([]);
     setHours('');
     setStartTime('');
     setNotes('');
@@ -96,7 +99,9 @@ const RecurringTaskModal = memo(({
   };
 
   const handleSave = () => {
-    if (!selectedBuilding || !cleanerName || !hours) {
+    const cleanersToUse = selectedCleaners.length > 0 ? selectedCleaners : (cleanerName ? [cleanerName] : []);
+    
+    if (!selectedBuilding || cleanersToUse.length === 0 || !hours) {
       return;
     }
 
@@ -111,7 +116,8 @@ const RecurringTaskModal = memo(({
 
     const taskData: RecurringTaskData = {
       clientBuilding: selectedBuilding,
-      cleanerName,
+      cleanerName: cleanersToUse[0], // Keep backward compatibility
+      cleanerNames: cleanersToUse, // New field for multiple cleaners
       hours: parseFloat(hours),
       startTime,
       pattern,
@@ -120,6 +126,20 @@ const RecurringTaskModal = memo(({
 
     onSave(taskData);
     handleClose();
+  };
+
+  // Helper function for multiple cleaner selection
+  const toggleCleanerSelection = (cleanerName: string) => {
+    const isSelected = selectedCleaners.includes(cleanerName);
+    
+    if (isSelected) {
+      // Don't allow removing the last cleaner
+      if (selectedCleaners.length > 1) {
+        setSelectedCleaners(selectedCleaners.filter(name => name !== cleanerName));
+      }
+    } else {
+      setSelectedCleaners([...selectedCleaners, cleanerName]);
+    }
   };
 
   const toggleDay = (day: number) => {
@@ -182,8 +202,14 @@ const RecurringTaskModal = memo(({
       transparent={true}
       visible={visible}
       onRequestClose={handleClose}
+      presentationStyle={Platform.OS === 'ios' ? 'overFullScreen' : undefined}
     >
       <View style={styles.modalOverlay}>
+        <TouchableOpacity 
+          style={styles.modalBackdrop} 
+          activeOpacity={1} 
+          onPress={handleClose}
+        />
         <View style={styles.modalContainer}>
           <ScrollView showsVerticalScrollIndicator={false}>
             <View style={styles.modalContent}>
@@ -217,25 +243,72 @@ const RecurringTaskModal = memo(({
                   'buildingName'
                 )}
 
-                <Text style={styles.inputLabel}>Cleaner *</Text>
+                <Text style={styles.inputLabel}>Cleaners * (Select one or more)</Text>
                 <TouchableOpacity
                   style={styles.input}
                   onPress={() => setShowCleanerDropdown(!showCleanerDropdown)}
                 >
-                  <Text style={[styles.inputText, !cleanerName && styles.placeholderText]}>
-                    {cleanerName || 'Select cleaner'}
+                  <Text style={[styles.inputText, selectedCleaners.length === 0 && styles.placeholderText]}>
+                    {selectedCleaners.length > 0 
+                      ? `${selectedCleaners.length} cleaner${selectedCleaners.length > 1 ? 's' : ''} selected`
+                      : 'Select cleaners'
+                    }
                   </Text>
                   <Icon name="chevron-down" size={20} style={{ color: colors.textSecondary }} />
                 </TouchableOpacity>
-                {showCleanerDropdown && renderDropdown(
-                  cleaners.filter(c => c.isActive),
-                  cleanerName,
-                  (cleaner) => {
-                    setCleanerName(cleaner?.name || '');
-                    setShowCleanerDropdown(false);
-                  },
-                  'Select cleaner',
-                  'name'
+                
+                {/* Selected cleaners display */}
+                {selectedCleaners.length > 0 && (
+                  <View style={styles.selectedCleanersContainer}>
+                    {selectedCleaners.map((cleanerName, index) => (
+                      <View key={index} style={styles.selectedCleanerChip}>
+                        <Text style={styles.selectedCleanerText}>{cleanerName}</Text>
+                        {selectedCleaners.length > 1 && (
+                          <TouchableOpacity
+                            onPress={() => toggleCleanerSelection(cleanerName)}
+                            style={styles.removeSelectedCleanerButton}
+                          >
+                            <Icon name="close" size={12} style={{ color: colors.background }} />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    ))}
+                  </View>
+                )}
+                
+                {/* Multi-select cleaner dropdown */}
+                {showCleanerDropdown && (
+                  <View style={styles.dropdownContainer}>
+                    <ScrollView style={styles.dropdown} nestedScrollEnabled>
+                      {cleaners.filter(c => c.isActive).map((cleaner, index) => {
+                        const isSelected = selectedCleaners.includes(cleaner.name);
+                        return (
+                          <TouchableOpacity
+                            key={index}
+                            style={[styles.dropdownItem, isSelected && styles.dropdownItemSelected]}
+                            onPress={() => toggleCleanerSelection(cleaner.name)}
+                          >
+                            <View style={styles.cleanerDropdownRow}>
+                              <Text style={[styles.dropdownText, isSelected && styles.dropdownTextSelected]}>
+                                {cleaner.name}
+                              </Text>
+                              <Icon 
+                                name={isSelected ? "checkmark-circle" : "ellipse-outline"} 
+                                size={20} 
+                                style={{ color: isSelected ? colors.background : colors.textSecondary }} 
+                              />
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+                    <TouchableOpacity
+                      style={styles.closeDropdownButton}
+                      onPress={() => setShowCleanerDropdown(false)}
+                    >
+                      <Text style={styles.closeDropdownText}>Done</Text>
+                    </TouchableOpacity>
+                  </View>
                 )}
 
                 <Text style={styles.inputLabel}>Hours *</Text>
@@ -422,6 +495,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.5)',
+    ...(Platform.OS === 'web' && {
+      position: 'fixed' as any,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      zIndex: 9999,
+    }),
+  },
+  modalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   modalContainer: {
     width: '95%',
@@ -430,6 +518,10 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     ...commonStyles.shadow,
     maxHeight: '90%',
+    ...(Platform.OS === 'web' && {
+      zIndex: 10000,
+      position: 'relative' as any,
+    }),
   },
   modalContent: {
     padding: spacing.lg,
@@ -621,6 +713,50 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     flex: 1,
+  },
+  selectedCleanersContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  selectedCleanerChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.success,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: 16,
+    gap: spacing.xs,
+  },
+  selectedCleanerText: {
+    ...typography.small,
+    color: colors.background,
+    fontWeight: '600',
+  },
+  removeSelectedCleanerButton: {
+    backgroundColor: colors.background + '30',
+    borderRadius: 8,
+    padding: 2,
+  },
+  cleanerDropdownRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  closeDropdownButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+    borderBottomLeftRadius: 8,
+    borderBottomRightRadius: 8,
+  },
+  closeDropdownText: {
+    ...typography.body,
+    color: colors.background,
+    fontWeight: '600',
   },
 });
 

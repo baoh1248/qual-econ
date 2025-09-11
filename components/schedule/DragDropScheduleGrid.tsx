@@ -5,6 +5,7 @@ import { colors, spacing, typography } from '../../styles/commonStyles';
 import Icon from '../Icon';
 import type { ScheduleEntry } from '../../hooks/useScheduleStorage';
 import type { ClientBuilding, Client, Cleaner } from '../../hooks/useClientData';
+import { useConflictDetection } from '../../hooks/useConflictDetection';
 import { GestureHandlerRootView, PanGestureHandler } from 'react-native-gesture-handler';
 import Animated, { 
   useSharedValue, 
@@ -44,7 +45,7 @@ const DragDropScheduleGrid = memo(({
   bulkMode = false,
   selectedEntries = [],
 }: DragDropScheduleGridProps) => {
-  console.log('DragDropScheduleGrid rendered');
+  console.log('DragDropScheduleGrid rendered with enhanced conflict detection');
 
   const days = useMemo(() => ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'], []);
   const screenWidth = Dimensions.get('window').width;
@@ -55,6 +56,16 @@ const DragDropScheduleGrid = memo(({
   const [draggedEntry, setDraggedEntry] = useState<ScheduleEntry | null>(null);
   const [dropTarget, setDropTarget] = useState<{ building: ClientBuilding; day: string } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [previewConflicts, setPreviewConflicts] = useState<string[]>([]);
+
+  // Enhanced conflict detection
+  const { 
+    conflicts, 
+    getEntryConflicts, 
+    validateScheduleChange,
+    hasConflicts,
+    conflictSummary 
+  } = useConflictDetection(schedule, cleaners);
 
   // Animation values for drag and drop
   const translateX = useSharedValue(0);
@@ -119,6 +130,27 @@ const DragDropScheduleGrid = memo(({
     }
   }, [schedule]);
 
+  // Enhanced conflict map with entry-specific conflicts
+  const entryConflictMap = useMemo(() => {
+    try {
+      const map = new Map<string, string[]>();
+      
+      for (const conflict of conflicts) {
+        for (const entry of conflict.affectedEntries) {
+          if (!map.has(entry.id)) {
+            map.set(entry.id, []);
+          }
+          map.get(entry.id)!.push(conflict.id);
+        }
+      }
+      
+      return map;
+    } catch (error) {
+      console.error('Error creating entry conflict map:', error);
+      return new Map<string, string[]>();
+    }
+  }, [conflicts]);
+
   // Optimized lookup function with error handling
   const getScheduleEntry = useCallback((buildingName: string, day: string): ScheduleEntry | null => {
     try {
@@ -134,7 +166,7 @@ const DragDropScheduleGrid = memo(({
     }
   }, [scheduleMap]);
 
-  // Memoized color functions with error handling
+  // Enhanced color functions with conflict awareness
   const getStatusColor = useCallback((status: string) => {
     try {
       switch (status) {
@@ -147,6 +179,16 @@ const DragDropScheduleGrid = memo(({
     } catch (error) {
       console.error('Error getting status color:', error);
       return colors.border;
+    }
+  }, []);
+
+  const getConflictSeverityColor = useCallback((severity: string) => {
+    switch (severity) {
+      case 'critical': return colors.danger;
+      case 'high': return '#FF6B35';
+      case 'medium': return colors.warning;
+      case 'low': return '#4ECDC4';
+      default: return colors.textSecondary;
     }
   }, []);
 
@@ -178,55 +220,39 @@ const DragDropScheduleGrid = memo(({
     }
   }, []);
 
-  // Optimized conflict detection with Set for O(1) lookups and error handling
-  const conflictMap = useMemo(() => {
+  // Enhanced conflict checking
+  const hasEntryConflict = useCallback((entry: ScheduleEntry): boolean => {
     try {
-      const conflicts = new Set<string>();
-      const cleanerDayMap = new Map<string, ScheduleEntry[]>();
-      
-      if (!Array.isArray(schedule)) {
-        return conflicts;
-      }
-
-      for (const entry of schedule) {
-        if (!entry || entry.status === 'cancelled' || !entry.cleanerName || !entry.day) {
-          continue;
-        }
-        
-        const key = `${entry.cleanerName}|${entry.day}`;
-        if (!cleanerDayMap.has(key)) {
-          cleanerDayMap.set(key, []);
-        }
-        cleanerDayMap.get(key)!.push(entry);
-      }
-
-      for (const [key, entries] of cleanerDayMap) {
-        if (entries.length > 1) {
-          for (const entry of entries) {
-            if (entry?.id) {
-              conflicts.add(entry.id);
-            }
-          }
-        }
-      }
-      
-      return conflicts;
+      return entry?.id ? entryConflictMap.has(entry.id) : false;
     } catch (error) {
-      console.error('Error creating conflict map:', error);
-      return new Set<string>();
-    }
-  }, [schedule]);
-
-  const hasConflict = useCallback((entry: ScheduleEntry): boolean => {
-    try {
-      return entry?.id ? conflictMap.has(entry.id) : false;
-    } catch (error) {
-      console.error('Error checking conflict:', error);
+      console.error('Error checking entry conflict:', error);
       return false;
     }
-  }, [conflictMap]);
+  }, [entryConflictMap]);
 
-  // Improved drop target detection
+  const getEntryConflictSeverity = useCallback((entry: ScheduleEntry): string => {
+    try {
+      if (!entry?.id || !entryConflictMap.has(entry.id)) {
+        return 'none';
+      }
+
+      const entryConflicts = getEntryConflicts(entry.id);
+      if (entryConflicts.length === 0) return 'none';
+
+      // Return the highest severity
+      const severities = entryConflicts.map(c => c.severity);
+      if (severities.includes('critical')) return 'critical';
+      if (severities.includes('high')) return 'high';
+      if (severities.includes('medium')) return 'medium';
+      if (severities.includes('low')) return 'low';
+      return 'none';
+    } catch (error) {
+      console.error('Error getting entry conflict severity:', error);
+      return 'none';
+    }
+  }, [entryConflictMap, getEntryConflicts]);
+
+  // Enhanced drop target detection with conflict preview
   const findDropTarget = useCallback((x: number, y: number) => {
     try {
       // Calculate which day column we're over
@@ -262,9 +288,35 @@ const DragDropScheduleGrid = memo(({
     }
   }, [buildingColumnWidth, cellWidth, days, buildingsByClient]);
 
+  // Enhanced drop validation with conflict checking
+  const validateDrop = useCallback((entry: ScheduleEntry, target: { building: ClientBuilding; day: string }) => {
+    try {
+      if (!entry || !target) return { canDrop: false, conflicts: [], warnings: [] };
+
+      // Create a temporary entry for validation
+      const tempEntry = {
+        ...entry,
+        clientName: target.building.clientName,
+        buildingName: target.building.buildingName,
+        day: target.day as any
+      };
+
+      const validation = validateScheduleChange(tempEntry, entry.id);
+      
+      return {
+        canDrop: validation.canProceed,
+        conflicts: validation.conflicts,
+        warnings: validation.warnings
+      };
+    } catch (error) {
+      console.error('Error validating drop:', error);
+      return { canDrop: true, conflicts: [], warnings: [] };
+    }
+  }, [validateScheduleChange]);
+
   const handleDrop = useCallback(() => {
     try {
-      console.log('Handling drop:', { draggedEntry: draggedEntry?.id, dropTarget });
+      console.log('Handling enhanced drop:', { draggedEntry: draggedEntry?.id, dropTarget });
       
       if (draggedEntry && dropTarget && onMoveEntry) {
         // Check if we're dropping on a different location
@@ -273,8 +325,45 @@ const DragDropScheduleGrid = memo(({
           draggedEntry.day.toLowerCase() === dropTarget.day.toLowerCase();
           
         if (!isSameLocation) {
-          console.log('Moving entry to new location');
-          onMoveEntry(draggedEntry.id, dropTarget.building, dropTarget.day);
+          // Validate the drop
+          const validation = validateDrop(draggedEntry, dropTarget);
+          
+          if (!validation.canDrop && validation.conflicts.length > 0) {
+            // Show conflict warning
+            const conflictMessages = validation.conflicts.map(c => c.description).join('\n');
+            Alert.alert(
+              'Scheduling Conflict Detected',
+              `Moving this entry will create conflicts:\n\n${conflictMessages}\n\nDo you want to proceed anyway?`,
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { 
+                  text: 'Proceed Anyway', 
+                  style: 'destructive',
+                  onPress: () => {
+                    console.log('User chose to proceed despite conflicts');
+                    onMoveEntry(draggedEntry.id, dropTarget.building, dropTarget.day);
+                  }
+                }
+              ]
+            );
+          } else if (validation.warnings.length > 0) {
+            // Show warnings but allow the move
+            Alert.alert(
+              'Schedule Warning',
+              validation.warnings.join('\n') + '\n\nDo you want to continue?',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { 
+                  text: 'Continue', 
+                  onPress: () => onMoveEntry(draggedEntry.id, dropTarget.building, dropTarget.day)
+                }
+              ]
+            );
+          } else {
+            // No conflicts, proceed with move
+            console.log('Moving entry to new location');
+            onMoveEntry(draggedEntry.id, dropTarget.building, dropTarget.day);
+          }
         } else {
           console.log('Dropped on same location, no move needed');
         }
@@ -284,16 +373,17 @@ const DragDropScheduleGrid = memo(({
       setDraggedEntry(null);
       setDropTarget(null);
       setIsDragging(false);
+      setPreviewConflicts([]);
     } catch (error) {
       console.error('Error handling drop:', error);
     }
-  }, [draggedEntry, dropTarget, onMoveEntry]);
+  }, [draggedEntry, dropTarget, onMoveEntry, validateDrop]);
 
   // Move the gesture handler to component level
   const gestureHandler = useAnimatedGestureHandler({
-    onStart: (_, context) => {
+    onStart: (_, context: any) => {
       try {
-        console.log('Drag started');
+        console.log('Enhanced drag started');
         context.startX = translateX.value;
         context.startY = translateY.value;
         scale.value = withSpring(1.1);
@@ -303,19 +393,23 @@ const DragDropScheduleGrid = memo(({
         console.error('Error in gesture start:', error);
       }
     },
-    onActive: (event, context) => {
+    onActive: (event, context: any) => {
       try {
-        // Add proper type assertions
-        const startX = context.startX as number;
-        const startY = context.startY as number;
+        translateX.value = context.startX + event.translationX;
+        translateY.value = context.startY + event.translationY;
         
-        translateX.value = startX + event.translationX;
-        translateY.value = startY + event.translationY;
-        
-        // Find drop target and set it
-        const target = findDropTarget(event.absoluteX, event.absoluteY);
+        // Find drop target and validate conflicts
+        const target = runOnJS(findDropTarget)(event.absoluteX, event.absoluteY);
         if (target) {
           runOnJS(setDropTarget)(target);
+          
+          // Preview conflicts for this drop
+          if (draggedEntry) {
+            const validation = runOnJS(validateDrop)(draggedEntry, target);
+            if (validation && validation.conflicts) {
+              runOnJS(setPreviewConflicts)(validation.conflicts.map(c => c.id));
+            }
+          }
         }
       } catch (error) {
         console.error('Error in gesture active:', error);
@@ -323,7 +417,7 @@ const DragDropScheduleGrid = memo(({
     },
     onEnd: () => {
       try {
-        console.log('Drag ended');
+        console.log('Enhanced drag ended');
         translateX.value = withSpring(0);
         translateY.value = withSpring(0);
         scale.value = withSpring(1);
@@ -386,22 +480,27 @@ const DragDropScheduleGrid = memo(({
       }
 
       if (!bulkMode) {
-        console.log('Long press detected, preparing for drag:', entry.id);
+        console.log('Long press detected, preparing for enhanced drag:', entry.id);
         setDraggedEntry(entry);
-        Alert.alert(
-          'Move Entry',
-          `Drag ${entry.cleanerName || 'this'}'s shift to move it to a different time slot`,
-          [{ text: 'OK' }]
-        );
+        
+        // Show conflict info if entry has conflicts
+        const entryConflicts = getEntryConflicts(entry.id);
+        let message = `Drag ${entry.cleanerName || 'this'}'s shift to move it to a different time slot`;
+        
+        if (entryConflicts.length > 0) {
+          message += `\n\nNote: This entry currently has ${entryConflicts.length} conflict(s). Moving it may help resolve them.`;
+        }
+        
+        Alert.alert('Move Entry', message, [{ text: 'OK' }]);
       } else if (onCellLongPress) {
         onCellLongPress(building, day);
       }
     } catch (error) {
       console.error('Error handling entry long press:', error);
     }
-  }, [bulkMode, onCellLongPress]);
+  }, [bulkMode, onCellLongPress, getEntryConflicts]);
 
-  // Memoized cell renderer for better performance with error handling
+  // Enhanced cell renderer with conflict indicators
   const renderCell = useCallback((building: ClientBuilding, day: string) => {
     try {
       if (!building || !day) {
@@ -413,6 +512,37 @@ const DragDropScheduleGrid = memo(({
       const isDropTarget = dropTarget?.building?.id === building.id && dropTarget?.day === dayKey;
       const isSelected = entry && selectedEntriesSet.has(entry.id);
       const isDraggedEntry = draggedEntry?.id === entry?.id;
+      const hasConflict = entry && hasEntryConflict(entry);
+      const conflictSeverity = entry ? getEntryConflictSeverity(entry) : 'none';
+      const isPreviewConflict = entry && previewConflicts.includes(entry.id);
+      
+      // Determine cell background color based on conflicts and status
+      let backgroundColor = colors.backgroundAlt;
+      let borderColor = colors.border;
+      let borderWidth = 1;
+      
+      if (entry) {
+        backgroundColor = getStatusColor(entry.status) + '20';
+        borderColor = getStatusColor(entry.status);
+        
+        if (hasConflict) {
+          const severityColor = getConflictSeverityColor(conflictSeverity);
+          backgroundColor = severityColor + '30';
+          borderColor = severityColor;
+          borderWidth = 2;
+        }
+      }
+      
+      if (isDropTarget) {
+        borderWidth = 3;
+        if (previewConflicts.length > 0) {
+          borderColor = colors.danger;
+          backgroundColor = colors.danger + '20';
+        } else {
+          borderColor = colors.success;
+          backgroundColor = colors.success + '20';
+        }
+      }
       
       return (
         <TouchableOpacity
@@ -421,12 +551,11 @@ const DragDropScheduleGrid = memo(({
             styles.cell,
             { 
               width: cellWidth,
-              backgroundColor: entry ? getStatusColor(entry.status) + '20' : colors.backgroundAlt,
-              borderColor: entry ? getStatusColor(entry.status) : colors.border,
-              borderWidth: isDropTarget ? 3 : 1,
+              backgroundColor,
+              borderColor,
+              borderWidth,
             },
             isSelected && styles.selectedCell,
-            isDropTarget && styles.dropTargetCell,
             isDraggedEntry && styles.draggedCell,
           ]}
           onPress={() => {
@@ -460,9 +589,33 @@ const DragDropScheduleGrid = memo(({
                     />
                   </View>
                 )}
-                <Text style={[styles.cleanerName, { color: getStatusColor(entry.status) }]} numberOfLines={1}>
-                  {entry.cleanerName || 'Unknown'}
-                </Text>
+                
+                <View style={styles.cleanerNamesContainer}>
+                  {(() => {
+                    const entryCleaners = entry.cleanerNames && entry.cleanerNames.length > 0 
+                      ? entry.cleanerNames 
+                      : (entry.cleanerName ? [entry.cleanerName] : ['Unknown']);
+                    
+                    if (entryCleaners.length === 1) {
+                      return (
+                        <Text style={[styles.cleanerName, { color: getStatusColor(entry.status) }]} numberOfLines={1}>
+                          {entryCleaners[0]}
+                        </Text>
+                      );
+                    } else {
+                      return (
+                        <>
+                          <Text style={[styles.cleanerName, { color: getStatusColor(entry.status) }]} numberOfLines={1}>
+                            {entryCleaners[0]}
+                          </Text>
+                          <Text style={[styles.additionalCleaners, { color: colors.textSecondary }]} numberOfLines={1}>
+                            +{entryCleaners.length - 1} more
+                          </Text>
+                        </>
+                      );
+                    }
+                  })()}
+                </View>
                 <Text style={[styles.hours, { color: colors.textSecondary }]} numberOfLines={1}>
                   {entry.hours || 0}h
                 </Text>
@@ -471,11 +624,25 @@ const DragDropScheduleGrid = memo(({
                     {entry.startTime}
                   </Text>
                 )}
-                {hasConflict(entry) && (
-                  <View style={styles.conflictIndicator}>
-                    <Icon name="warning" size={12} style={{ color: colors.danger }} />
+                
+                {/* Enhanced conflict indicators */}
+                {hasConflict && (
+                  <View style={[styles.conflictIndicator, { backgroundColor: getConflictSeverityColor(conflictSeverity) }]}>
+                    <Icon 
+                      name={conflictSeverity === 'critical' ? 'alert-circle' : 'warning'} 
+                      size={12} 
+                      style={{ color: colors.background }} 
+                    />
                   </View>
                 )}
+                
+                {/* Preview conflict indicator */}
+                {isPreviewConflict && (
+                  <View style={styles.previewConflictIndicator}>
+                    <Icon name="flash" size={10} style={{ color: colors.background }} />
+                  </View>
+                )}
+                
                 {!bulkMode && (
                   <View style={styles.dragIndicator}>
                     <Icon name="reorder-three-outline" size={12} style={{ color: colors.textSecondary }} />
@@ -498,14 +665,36 @@ const DragDropScheduleGrid = memo(({
         </View>
       );
     }
-  }, [cellWidth, getScheduleEntry, getStatusColor, selectedEntriesSet, dropTarget, bulkMode, draggedEntry, handleEntryPress, handleEntryLongPress, onCellPress, onCellLongPress, gestureHandler, hasConflict, animatedStyle]);
+  }, [
+    cellWidth, 
+    getScheduleEntry, 
+    getStatusColor, 
+    selectedEntriesSet, 
+    dropTarget, 
+    bulkMode, 
+    draggedEntry, 
+    hasEntryConflict,
+    getEntryConflictSeverity,
+    getConflictSeverityColor,
+    previewConflicts,
+    handleEntryPress, 
+    handleEntryLongPress, 
+    onCellPress, 
+    onCellLongPress, 
+    gestureHandler, 
+    animatedStyle
+  ]);
 
-  // Memoized building row renderer with error handling
+  // Enhanced building row renderer with conflict indicators
   const renderBuildingRow = useCallback((building: ClientBuilding) => {
     try {
       if (!building) {
         return null;
       }
+
+      // Check if this building has any conflicts
+      const buildingEntries = schedule.filter(entry => entry.buildingName === building.buildingName);
+      const buildingHasConflicts = buildingEntries.some(entry => hasEntryConflict(entry));
 
       return (
         <View key={building.id} style={styles.row}>
@@ -513,15 +702,21 @@ const DragDropScheduleGrid = memo(({
             style={[
               styles.buildingCell, 
               { width: buildingColumnWidth },
-              bulkMode && styles.buildingCellBulkMode
+              bulkMode && styles.buildingCellBulkMode,
+              buildingHasConflicts && styles.buildingCellWithConflicts
             ]}
             onLongPress={() => onBuildingLongPress && onBuildingLongPress(building)}
             activeOpacity={0.7}
           >
             <View style={styles.buildingInfo}>
-              <Text style={styles.buildingName} numberOfLines={2}>
-                {building.buildingName || 'Unknown Building'}
-              </Text>
+              <View style={styles.buildingNameRow}>
+                <Text style={styles.buildingName} numberOfLines={2}>
+                  {building.buildingName || 'Unknown Building'}
+                </Text>
+                {buildingHasConflicts && (
+                  <Icon name="warning" size={16} style={{ color: colors.danger }} />
+                )}
+              </View>
               <View style={styles.buildingMeta}>
                 <View style={[styles.priorityBadge, { backgroundColor: getPriorityColor(building.priority || 'medium') }]}>
                   <Text style={styles.priorityText}>{(building.priority || 'M').charAt(0).toUpperCase()}</Text>
@@ -539,9 +734,19 @@ const DragDropScheduleGrid = memo(({
       console.error('Error rendering building row:', error);
       return null;
     }
-  }, [buildingColumnWidth, bulkMode, days, renderCell, onBuildingLongPress, getPriorityColor, getSecurityLevelColor]);
+  }, [
+    buildingColumnWidth, 
+    bulkMode, 
+    days, 
+    schedule,
+    hasEntryConflict,
+    renderCell, 
+    onBuildingLongPress, 
+    getPriorityColor, 
+    getSecurityLevelColor
+  ]);
 
-  // Memoized client section renderer with error handling
+  // Enhanced client section renderer with conflict summary
   const renderClientSection = useCallback((clientName: string, buildings: ClientBuilding[]) => {
     try {
       if (!clientName || !Array.isArray(buildings) || buildings.length === 0) {
@@ -554,6 +759,10 @@ const DragDropScheduleGrid = memo(({
         return null;
       }
 
+      // Check for client-level conflicts
+      const clientEntries = schedule.filter(entry => entry.clientName === clientName);
+      const clientConflicts = clientEntries.filter(entry => hasEntryConflict(entry));
+
       return (
         <View key={clientName} style={styles.clientSection}>
           <View style={styles.clientHeader}>
@@ -563,12 +772,23 @@ const DragDropScheduleGrid = memo(({
               activeOpacity={0.7}
             >
               <View style={styles.clientInfo}>
-                <Text style={styles.clientName}>{client.name}</Text>
+                <View style={styles.clientNameRow}>
+                  <Text style={styles.clientName}>{client.name}</Text>
+                  {clientConflicts.length > 0 && (
+                    <View style={styles.clientConflictBadge}>
+                      <Icon name="warning" size={12} style={{ color: colors.background }} />
+                      <Text style={styles.clientConflictText}>{clientConflicts.length}</Text>
+                    </View>
+                  )}
+                </View>
                 <View style={styles.clientMeta}>
                   <View style={[styles.securityBadge, { backgroundColor: getSecurityLevelColor(client.securityLevel || 'medium') }]}>
                     <Icon name="shield" size={12} style={{ color: colors.background }} />
                   </View>
                   <Text style={styles.buildingCount}>{buildings.length} buildings</Text>
+                  {clientEntries.length > 0 && (
+                    <Text style={styles.entryCount}>{clientEntries.length} jobs</Text>
+                  )}
                 </View>
               </View>
             </TouchableOpacity>
@@ -580,7 +800,14 @@ const DragDropScheduleGrid = memo(({
       console.error('Error rendering client section:', error);
       return null;
     }
-  }, [clients, onClientLongPress, getSecurityLevelColor, renderBuildingRow]);
+  }, [
+    clients, 
+    schedule,
+    hasEntryConflict,
+    onClientLongPress, 
+    getSecurityLevelColor, 
+    renderBuildingRow
+  ]);
 
   // Early return for empty state with error handling
   if (!Array.isArray(clientBuildings) || clientBuildings.length === 0) {
@@ -597,10 +824,35 @@ const DragDropScheduleGrid = memo(({
     return (
       <GestureHandlerRootView style={styles.container}>
         <View style={styles.container}>
+          {/* Enhanced drag overlay with conflict preview */}
           {isDragging && (
-            <View style={styles.dragOverlay}>
-              <Text style={styles.dragOverlayText}>
-                Drop on a cell to move the entry
+            <View style={[
+              styles.dragOverlay,
+              { backgroundColor: previewConflicts.length > 0 ? colors.danger + '20' : colors.primary + '20' }
+            ]}>
+              <Icon 
+                name={previewConflicts.length > 0 ? "warning" : "move"} 
+                size={20} 
+                style={{ color: previewConflicts.length > 0 ? colors.danger : colors.primary }} 
+              />
+              <Text style={[
+                styles.dragOverlayText,
+                { color: previewConflicts.length > 0 ? colors.danger : colors.primary }
+              ]}>
+                {previewConflicts.length > 0 
+                  ? `⚠️ Will create ${previewConflicts.length} conflict(s)` 
+                  : "Drop on a cell to move the entry"
+                }
+              </Text>
+            </View>
+          )}
+
+          {/* Conflict summary header */}
+          {hasConflicts && (
+            <View style={styles.conflictSummaryHeader}>
+              <Icon name="warning" size={20} style={{ color: colors.danger }} />
+              <Text style={styles.conflictSummaryText}>
+                {conflictSummary.total} conflicts detected • {conflictSummary.critical + conflictSummary.high} high priority
               </Text>
             </View>
           )}
@@ -619,12 +871,18 @@ const DragDropScheduleGrid = memo(({
               bounces={false}
             >
               <View style={[styles.grid, { width: totalGridWidth }]}>
-                {/* Header Row */}
+                {/* Enhanced Header Row */}
                 <View style={styles.headerRow}>
                   <View style={[styles.buildingHeaderCell, { width: buildingColumnWidth }]}>
                     <Text style={styles.headerText}>Buildings</Text>
                     {bulkMode && (
                       <Text style={styles.bulkModeIndicator}>Bulk Mode</Text>
+                    )}
+                    {hasConflicts && (
+                      <Text style={styles.conflictIndicatorText}>
+                        {conflictSummary.critical > 0 && `${conflictSummary.critical} Critical`}
+                        {conflictSummary.high > 0 && ` ${conflictSummary.high} High`}
+                      </Text>
                     )}
                   </View>
                   {days.map(day => (
@@ -669,13 +927,28 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 999,
-    backgroundColor: colors.primary + '20',
     padding: spacing.md,
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: spacing.sm,
   },
   dragOverlayText: {
     ...typography.body,
-    color: colors.primary,
+    fontWeight: '600',
+  },
+  conflictSummaryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    backgroundColor: colors.danger + '10',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.danger + '30',
+    gap: spacing.sm,
+  },
+  conflictSummaryText: {
+    ...typography.body,
+    color: colors.danger,
     fontWeight: '600',
   },
   horizontalScroll: {
@@ -722,6 +995,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: spacing.xs,
   },
+  conflictIndicatorText: {
+    ...typography.small,
+    color: colors.danger,
+    fontWeight: '600',
+    marginTop: spacing.xs,
+  },
   dayHeaderText: {
     ...typography.small,
     fontWeight: '600',
@@ -745,11 +1024,31 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  clientNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: spacing.sm,
+  },
   clientName: {
     ...typography.body,
     fontWeight: '600',
     color: colors.text,
-    flex: 1,
+  },
+  clientConflictBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.danger,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
+    borderRadius: 10,
+    gap: 2,
+  },
+  clientConflictText: {
+    ...typography.small,
+    color: colors.background,
+    fontWeight: '600',
+    fontSize: 10,
   },
   clientMeta: {
     flexDirection: 'row',
@@ -757,6 +1056,10 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   buildingCount: {
+    ...typography.small,
+    color: colors.textSecondary,
+  },
+  entryCount: {
     ...typography.small,
     color: colors.textSecondary,
   },
@@ -777,15 +1080,26 @@ const styles = StyleSheet.create({
   buildingCellBulkMode: {
     backgroundColor: colors.backgroundAlt,
   },
+  buildingCellWithConflicts: {
+    backgroundColor: colors.danger + '05',
+    borderLeftWidth: 3,
+    borderLeftColor: colors.danger,
+  },
   buildingInfo: {
     flex: 1,
     justifyContent: 'space-between',
+  },
+  buildingNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.xs,
   },
   buildingName: {
     ...typography.body,
     color: colors.text,
     fontWeight: '500',
-    marginBottom: spacing.xs,
+    flex: 1,
   },
   buildingMeta: {
     flexDirection: 'row',
@@ -827,10 +1141,6 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
     borderWidth: 2,
   },
-  dropTargetCell: {
-    backgroundColor: colors.success + '20',
-    borderColor: colors.success,
-  },
   draggedCell: {
     opacity: 0.5,
   },
@@ -852,11 +1162,20 @@ const styles = StyleSheet.create({
     right: -spacing.xs,
     zIndex: 1,
   },
+  cleanerNamesContainer: {
+    alignItems: 'center',
+    marginBottom: 2,
+  },
   cleanerName: {
     ...typography.small,
     fontWeight: '600',
     textAlign: 'center',
-    marginBottom: 2,
+  },
+  additionalCleaners: {
+    ...typography.small,
+    fontSize: 10,
+    textAlign: 'center',
+    fontWeight: '500',
   },
   hours: {
     ...typography.small,
@@ -872,9 +1191,16 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -spacing.xs,
     left: -spacing.xs,
-    backgroundColor: colors.danger,
     borderRadius: 8,
     padding: 2,
+  },
+  previewConflictIndicator: {
+    position: 'absolute',
+    top: -spacing.xs,
+    right: spacing.xs,
+    backgroundColor: colors.warning,
+    borderRadius: 6,
+    padding: 1,
   },
   emptyCell: {
     alignItems: 'center',

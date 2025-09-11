@@ -6,7 +6,9 @@ export interface ScheduleEntry {
   id: string;
   clientName: string;
   buildingName: string;
-  cleanerName: string;
+  cleanerName: string; // Keep for backward compatibility
+  cleanerNames?: string[]; // New field for multiple cleaners
+  cleanerIds?: string[]; // Store cleaner IDs for better data integrity
   hours: number;
   day: 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
   date: string;
@@ -245,14 +247,16 @@ export const useScheduleStorage = () => {
 
     saveTimeoutRef.current = setTimeout(async () => {
       try {
-        console.log('Saving schedules to storage (debounced)');
-        await AsyncStorage.setItem(STORAGE_KEYS.WEEKLY_SCHEDULES, JSON.stringify(schedules));
-        console.log('Schedules saved successfully');
+        console.log('Saving schedules to storage (debounced)', Object.keys(schedules).length, 'weeks');
+        const serializedData = JSON.stringify(schedules);
+        console.log('Serialized data size:', serializedData.length, 'characters');
+        await AsyncStorage.setItem(STORAGE_KEYS.WEEKLY_SCHEDULES, serializedData);
+        console.log('Schedules saved successfully to AsyncStorage');
       } catch (err) {
         console.error('Error saving schedules:', err);
         setError('Failed to save schedule data');
       }
-    }, 500); // 500ms debounce
+    }, 300); // Reduced debounce time for better responsiveness
   }, []);
 
   // Optimized data loading with caching and error handling
@@ -316,19 +320,29 @@ export const useScheduleStorage = () => {
   }, []);
 
   // Optimized schedule retrieval with caching and error handling
-  const getWeekSchedule = useCallback((weekId: string): ScheduleEntry[] => {
+  const getWeekSchedule = useCallback((weekId: string, forceRefresh: boolean = false): ScheduleEntry[] => {
     try {
       if (!weekId || typeof weekId !== 'string') {
         console.error('Invalid weekId provided to getWeekSchedule:', weekId);
         return [];
       }
 
-      // Check cache first
-      if (scheduleCache.has(weekId)) {
-        return scheduleCache.get(weekId)!;
+      // Check cache first (unless force refresh is requested)
+      if (!forceRefresh && scheduleCache.has(weekId)) {
+        const cachedSchedule = scheduleCache.get(weekId)!;
+        console.log('Returning cached schedule for week:', weekId, 'entries:', cachedSchedule.length);
+        return cachedSchedule;
       }
       
+      console.log('Getting fresh schedule data for week:', weekId, 'forceRefresh:', forceRefresh);
       const schedule = weeklySchedules[weekId] || [];
+      console.log('Raw schedule from storage:', schedule.map(e => ({
+        id: e?.id,
+        cleanerName: e?.cleanerName,
+        cleanerNames: e?.cleanerNames,
+        hours: e?.hours,
+        buildingName: e?.buildingName
+      })));
       
       // Validate and sort once and cache
       const validSchedule = schedule.filter(entry => 
@@ -350,6 +364,15 @@ export const useScheduleStorage = () => {
         return 0;
       });
       
+      console.log('Processed schedule for week:', weekId, 'entries:', sortedSchedule.length);
+      console.log('Processed schedule details:', sortedSchedule.map(e => ({
+        id: e.id,
+        cleanerName: e.cleanerName,
+        cleanerNames: e.cleanerNames,
+        hours: e.hours,
+        buildingName: e.buildingName
+      })));
+      
       // Cache the result
       scheduleCache.set(weekId, sortedSchedule);
       return sortedSchedule;
@@ -362,7 +385,14 @@ export const useScheduleStorage = () => {
   // Optimized update with batching and error handling
   const updateWeekSchedule = useCallback(async (weekId: string, entries: ScheduleEntry[]) => {
     try {
-      console.log('Updating week schedule:', weekId);
+      console.log('Updating week schedule:', weekId, 'with', entries.length, 'entries');
+      console.log('Entries being saved:', entries.map(e => ({
+        id: e.id,
+        cleanerName: e.cleanerName,
+        cleanerNames: e.cleanerNames,
+        hours: e.hours,
+        buildingName: e.buildingName
+      })));
       
       if (!weekId || typeof weekId !== 'string') {
         throw new Error('Invalid weekId provided');
@@ -382,26 +412,65 @@ export const useScheduleStorage = () => {
           id: entry.id || String(Date.now() + Math.random()),
         }));
 
+      console.log('Validated entries for save:', validatedEntries.map(e => ({
+        id: e.id,
+        cleanerName: e.cleanerName,
+        cleanerNames: e.cleanerNames,
+        hours: e.hours,
+        buildingName: e.buildingName
+      })));
+
       const updatedSchedules = {
         ...weeklySchedules,
         [weekId]: validatedEntries,
       };
       
+      console.log('Setting updated schedules for week:', weekId);
       setWeeklySchedules(updatedSchedules);
       
-      // Update cache
+      // Update cache immediately
       scheduleCache.set(weekId, validatedEntries);
       
-      // Clear related caches
+      // Clear related caches to force refresh
       statsCache.clear();
       conflictsCache.clear();
       
-      // Debounced save
-      debouncedSave(updatedSchedules);
+      // Force immediate save instead of debounced save for critical updates
+      try {
+        console.log('Force saving schedules to storage immediately');
+        const serializedData = JSON.stringify(updatedSchedules);
+        await AsyncStorage.setItem(STORAGE_KEYS.WEEKLY_SCHEDULES, serializedData);
+        console.log('Schedules force saved successfully to AsyncStorage');
+        
+        // Verify the save by reading it back
+        const verifyData = await AsyncStorage.getItem(STORAGE_KEYS.WEEKLY_SCHEDULES);
+        if (verifyData) {
+          const parsedData = JSON.parse(verifyData);
+          const savedWeekData = parsedData[weekId];
+          console.log('Verification: Data successfully saved and retrieved for week:', weekId);
+          console.log('Verification: Saved entries count:', savedWeekData?.length || 0);
+          if (savedWeekData && savedWeekData.length > 0) {
+            console.log('Verification: Sample saved entry:', {
+              id: savedWeekData[0].id,
+              cleanerName: savedWeekData[0].cleanerName,
+              cleanerNames: savedWeekData[0].cleanerNames,
+              hours: savedWeekData[0].hours
+            });
+          }
+        } else {
+          console.error('Verification failed: No data found after save');
+        }
+      } catch (saveError) {
+        console.error('Error force saving schedules:', saveError);
+        // Fall back to debounced save
+        debouncedSave(updatedSchedules);
+      }
       
+      console.log('Week schedule updated successfully');
     } catch (err) {
       console.error('Error updating week schedule:', err);
       setError('Failed to update schedule');
+      throw err;
     }
   }, [weeklySchedules, debouncedSave]);
 
@@ -438,6 +507,8 @@ export const useScheduleStorage = () => {
   // Batch operations for better performance with error handling
   const addScheduleEntry = useCallback(async (weekId: string, entry: ScheduleEntry) => {
     try {
+      console.log('Adding schedule entry to week:', weekId, 'entry:', entry.id);
+      
       if (!weekId || !entry) {
         throw new Error('Invalid parameters for addScheduleEntry');
       }
@@ -452,6 +523,8 @@ export const useScheduleStorage = () => {
 
       const updatedSchedule = [...currentWeekSchedule, validatedEntry];
       await updateWeekSchedule(weekId, updatedSchedule);
+      
+      console.log('Schedule entry added successfully');
     } catch (error) {
       console.error('Error adding schedule entry:', error);
       throw error;
@@ -460,27 +533,61 @@ export const useScheduleStorage = () => {
 
   const updateScheduleEntry = useCallback(async (weekId: string, entryId: string, updates: Partial<ScheduleEntry>) => {
     try {
+      console.log('Updating schedule entry:', entryId, 'in week:', weekId, 'with updates:', JSON.stringify(updates));
+      
       if (!weekId || !entryId || !updates) {
         throw new Error('Invalid parameters for updateScheduleEntry');
+      }
+
+      // Check if updates object has any meaningful changes
+      if (Object.keys(updates).length === 0) {
+        console.log('No updates provided, skipping update');
+        return;
       }
 
       const currentWeekSchedule = getWeekSchedule(weekId);
       const entryIndex = currentWeekSchedule.findIndex(entry => entry?.id === entryId);
       
       if (entryIndex === -1) {
-        throw new Error(`Schedule entry ${entryId} not found`);
+        throw new Error(`Schedule entry ${entryId} not found in week ${weekId}`);
       }
 
+      const originalEntry = currentWeekSchedule[entryIndex];
+      console.log('Original entry before update:', JSON.stringify({
+        id: originalEntry.id,
+        cleanerName: originalEntry.cleanerName,
+        cleanerNames: originalEntry.cleanerNames,
+        cleanerIds: originalEntry.cleanerIds,
+        hours: originalEntry.hours,
+        startTime: originalEntry.startTime
+      }));
+
       const updatedEntry = { 
-        ...currentWeekSchedule[entryIndex], 
+        ...originalEntry, 
         ...updates,
         weekId,
       };
       
+      console.log('Updated entry after merge:', JSON.stringify({
+        id: updatedEntry.id,
+        cleanerName: updatedEntry.cleanerName,
+        cleanerNames: updatedEntry.cleanerNames,
+        cleanerIds: updatedEntry.cleanerIds,
+        hours: updatedEntry.hours,
+        startTime: updatedEntry.startTime
+      }));
+      
       const updatedSchedule = [...currentWeekSchedule];
       updatedSchedule[entryIndex] = updatedEntry;
       
+      // Force clear cache to ensure fresh data
+      scheduleCache.delete(weekId);
+      statsCache.clear();
+      conflictsCache.clear();
+      
       await updateWeekSchedule(weekId, updatedSchedule);
+      
+      console.log('Schedule entry updated successfully with changes:', JSON.stringify(updates));
     } catch (error) {
       console.error('Error updating schedule entry:', error);
       throw error;
@@ -489,13 +596,28 @@ export const useScheduleStorage = () => {
 
   const deleteScheduleEntry = useCallback(async (weekId: string, entryId: string) => {
     try {
+      console.log('Deleting schedule entry:', entryId, 'from week:', weekId);
+      
       if (!weekId || !entryId) {
         throw new Error('Invalid parameters for deleteScheduleEntry');
       }
 
       const currentWeekSchedule = getWeekSchedule(weekId);
+      console.log('Current week schedule has', currentWeekSchedule.length, 'entries');
+      
+      const entryToDelete = currentWeekSchedule.find(entry => entry?.id === entryId);
+      if (!entryToDelete) {
+        throw new Error(`Schedule entry ${entryId} not found in week ${weekId}`);
+      }
+      
+      console.log('Found entry to delete:', entryToDelete.buildingName, entryToDelete.cleanerName);
+      
       const updatedSchedule = currentWeekSchedule.filter(entry => entry?.id !== entryId);
+      console.log('Updated schedule will have', updatedSchedule.length, 'entries');
+      
       await updateWeekSchedule(weekId, updatedSchedule);
+      
+      console.log('Schedule entry deleted successfully');
     } catch (error) {
       console.error('Error deleting schedule entry:', error);
       throw error;
@@ -583,6 +705,148 @@ export const useScheduleStorage = () => {
     }
   }, [clearCaches]);
 
+  // Helper functions for multiple cleaners
+  const getEntryCleaners = useCallback((entry: ScheduleEntry): string[] => {
+    try {
+      if (entry.cleanerNames && entry.cleanerNames.length > 0) {
+        return entry.cleanerNames;
+      }
+      // Fallback to single cleaner for backward compatibility
+      return entry.cleanerName ? [entry.cleanerName] : [];
+    } catch (error) {
+      console.error('Error getting entry cleaners:', error);
+      return [];
+    }
+  }, []);
+
+  const addCleanerToEntry = useCallback(async (weekId: string, entryId: string, cleanerName: string, cleanerId?: string) => {
+    try {
+      console.log('Adding cleaner to entry:', { weekId, entryId, cleanerName, cleanerId });
+      
+      const currentWeekSchedule = getWeekSchedule(weekId);
+      const entryIndex = currentWeekSchedule.findIndex(entry => entry?.id === entryId);
+      
+      if (entryIndex === -1) {
+        throw new Error(`Schedule entry ${entryId} not found in week ${weekId}`);
+      }
+
+      const entry = currentWeekSchedule[entryIndex];
+      const currentCleaners = getEntryCleaners(entry);
+      
+      // Check if cleaner is already assigned
+      if (currentCleaners.includes(cleanerName)) {
+        console.log('Cleaner already assigned to this entry');
+        return;
+      }
+
+      const updatedCleaners = [...currentCleaners, cleanerName];
+      const updatedCleanerIds = entry.cleanerIds ? [...entry.cleanerIds] : [];
+      if (cleanerId && !updatedCleanerIds.includes(cleanerId)) {
+        updatedCleanerIds.push(cleanerId);
+      }
+
+      const updatedEntry = {
+        ...entry,
+        cleanerNames: updatedCleaners,
+        cleanerIds: updatedCleanerIds,
+        // Update single cleaner field for backward compatibility
+        cleanerName: updatedCleaners[0] || '',
+      };
+
+      const updatedSchedule = [...currentWeekSchedule];
+      updatedSchedule[entryIndex] = updatedEntry;
+      
+      await updateWeekSchedule(weekId, updatedSchedule);
+      console.log('Cleaner added to entry successfully');
+    } catch (error) {
+      console.error('Error adding cleaner to entry:', error);
+      throw error;
+    }
+  }, [getWeekSchedule, getEntryCleaners, updateWeekSchedule]);
+
+  const removeCleanerFromEntry = useCallback(async (weekId: string, entryId: string, cleanerName: string) => {
+    try {
+      console.log('Removing cleaner from entry:', { weekId, entryId, cleanerName });
+      
+      const currentWeekSchedule = getWeekSchedule(weekId);
+      const entryIndex = currentWeekSchedule.findIndex(entry => entry?.id === entryId);
+      
+      if (entryIndex === -1) {
+        throw new Error(`Schedule entry ${entryId} not found in week ${weekId}`);
+      }
+
+      const entry = currentWeekSchedule[entryIndex];
+      const currentCleaners = getEntryCleaners(entry);
+      
+      // Check if cleaner is assigned
+      if (!currentCleaners.includes(cleanerName)) {
+        console.log('Cleaner not assigned to this entry');
+        return;
+      }
+
+      // Don't allow removing the last cleaner
+      if (currentCleaners.length <= 1) {
+        throw new Error('Cannot remove the last cleaner from an entry');
+      }
+
+      const updatedCleaners = currentCleaners.filter(name => name !== cleanerName);
+      const updatedCleanerIds = entry.cleanerIds ? 
+        entry.cleanerIds.filter((_, index) => currentCleaners[index] !== cleanerName) : [];
+
+      const updatedEntry = {
+        ...entry,
+        cleanerNames: updatedCleaners,
+        cleanerIds: updatedCleanerIds,
+        // Update single cleaner field for backward compatibility
+        cleanerName: updatedCleaners[0] || '',
+      };
+
+      const updatedSchedule = [...currentWeekSchedule];
+      updatedSchedule[entryIndex] = updatedEntry;
+      
+      await updateWeekSchedule(weekId, updatedSchedule);
+      console.log('Cleaner removed from entry successfully');
+    } catch (error) {
+      console.error('Error removing cleaner from entry:', error);
+      throw error;
+    }
+  }, [getWeekSchedule, getEntryCleaners, updateWeekSchedule]);
+
+  const updateEntryCleaners = useCallback(async (weekId: string, entryId: string, cleanerNames: string[], cleanerIds?: string[]) => {
+    try {
+      console.log('Updating entry cleaners:', { weekId, entryId, cleanerNames, cleanerIds });
+      
+      if (!cleanerNames || cleanerNames.length === 0) {
+        throw new Error('At least one cleaner must be assigned to an entry');
+      }
+
+      const currentWeekSchedule = getWeekSchedule(weekId);
+      const entryIndex = currentWeekSchedule.findIndex(entry => entry?.id === entryId);
+      
+      if (entryIndex === -1) {
+        throw new Error(`Schedule entry ${entryId} not found in week ${weekId}`);
+      }
+
+      const entry = currentWeekSchedule[entryIndex];
+      const updatedEntry = {
+        ...entry,
+        cleanerNames: [...cleanerNames],
+        cleanerIds: cleanerIds ? [...cleanerIds] : entry.cleanerIds,
+        // Update single cleaner field for backward compatibility
+        cleanerName: cleanerNames[0] || '',
+      };
+
+      const updatedSchedule = [...currentWeekSchedule];
+      updatedSchedule[entryIndex] = updatedEntry;
+      
+      await updateWeekSchedule(weekId, updatedSchedule);
+      console.log('Entry cleaners updated successfully');
+    } catch (error) {
+      console.error('Error updating entry cleaners:', error);
+      throw error;
+    }
+  }, [getWeekSchedule, updateWeekSchedule]);
+
   const clearError = useCallback(() => {
     setError(null);
   }, []);
@@ -623,6 +887,12 @@ export const useScheduleStorage = () => {
     calculateScheduleStats,
     bulkUpdateEntries,
     bulkDeleteEntries,
+    
+    // Multiple cleaners operations
+    getEntryCleaners,
+    addCleanerToEntry,
+    removeCleanerFromEntry,
+    updateEntryCleaners,
     
     // Utilities
     clearError,

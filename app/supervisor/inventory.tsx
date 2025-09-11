@@ -1,5 +1,5 @@
 
-import { Text, View, ScrollView, TouchableOpacity, TextInput, Alert, Modal, StyleSheet } from 'react-native';
+import { Text, View, ScrollView, TouchableOpacity, TextInput, Alert, Modal, StyleSheet, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { useState, useEffect } from 'react';
 import { commonStyles, colors, spacing, typography } from '../../styles/commonStyles';
@@ -570,89 +570,129 @@ export default function SupervisorInventoryScreen() {
       <Modal
         visible={showRequestsModal}
         animationType="slide"
-        presentationStyle="pageSheet"
+        presentationStyle={Platform.OS === 'ios' ? 'pageSheet' : 'overFullScreen'}
+        transparent={Platform.OS !== 'ios'}
+        onRequestClose={() => setShowRequestsModal(false)}
       >
-        <View style={commonStyles.container}>
-          <View style={commonStyles.header}>
-            <TouchableOpacity onPress={() => setShowRequestsModal(false)}>
-              <Icon name="close" size={24} style={{ color: colors.background }} />
-            </TouchableOpacity>
-            <Text style={commonStyles.headerTitle}>Restock Requests</Text>
-            <View style={{ width: 24 }} />
-          </View>
+        <View style={{
+          flex: 1,
+          backgroundColor: Platform.OS === 'ios' ? colors.background : 'rgba(0,0,0,0.5)',
+          justifyContent: Platform.OS === 'ios' ? 'flex-start' : 'center',
+          alignItems: Platform.OS === 'ios' ? 'stretch' : 'center',
+          ...(Platform.OS === 'web' && {
+            position: 'fixed' as any,
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 9999,
+          }),
+        }}>
+          {Platform.OS !== 'ios' && (
+            <TouchableOpacity 
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+              }} 
+              activeOpacity={1} 
+              onPress={() => setShowRequestsModal(false)}
+            />
+          )}
+          <View style={{
+            width: Platform.OS === 'ios' ? '100%' : '90%',
+            maxWidth: Platform.OS === 'ios' ? undefined : 600,
+            maxHeight: Platform.OS === 'ios' ? '100%' : '80%',
+            backgroundColor: colors.background,
+            borderRadius: Platform.OS === 'ios' ? 0 : 16,
+            overflow: 'hidden',
+            ...(Platform.OS === 'web' && {
+              zIndex: 10000,
+              position: 'relative' as any,
+            }),
+          }}>
+            <View style={commonStyles.header}>
+              <TouchableOpacity onPress={() => setShowRequestsModal(false)}>
+                <Icon name="close" size={24} style={{ color: colors.background }} />
+              </TouchableOpacity>
+              <Text style={commonStyles.headerTitle}>Restock Requests</Text>
+              <View style={{ width: 24 }} />
+            </View>
+            <ScrollView style={commonStyles.content}>
+              {restockRequests.map(request => (
+                <View key={request.id} style={[commonStyles.card, { marginBottom: spacing.sm }]}>
+                  <View style={[commonStyles.row, commonStyles.spaceBetween, { marginBottom: spacing.sm }]}>
+                    <Text style={[typography.body, { color: colors.text, fontWeight: '600', flex: 1 }]}>
+                      {request.itemName}
+                    </Text>
+                    <View style={[
+                      commonStyles.statusBadge,
+                      { backgroundColor: getPriorityColor(request.priority) + '20' }
+                    ]}>
+                      <Text style={[
+                        typography.small,
+                        { color: getPriorityColor(request.priority), fontWeight: '600' }
+                      ]}>
+                        {request.priority.toUpperCase()}
+                      </Text>
+                    </View>
+                  </View>
 
-          <ScrollView style={commonStyles.content}>
-            {restockRequests.map(request => (
-              <View key={request.id} style={[commonStyles.card, { marginBottom: spacing.sm }]}>
-                <View style={[commonStyles.row, commonStyles.spaceBetween, { marginBottom: spacing.sm }]}>
-                  <Text style={[typography.body, { color: colors.text, fontWeight: '600', flex: 1 }]}>
-                    {request.itemName}
+                  <Text style={[typography.caption, { color: colors.textSecondary, marginBottom: spacing.sm }]}>
+                    Requested by {request.requestedBy} • {request.requestedAt.toLocaleString()}
                   </Text>
+
+                  <Text style={[typography.body, { color: colors.text, marginBottom: spacing.sm }]}>
+                    Quantity: {request.quantity}
+                  </Text>
+
+                  {request.notes && (
+                    <Text style={[typography.caption, { color: colors.textSecondary, marginBottom: spacing.md }]}>
+                      Notes: {request.notes}
+                    </Text>
+                  )}
+
                   <View style={[
                     commonStyles.statusBadge,
-                    { backgroundColor: getPriorityColor(request.priority) + '20' }
+                    { backgroundColor: getStatusColor(request.status) + '20', marginBottom: spacing.md }
                   ]}>
                     <Text style={[
                       typography.small,
-                      { color: getPriorityColor(request.priority), fontWeight: '600' }
+                      { color: getStatusColor(request.status), fontWeight: '600' }
                     ]}>
-                      {request.priority.toUpperCase()}
+                      {request.status.toUpperCase()}
                     </Text>
                   </View>
+
+                  {request.status === 'pending' && (
+                    <View style={[commonStyles.row, { gap: spacing.sm }]}>
+                      <Button
+                        title="Approve"
+                        onPress={() => approveRestockRequest(request.id)}
+                        style={{ flex: 1, backgroundColor: colors.success }}
+                      />
+                      <Button
+                        title="Reject"
+                        onPress={() => rejectRestockRequest(request.id)}
+                        style={{ flex: 1, backgroundColor: colors.danger }}
+                      />
+                    </View>
+                  )}
                 </View>
+              ))}
 
-                <Text style={[typography.caption, { color: colors.textSecondary, marginBottom: spacing.sm }]}>
-                  Requested by {request.requestedBy} • {request.requestedAt.toLocaleString()}
-                </Text>
-
-                <Text style={[typography.body, { color: colors.text, marginBottom: spacing.sm }]}>
-                  Quantity: {request.quantity}
-                </Text>
-
-                {request.notes && (
-                  <Text style={[typography.caption, { color: colors.textSecondary, marginBottom: spacing.md }]}>
-                    Notes: {request.notes}
-                  </Text>
-                )}
-
-                <View style={[
-                  commonStyles.statusBadge,
-                  { backgroundColor: getStatusColor(request.status) + '20', marginBottom: spacing.md }
-                ]}>
-                  <Text style={[
-                    typography.small,
-                    { color: getStatusColor(request.status), fontWeight: '600' }
-                  ]}>
-                    {request.status.toUpperCase()}
+              {restockRequests.length === 0 && (
+                <View style={{ alignItems: 'center', paddingVertical: spacing.xxl }}>
+                  <Icon name="checkmark-circle" size={48} style={{ color: colors.success, marginBottom: spacing.md }} />
+                  <Text style={[typography.body, { color: colors.textSecondary, textAlign: 'center' }]}>
+                    No pending restock requests
                   </Text>
                 </View>
-
-                {request.status === 'pending' && (
-                  <View style={[commonStyles.row, { gap: spacing.sm }]}>
-                    <Button
-                      title="Approve"
-                      onPress={() => approveRestockRequest(request.id)}
-                      style={{ flex: 1, backgroundColor: colors.success }}
-                    />
-                    <Button
-                      title="Reject"
-                      onPress={() => rejectRestockRequest(request.id)}
-                      style={{ flex: 1, backgroundColor: colors.danger }}
-                    />
-                  </View>
-                )}
-              </View>
-            ))}
-
-            {restockRequests.length === 0 && (
-              <View style={{ alignItems: 'center', paddingVertical: spacing.xxl }}>
-                <Icon name="checkmark-circle" size={48} style={{ color: colors.success, marginBottom: spacing.md }} />
-                <Text style={[typography.body, { color: colors.textSecondary, textAlign: 'center' }]}>
-                  No pending restock requests
-                </Text>
-              </View>
-            )}
-          </ScrollView>
+              )}
+            </ScrollView>
+          </View>
         </View>
       </Modal>
     </View>

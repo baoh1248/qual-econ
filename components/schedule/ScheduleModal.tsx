@@ -1,6 +1,6 @@
 
 import React, { memo } from 'react';
-import { View, Text, Modal, ScrollView, TouchableOpacity, TextInput, StyleSheet } from 'react-native';
+import { View, Text, Modal, ScrollView, TouchableOpacity, TextInput, StyleSheet, Platform } from 'react-native';
 import { colors, spacing, typography, commonStyles } from '../../styles/commonStyles';
 import Button from '../Button';
 import Icon from '../Icon';
@@ -20,6 +20,7 @@ interface ScheduleModalProps {
   
   // Form states
   cleanerName: string;
+  selectedCleaners: string[]; // New field for multiple cleaners
   hours: string;
   startTime: string;
   newClientName: string;
@@ -38,6 +39,7 @@ interface ScheduleModalProps {
 
   // Setters
   setCleanerName: (value: string) => void;
+  setSelectedCleaners: (value: string[]) => void; // New setter for multiple cleaners
   setHours: (value: string) => void;
   setStartTime: (value: string) => void;
   setNewClientName: (value: string) => void;
@@ -75,6 +77,7 @@ const ScheduleModal = memo(({
   cleaners,
   clients,
   cleanerName,
+  selectedCleaners = [],
   hours,
   startTime,
   newClientName,
@@ -91,6 +94,7 @@ const ScheduleModal = memo(({
   showSecurityLevelDropdown,
   showPriorityDropdown,
   setCleanerName,
+  setSelectedCleaners,
   setHours,
   setStartTime,
   setNewClientName,
@@ -116,9 +120,49 @@ const ScheduleModal = memo(({
   onEditBuilding,
   onSwitchToEdit,
 }: ScheduleModalProps) => {
-  console.log('ScheduleModal rendered with type:', modalType);
+  console.log('ScheduleModal rendered with type:', modalType, 'visible:', visible);
 
   if (!visible) return null;
+
+  // Helper functions for multiple cleaner selection
+  const getEntryCleaners = (entry: ScheduleEntry | null): string[] => {
+    if (!entry) return [];
+    if (entry.cleanerNames && entry.cleanerNames.length > 0) {
+      return entry.cleanerNames;
+    }
+    return entry.cleanerName ? [entry.cleanerName] : [];
+  };
+
+  const toggleCleanerSelection = (cleanerName: string) => {
+    if (!setSelectedCleaners) return;
+    
+    const currentCleaners = selectedCleaners || [];
+    const isSelected = currentCleaners.includes(cleanerName);
+    
+    console.log('Toggling cleaner selection:', {
+      cleanerName,
+      isSelected,
+      currentCleaners,
+      action: isSelected ? 'remove' : 'add'
+    });
+    
+    if (isSelected) {
+      // Don't allow removing the last cleaner
+      if (currentCleaners.length > 1) {
+        const newCleaners = currentCleaners.filter(name => name !== cleanerName);
+        console.log('Removing cleaner, new list:', newCleaners);
+        setSelectedCleaners(newCleaners);
+      } else {
+        console.log('Cannot remove last cleaner');
+      }
+    } else {
+      const newCleaners = [...currentCleaners, cleanerName];
+      console.log('Adding cleaner, new list:', newCleaners);
+      setSelectedCleaners(newCleaners);
+    }
+  };
+
+
 
   const securityLevels = ['low', 'medium', 'high'];
   const priorityLevels = ['low', 'medium', 'high'];
@@ -194,8 +238,20 @@ const ScheduleModal = memo(({
                   <Text style={styles.detailValue}>{selectedEntry.buildingName}</Text>
                 </View>
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Cleaner:</Text>
-                  <Text style={styles.detailValue}>{selectedEntry.cleanerName}</Text>
+                  <Text style={styles.detailLabel}>Cleaners:</Text>
+                  <View style={styles.cleanersContainer}>
+                    {getEntryCleaners(selectedEntry).map((cleanerName, index) => (
+                      <View key={index} style={styles.cleanerChip}>
+                        <Text style={styles.cleanerChipText}>{cleanerName}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+                <View style={styles.cleanerManagementNote}>
+                  <Icon name="information-circle-outline" size={16} style={{ color: colors.primary }} />
+                  <Text style={styles.cleanerManagementNoteText}>
+                    To add or remove cleaners, use the Edit button below
+                  </Text>
                 </View>
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Hours:</Text>
@@ -244,24 +300,72 @@ const ScheduleModal = memo(({
               {modalType === 'add' ? 'Add New Shift' : 'Edit Shift'}
             </Text>
             <View style={styles.formContainer}>
-              <Text style={styles.inputLabel}>Cleaner *</Text>
+              <Text style={styles.inputLabel}>Cleaners * (Select one or more)</Text>
               <TouchableOpacity
                 style={styles.input}
                 onPress={() => setShowCleanerDropdown(!showCleanerDropdown)}
               >
-                <Text style={[styles.inputText, !cleanerName && styles.placeholderText]}>
-                  {cleanerName || 'Select cleaner'}
+                <Text style={[styles.inputText, selectedCleaners.length === 0 && styles.placeholderText]}>
+                  {selectedCleaners.length > 0 
+                    ? `${selectedCleaners.length} cleaner${selectedCleaners.length > 1 ? 's' : ''} selected`
+                    : 'Select cleaners'
+                  }
                 </Text>
                 <Icon name="chevron-down" size={20} style={{ color: colors.textSecondary }} />
               </TouchableOpacity>
-              {showCleanerDropdown && renderDropdown(
-                cleaners.filter(c => c.isActive).map(c => c.name),
-                cleanerName,
-                (value) => {
-                  setCleanerName(value);
-                  setShowCleanerDropdown(false);
-                },
-                'Select cleaner'
+              
+              {/* Selected cleaners display */}
+              {selectedCleaners.length > 0 && (
+                <View style={styles.selectedCleanersContainer}>
+                  {selectedCleaners.map((cleanerName, index) => (
+                    <View key={index} style={styles.selectedCleanerChip}>
+                      <Text style={styles.selectedCleanerText}>{cleanerName}</Text>
+                      {selectedCleaners.length > 1 && (
+                        <TouchableOpacity
+                          onPress={() => toggleCleanerSelection(cleanerName)}
+                          style={styles.removeSelectedCleanerButton}
+                        >
+                          <Icon name="close" size={12} style={{ color: colors.background }} />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  ))}
+                </View>
+              )}
+              
+              {/* Multi-select cleaner dropdown */}
+              {showCleanerDropdown && (
+                <View style={styles.dropdownContainer}>
+                  <ScrollView style={styles.dropdown} nestedScrollEnabled>
+                    {cleaners.filter(c => c.isActive).map((cleaner, index) => {
+                      const isSelected = selectedCleaners.includes(cleaner.name);
+                      return (
+                        <TouchableOpacity
+                          key={index}
+                          style={[styles.dropdownItem, isSelected && styles.dropdownItemSelected]}
+                          onPress={() => toggleCleanerSelection(cleaner.name)}
+                        >
+                          <View style={styles.cleanerDropdownRow}>
+                            <Text style={[styles.dropdownText, isSelected && styles.dropdownTextSelected]}>
+                              {cleaner.name}
+                            </Text>
+                            <Icon 
+                              name={isSelected ? "checkmark-circle" : "ellipse-outline"} 
+                              size={20} 
+                              style={{ color: isSelected ? colors.background : colors.textSecondary }} 
+                            />
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                  <TouchableOpacity
+                    style={styles.closeDropdownButton}
+                    onPress={() => setShowCleanerDropdown(false)}
+                  >
+                    <Text style={styles.closeDropdownText}>Done</Text>
+                  </TouchableOpacity>
+                </View>
               )}
               
               <Text style={styles.inputLabel}>Hours *</Text>
@@ -290,7 +394,16 @@ const ScheduleModal = memo(({
                 />
                 <Button 
                   text="Save" 
-                  onPress={onSave} 
+                  onPress={() => {
+                    console.log('ScheduleModal Save button pressed with data:', {
+                      modalType,
+                      selectedCleaners,
+                      hours,
+                      startTime,
+                      selectedEntry: selectedEntry?.id
+                    });
+                    onSave();
+                  }} 
                   variant="primary"
                   style={styles.actionButton}
                 />
@@ -641,8 +754,14 @@ const ScheduleModal = memo(({
       transparent={true}
       visible={visible}
       onRequestClose={onClose}
+      presentationStyle={Platform.OS === 'ios' ? 'overFullScreen' : undefined}
     >
       <View style={styles.modalOverlay}>
+        <TouchableOpacity 
+          style={styles.modalBackdrop} 
+          activeOpacity={1} 
+          onPress={onClose}
+        />
         <View style={styles.modalContainer}>
           <ScrollView showsVerticalScrollIndicator={false}>
             {renderContent()}
@@ -659,6 +778,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.5)',
+    ...(Platform.OS === 'web' && {
+      position: 'fixed' as any,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      zIndex: 9999,
+    }),
+  },
+  modalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   modalContainer: {
     width: '90%',
@@ -667,6 +801,10 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     ...commonStyles.shadow,
     maxHeight: '80%',
+    ...(Platform.OS === 'web' && {
+      zIndex: 10000,
+      position: 'relative' as any,
+    }),
   },
   modalContent: {
     padding: spacing.lg,
@@ -779,6 +917,88 @@ const styles = StyleSheet.create({
   },
   statusText: {
     ...typography.small,
+    color: colors.background,
+    fontWeight: '600',
+  },
+  cleanersContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: spacing.xs,
+    flex: 1,
+  },
+  cleanerChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: 16,
+    gap: spacing.xs,
+  },
+  cleanerChipText: {
+    ...typography.small,
+    color: colors.background,
+    fontWeight: '600',
+  },
+  cleanerManagementNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary + '10',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 8,
+    marginTop: spacing.sm,
+    gap: spacing.sm,
+  },
+  cleanerManagementNoteText: {
+    ...typography.caption,
+    color: colors.primary,
+    fontWeight: '500',
+    flex: 1,
+  },
+
+  selectedCleanersContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  selectedCleanerChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.success,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: 16,
+    gap: spacing.xs,
+  },
+  selectedCleanerText: {
+    ...typography.small,
+    color: colors.background,
+    fontWeight: '600',
+  },
+  removeSelectedCleanerButton: {
+    backgroundColor: colors.background + '30',
+    borderRadius: 8,
+    padding: 2,
+  },
+  cleanerDropdownRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  closeDropdownButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+    borderBottomLeftRadius: 8,
+    borderBottomRightRadius: 8,
+  },
+  closeDropdownText: {
+    ...typography.body,
     color: colors.background,
     fontWeight: '600',
   },

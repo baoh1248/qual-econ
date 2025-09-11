@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Image, Modal, StyleSheet, TextInput } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Image, Modal, StyleSheet, TextInput, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { commonStyles, colors, spacing, typography } from '../../styles/commonStyles';
 import Icon from '../../components/Icon';
@@ -275,8 +275,20 @@ export default function PhotoGallery() {
         transparent
         animationType="fade"
         onRequestClose={() => setShowPhotoModal(false)}
+        presentationStyle={Platform.OS === 'ios' ? 'overFullScreen' : undefined}
       >
         <View style={styles.photoModalOverlay}>
+          <TouchableOpacity 
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+            }} 
+            activeOpacity={1} 
+            onPress={() => setShowPhotoModal(false)}
+          />
           <View style={styles.photoModalContent}>
             <View style={[commonStyles.row, commonStyles.spaceBetween, { marginBottom: spacing.md }]}>
               <TouchableOpacity onPress={() => setShowPhotoModal(false)}>
@@ -384,11 +396,23 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.9)',
     justifyContent: 'center',
     alignItems: 'center',
+    ...(Platform.OS === 'web' && {
+      position: 'fixed' as any,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      zIndex: 9999,
+    }),
   },
   photoModalContent: {
     flex: 1,
     width: '100%',
     padding: spacing.lg,
+    ...(Platform.OS === 'web' && {
+      zIndex: 10000,
+      position: 'relative' as any,
+    }),
   },
   fullPhoto: {
     flex: 1,

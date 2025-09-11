@@ -385,6 +385,23 @@ export default function SupervisorDashboard() {
                   borderRadius: 8 
                 }
               ]}
+              onPress={() => router.push('/supervisor/payroll')}
+            >
+              <Icon name="time" size={24} style={{ color: colors.primary, marginBottom: spacing.xs }} />
+              <Text style={[typography.caption, { color: colors.text, textAlign: 'center' }]}>Payroll Hours</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[
+                { 
+                  flex: isLargeScreen ? 1 : 0,
+                  minWidth: isLargeScreen ? 0 : '48%',
+                  alignItems: 'center', 
+                  padding: spacing.md, 
+                  backgroundColor: '#E2E8F0', 
+                  borderRadius: 8 
+                }
+              ]}
               onPress={() => router.push('/supervisor/inventory')}
             >
               <View style={{ position: 'relative' }}>

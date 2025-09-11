@@ -1,5 +1,5 @@
 
-import { Text, View, ScrollView, TouchableOpacity, Alert, TextInput, Image, Modal, StyleSheet } from 'react-native';
+import { Text, View, ScrollView, TouchableOpacity, Alert, TextInput, Image, Modal, StyleSheet, Platform } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState, useEffect } from 'react';
 import { commonStyles, colors, spacing, typography, statusColors } from '../../../styles/commonStyles';
@@ -506,8 +506,14 @@ export default function TaskDetail() {
         transparent
         animationType="slide"
         onRequestClose={() => setShowCategoryModal(false)}
+        presentationStyle={Platform.OS === 'ios' ? 'overFullScreen' : undefined}
       >
         <View style={styles.modalOverlay}>
+          <TouchableOpacity 
+            style={styles.modalBackdrop} 
+            activeOpacity={1} 
+            onPress={() => setShowCategoryModal(false)}
+          />
           <View style={styles.modalContent}>
             <View style={[commonStyles.row, commonStyles.spaceBetween, { marginBottom: spacing.lg }]}>
               <Text style={[typography.h3, { color: colors.text }]}>Add Photo</Text>
@@ -565,8 +571,14 @@ export default function TaskDetail() {
         transparent
         animationType="fade"
         onRequestClose={() => setShowPhotoModal(false)}
+        presentationStyle={Platform.OS === 'ios' ? 'overFullScreen' : undefined}
       >
         <View style={styles.photoModalOverlay}>
+          <TouchableOpacity 
+            style={styles.modalBackdrop} 
+            activeOpacity={1} 
+            onPress={() => setShowPhotoModal(false)}
+          />
           <View style={styles.photoModalContent}>
             <View style={[commonStyles.row, commonStyles.spaceBetween, { marginBottom: spacing.md }]}>
               <TouchableOpacity onPress={() => setShowPhotoModal(false)}>
@@ -621,6 +633,23 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
+    ...(Platform.OS === 'web' && {
+      position: 'fixed' as any,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      zIndex: 9999,
+      justifyContent: 'center',
+      alignItems: 'center',
+    }),
+  },
+  modalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   modalContent: {
     backgroundColor: colors.background,
@@ -628,17 +657,36 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
     padding: spacing.lg,
     maxHeight: '80%',
+    ...(Platform.OS === 'web' && {
+      borderRadius: 16,
+      width: '90%',
+      maxWidth: 500,
+      zIndex: 10000,
+      position: 'relative' as any,
+    }),
   },
   photoModalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.9)',
     justifyContent: 'center',
     alignItems: 'center',
+    ...(Platform.OS === 'web' && {
+      position: 'fixed' as any,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      zIndex: 9999,
+    }),
   },
   photoModalContent: {
     flex: 1,
     width: '100%',
     padding: spacing.lg,
+    ...(Platform.OS === 'web' && {
+      zIndex: 10000,
+      position: 'relative' as any,
+    }),
   },
   fullPhoto: {
     flex: 1,

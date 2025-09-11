@@ -1,5 +1,5 @@
 
-import { Text, View, ScrollView, TouchableOpacity, TextInput, Alert, Modal, StyleSheet } from 'react-native';
+import { Text, View, ScrollView, TouchableOpacity, TextInput, Alert, Modal, StyleSheet, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { useState, useEffect, useRef } from 'react';
 import { commonStyles, colors, spacing, typography } from '../../styles/commonStyles';
@@ -32,6 +32,21 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
+    ...(Platform.OS === 'web' && {
+      position: 'fixed' as any,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      zIndex: 9999,
+    }),
+  },
+  modalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   modalContent: {
     backgroundColor: colors.background,
@@ -40,6 +55,10 @@ const styles = StyleSheet.create({
     margin: spacing.lg,
     maxHeight: '80%',
     minWidth: '85%',
+    ...(Platform.OS === 'web' && {
+      zIndex: 10000,
+      position: 'relative' as any,
+    }),
   },
   modalHeader: {
     flexDirection: 'row',
@@ -278,8 +297,14 @@ export default function InventoryScreen() {
         transparent
         animationType="fade"
         onRequestClose={cancelExit}
+        presentationStyle={Platform.OS === 'ios' ? 'overFullScreen' : undefined}
       >
         <View style={styles.modalOverlay}>
+          <TouchableOpacity 
+            style={styles.modalBackdrop} 
+            activeOpacity={1} 
+            onPress={cancelExit}
+          />
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Icon name="warning" size={24} style={{ color: colors.warning }} />

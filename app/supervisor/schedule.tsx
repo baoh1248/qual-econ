@@ -10,22 +10,29 @@ import { commonStyles, colors, spacing, typography } from '../../styles/commonSt
 import Icon from '../../components/Icon';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import ErrorBoundary from '../../components/ErrorBoundary';
+import Toast from '../../components/Toast';
 import DragDropScheduleGrid from '../../components/schedule/DragDropScheduleGrid';
 import ScheduleModal from '../../components/schedule/ScheduleModal';
 import SmartSchedulingSuggestions from '../../components/schedule/SmartSchedulingSuggestions';
+import ConflictResolutionPanel from '../../components/schedule/ConflictResolutionPanel';
 import RecurringTaskModal from '../../components/schedule/RecurringTaskModal';
 import BulkActionsBottomSheet from '../../components/schedule/BulkActionsBottomSheet';
 import { useScheduleStorage, type ScheduleEntry } from '../../hooks/useScheduleStorage';
 import { useClientData, type Client, type ClientBuilding, type Cleaner } from '../../hooks/useClientData';
+import { useConflictDetection } from '../../hooks/useConflictDetection';
+import { useToast } from '../../hooks/useToast';
 
 type ModalType = 'add' | 'edit' | 'add-client' | 'add-building' | 'add-cleaner' | 'details' | 'edit-client' | 'edit-building' | null;
 type ViewType = 'daily' | 'weekly' | 'monthly';
 
 const ScheduleView = () => {
-  console.log('ScheduleView rendered');
+  console.log('Enhanced ScheduleView rendered with conflict resolution');
 
   // Refs
   const bulkActionsBottomSheetRef = useRef<BottomSheet>(null);
+
+  // Toast hook
+  const { toast, showToast, hideToast } = useToast();
 
   // Hooks with error handling
   const {
@@ -42,6 +49,11 @@ const ScheduleView = () => {
     clearError: clearScheduleError,
     getCurrentWeekId,
     getWeekIdFromDate,
+    // Multiple cleaners operations
+    getEntryCleaners,
+    addCleanerToEntry,
+    removeCleanerFromEntry,
+    updateEntryCleaners,
   } = useScheduleStorage();
 
   const {
@@ -76,11 +88,23 @@ const ScheduleView = () => {
   const [bulkMode, setBulkMode] = useState(false);
   const [selectedEntries, setSelectedEntries] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(true);
+  const [showConflictPanel, setShowConflictPanel] = useState(false);
   const [recurringTaskModalVisible, setRecurringTaskModalVisible] = useState(false);
   const [dismissedSuggestions, setDismissedSuggestions] = useState<string[]>([]);
 
+  // Enhanced conflict detection
+  const { 
+    conflicts, 
+    conflictSummary, 
+    validateScheduleChange,
+    hasConflicts,
+    hasCriticalConflicts,
+    hasHighPriorityConflicts 
+  } = useConflictDetection(schedule, cleaners || []);
+
   // Form states with proper initialization
   const [cleanerName, setCleanerName] = useState('');
+  const [selectedCleaners, setSelectedCleaners] = useState<string[]>([]); // New state for multiple cleaners
   const [hours, setHours] = useState('');
   const [startTime, setStartTime] = useState('');
   const [newClientName, setNewClientName] = useState('');
@@ -97,7 +121,7 @@ const ScheduleView = () => {
   const [showSecurityLevelDropdown, setShowSecurityLevelDropdown] = useState(false);
   const [showPriorityDropdown, setShowPriorityDropdown] = useState(false);
 
-  // Helper functions for consistent date handling
+  // Helper functions for consistent date handling (same as payroll)
   const formatDateString = useCallback((date: Date): string => {
     try {
       const year = date.getFullYear();
@@ -135,11 +159,275 @@ const ScheduleView = () => {
     return index >= 0 ? index : 0;
   }, []);
 
+  // Helper function to create date from string without timezone issues (consistent with payroll)
+  const createDateFromString = useCallback((dateString: string): Date => {
+    try {
+      // Parse the date string manually to avoid timezone issues
+      const [year, month, day] = dateString.split('-').map(Number);
+      return new Date(year, month - 1, day); // month is 0-indexed in JavaScript Date
+    } catch (error) {
+      console.error('Error creating date from string:', error);
+      return new Date();
+    }
+  }, []);
+
+  // Load schedule for current week with improved error handling
+  const loadCurrentWeekSchedule = useCallback(async (forceRefresh: boolean = false) => {
+    try {
+      console.log('Loading schedule for selected date:', formatDateString(selectedDate), 'forceRefresh:', forceRefresh);
+      
+      if (!getWeekIdFromDate) {
+        console.error('getWeekIdFromDate function not available');
+        return;
+      }
+
+      const weekId = getWeekIdFromDate(selectedDate);
+      console.log('Calculated week ID:', weekId);
+      
+      // Always reload if weekId changed OR if forced reload
+      const shouldReload = weekId !== currentWeekId || forceRefresh;
+      
+      if (shouldReload) {
+        console.log('Reloading schedule data for week:', weekId, 'force:', forceRefresh);
+        setCurrentWeekId(weekId);
+        
+        if (getWeekSchedule) {
+          // Force clear cache before getting fresh data if requested
+          if (forceRefresh) {
+            console.log('Force clearing cache before reload');
+            if (clearCaches) {
+              clearCaches();
+            }
+          }
+          
+          const weekSchedule = getWeekSchedule(weekId, forceRefresh);
+          console.log('Loaded schedule entries for week', weekId, ':', weekSchedule?.length || 0);
+          console.log('Schedule entries details:', weekSchedule?.map(e => ({
+            id: e.id,
+            cleanerName: e.cleanerName,
+            cleanerNames: e.cleanerNames,
+            hours: e.hours,
+            buildingName: e.buildingName
+          })));
+          setSchedule(weekSchedule || []);
+        } else {
+          console.error('getWeekSchedule function not available');
+          setSchedule([]);
+        }
+      } else {
+        console.log('Week ID unchanged and no force refresh, skipping reload');
+      }
+    } catch (error) {
+      console.error('Error loading current week schedule:', error);
+      setSchedule([]);
+    }
+  }, [selectedDate, currentWeekId, getWeekIdFromDate, getWeekSchedule, formatDateString, clearCaches]);
+
+  // Check if current week is the current actual week
+  const isCurrentWeek = useCallback(() => {
+    try {
+      if (!getCurrentWeekId) return false;
+      const currentActualWeekId = getCurrentWeekId();
+      return currentWeekId === currentActualWeekId;
+    } catch (error) {
+      console.error('Error checking current week:', error);
+      return false;
+    }
+  }, [currentWeekId, getCurrentWeekId]);
+
+  // Helper function to generate recurring schedule entries
+  const generateRecurringEntries = useCallback((taskData: any): ScheduleEntry[] => {
+    try {
+      console.log('Generating recurring entries for task:', taskData);
+      
+      const entries: ScheduleEntry[] = [];
+      const { clientBuilding, cleanerName, cleanerNames, hours, startTime, pattern, notes } = taskData;
+      
+      // Use multiple cleaners if available, otherwise fall back to single cleaner
+      const cleanersToUse = cleanerNames && cleanerNames.length > 0 ? cleanerNames : (cleanerName ? [cleanerName] : []);
+      
+      if (!clientBuilding || cleanersToUse.length === 0 || !hours || !pattern) {
+        console.error('Missing required data for recurring task');
+        return [];
+      }
+
+      const recurringId = String(Date.now() + Math.random());
+      const startDate = new Date();
+      let currentDate = new Date(startDate);
+      let occurrenceCount = 0;
+      const maxOccurrences = pattern.maxOccurrences || 52; // Default to 1 year
+      const endDate = pattern.endDate ? new Date(pattern.endDate) : null;
+
+      console.log('Pattern:', pattern);
+      console.log('Start date:', formatDateString(startDate));
+      console.log('Max occurrences:', maxOccurrences);
+      console.log('End date:', endDate ? formatDateString(endDate) : 'None');
+
+      while (occurrenceCount < maxOccurrences) {
+        // Check if we've reached the end date
+        if (endDate && currentDate > endDate) {
+          console.log('Reached end date, stopping generation');
+          break;
+        }
+
+        let shouldCreateEntry = false;
+        let entryDate = new Date(currentDate);
+
+        switch (pattern.type) {
+          case 'daily':
+            shouldCreateEntry = true;
+            break;
+            
+          case 'weekly':
+            const dayOfWeek = currentDate.getDay();
+            // Convert Sunday (0) to 7 for easier comparison
+            const adjustedDayOfWeek = dayOfWeek === 0 ? 7 : dayOfWeek;
+            // pattern.daysOfWeek uses 0=Sunday, 1=Monday, etc.
+            const patternDays = pattern.daysOfWeek || [1]; // Default to Monday
+            
+            // Convert pattern days to match our adjusted system
+            const adjustedPatternDays = patternDays.map((day: number) => day === 0 ? 7 : day);
+            shouldCreateEntry = adjustedPatternDays.includes(adjustedDayOfWeek);
+            break;
+            
+          case 'monthly':
+            const dayOfMonth = currentDate.getDate();
+            shouldCreateEntry = dayOfMonth === (pattern.dayOfMonth || 1);
+            break;
+        }
+
+        if (shouldCreateEntry) {
+          const weekId = getWeekIdFromDate(entryDate);
+          const dayName = getDayOfWeekName(entryDate.getDay() === 0 ? 6 : entryDate.getDay() - 1);
+          
+          const entry: ScheduleEntry = {
+            id: `${recurringId}-${occurrenceCount}`,
+            clientName: clientBuilding.clientName,
+            buildingName: clientBuilding.buildingName,
+            cleanerName: cleanersToUse[0], // Keep backward compatibility
+            cleanerNames: cleanersToUse, // New field for multiple cleaners
+            cleanerIds: cleanersToUse.map(name => cleaners?.find(c => c.name === name)?.id).filter(Boolean) as string[],
+            hours,
+            day: dayName as any,
+            date: formatDateString(entryDate),
+            startTime: startTime || undefined,
+            status: 'scheduled',
+            weekId,
+            notes: notes || undefined,
+            isRecurring: true,
+            recurringId,
+          };
+
+          entries.push(entry);
+          console.log(`Generated entry ${occurrenceCount + 1}:`, {
+            date: entry.date,
+            day: entry.day,
+            building: entry.buildingName,
+            cleaner: entry.cleanerName
+          });
+          
+          occurrenceCount++;
+        }
+
+        // Advance the date based on pattern
+        switch (pattern.type) {
+          case 'daily':
+            currentDate.setDate(currentDate.getDate() + (pattern.interval || 1));
+            break;
+          case 'weekly':
+            currentDate.setDate(currentDate.getDate() + 1);
+            break;
+          case 'monthly':
+            currentDate.setDate(currentDate.getDate() + 1);
+            break;
+        }
+
+        // Safety check to prevent infinite loops
+        if (currentDate.getFullYear() > startDate.getFullYear() + 2) {
+          console.log('Safety break: reached 2 years in the future');
+          break;
+        }
+      }
+
+      console.log(`Generated ${entries.length} recurring entries`);
+      return entries;
+    } catch (error) {
+      console.error('Error generating recurring entries:', error);
+      return [];
+    }
+  }, [getWeekIdFromDate, getDayOfWeekName, formatDateString]);
+
+  // Enhanced recurring task handler
+  const handleSaveRecurringTask = useCallback(async (taskData: any) => {
+    try {
+      console.log('Saving recurring task:', taskData);
+      
+      if (!taskData || !taskData.clientBuilding || !taskData.cleanerName || !taskData.hours || !taskData.pattern) {
+        showToast('Please fill in all required fields', 'error');
+        return;
+      }
+
+      // Generate all recurring entries
+      const recurringEntries = generateRecurringEntries(taskData);
+      
+      if (recurringEntries.length === 0) {
+        showToast('No recurring entries could be generated. Please check your pattern settings.', 'error');
+        return;
+      }
+
+      // Group entries by week and save them
+      const entriesByWeek = new Map<string, ScheduleEntry[]>();
+      
+      recurringEntries.forEach(entry => {
+        const weekId = entry.weekId;
+        if (!entriesByWeek.has(weekId)) {
+          entriesByWeek.set(weekId, []);
+        }
+        entriesByWeek.get(weekId)!.push(entry);
+      });
+
+      console.log(`Saving recurring entries across ${entriesByWeek.size} weeks`);
+
+      // Save entries week by week
+      let savedCount = 0;
+      for (const [weekId, weekEntries] of entriesByWeek) {
+        try {
+          const existingWeekSchedule = getWeekSchedule(weekId);
+          const updatedWeekSchedule = [...existingWeekSchedule, ...weekEntries];
+          await updateWeekSchedule(weekId, updatedWeekSchedule);
+          savedCount += weekEntries.length;
+          
+          // If this is the current week, update the local schedule state
+          if (weekId === currentWeekId) {
+            setSchedule(prev => [...prev, ...weekEntries]);
+          }
+        } catch (error) {
+          console.error(`Error saving entries for week ${weekId}:`, error);
+        }
+      }
+
+      if (savedCount > 0) {
+        showToast(`Successfully created ${savedCount} recurring schedule entries!`, 'success');
+        setRecurringTaskModalVisible(false);
+        
+        // Reload current week schedule to show any new entries
+        await loadCurrentWeekSchedule();
+      } else {
+        showToast('Failed to create recurring entries. Please try again.', 'error');
+      }
+      
+    } catch (error) {
+      console.error('Error saving recurring task:', error);
+      showToast('Failed to create recurring task. Please try again.', 'error');
+    }
+  }, [generateRecurringEntries, getWeekSchedule, updateWeekSchedule, currentWeekId, showToast, loadCurrentWeekSchedule]);
+
   // Form and modal handlers with error handling
   const resetForm = useCallback(() => {
     try {
       console.log('Resetting form...');
       setCleanerName('');
+      setSelectedCleaners([]);
       setHours('');
       setStartTime('');
       setNewClientName('');
@@ -178,55 +466,12 @@ const ScheduleView = () => {
         e.id === entry.id ? { ...e, ...updates } : e
       ));
       
-      Alert.alert('Success', 'Schedule entry moved successfully!');
+      showToast('Schedule entry moved successfully!', 'success');
     } catch (error) {
       console.error('Error performing move:', error);
-      Alert.alert('Error', 'Failed to move schedule entry.');
+      showToast('Failed to move schedule entry', 'error');
     }
-  }, [updateScheduleEntry, currentWeekId]);
-
-  // Load schedule for current week with improved error handling
-  const loadCurrentWeekSchedule = useCallback(async () => {
-    try {
-      console.log('Loading schedule for selected date:', formatDateString(selectedDate));
-      
-      if (!getWeekIdFromDate) {
-        console.error('getWeekIdFromDate function not available');
-        return;
-      }
-
-      const weekId = getWeekIdFromDate(selectedDate);
-      console.log('Calculated week ID:', weekId);
-      
-      if (weekId !== currentWeekId) {
-        setCurrentWeekId(weekId);
-        
-        if (getWeekSchedule) {
-          const weekSchedule = getWeekSchedule(weekId);
-          console.log('Loaded schedule entries for week', weekId, ':', weekSchedule?.length || 0);
-          setSchedule(weekSchedule || []);
-        } else {
-          console.error('getWeekSchedule function not available');
-          setSchedule([]);
-        }
-      }
-    } catch (error) {
-      console.error('Error loading current week schedule:', error);
-      setSchedule([]);
-    }
-  }, [selectedDate, currentWeekId, getWeekIdFromDate, getWeekSchedule, formatDateString]);
-
-  // Check if current week is the current actual week
-  const isCurrentWeek = useCallback(() => {
-    try {
-      if (!getCurrentWeekId) return false;
-      const currentActualWeekId = getCurrentWeekId();
-      return currentWeekId === currentActualWeekId;
-    } catch (error) {
-      console.error('Error checking current week:', error);
-      return false;
-    }
-  }, [currentWeekId, getCurrentWeekId]);
+  }, [updateScheduleEntry, currentWeekId, showToast]);
 
   // Effects with error handling
   useEffect(() => {
@@ -240,7 +485,15 @@ const ScheduleView = () => {
     loadData();
   }, [loadCurrentWeekSchedule]);
 
-  // Enhanced event handlers with null checks
+  // Auto-show conflict panel when critical conflicts are detected
+  useEffect(() => {
+    if (hasCriticalConflicts && !showConflictPanel) {
+      console.log('Critical conflicts detected, showing conflict panel');
+      setShowConflictPanel(true);
+    }
+  }, [hasCriticalConflicts, showConflictPanel]);
+
+  // Enhanced event handlers with conflict validation
   const handleCellPress = useCallback((clientBuilding: ClientBuilding, day: string) => {
     try {
       console.log('Cell pressed:', clientBuilding?.buildingName, day);
@@ -261,9 +514,22 @@ const ScheduleView = () => {
       );
       
       if (entry) {
-        console.log('Found entry for details:', entry.id);
+        console.log('Found entry for details:', {
+          id: entry.id,
+          cleanerName: entry.cleanerName,
+          cleanerNames: entry.cleanerNames,
+          hours: entry.hours,
+          startTime: entry.startTime
+        });
+        
         setSelectedEntry(entry);
         setCleanerName(entry.cleanerName || '');
+        
+        // Set multiple cleaners if available, otherwise use single cleaner for backward compatibility
+        const entryCleaners = getEntryCleaners ? getEntryCleaners(entry) : (entry.cleanerName ? [entry.cleanerName] : []);
+        console.log('Setting selected cleaners for details:', entryCleaners);
+        setSelectedCleaners(entryCleaners);
+        
         setHours(entry.hours?.toString() || '');
         setStartTime(entry.startTime || '');
         setModalType('details');
@@ -299,8 +565,22 @@ const ScheduleView = () => {
       );
       
       if (entry) {
+        console.log('Opening edit modal for entry:', {
+          id: entry.id,
+          cleanerName: entry.cleanerName,
+          cleanerNames: entry.cleanerNames,
+          hours: entry.hours,
+          startTime: entry.startTime
+        });
+        
         setSelectedEntry(entry);
         setCleanerName(entry.cleanerName || '');
+        
+        // Set multiple cleaners if available, otherwise use single cleaner for backward compatibility
+        const entryCleaners = getEntryCleaners ? getEntryCleaners(entry) : (entry.cleanerName ? [entry.cleanerName] : []);
+        console.log('Setting selected cleaners for edit:', entryCleaners);
+        setSelectedCleaners(entryCleaners);
+        
         setHours(entry.hours?.toString() || '');
         setStartTime(entry.startTime || '');
         setModalType('edit');
@@ -352,10 +632,10 @@ const ScheduleView = () => {
     }
   }, []);
 
-  // Enhanced drag and drop handler with error handling
+  // Enhanced drag and drop handler with conflict validation
   const handleMoveEntry = useCallback(async (entryId: string, newBuilding: ClientBuilding, newDay: string) => {
     try {
-      console.log('Moving entry:', entryId, 'to', newBuilding?.buildingName, newDay);
+      console.log('Moving entry with conflict validation:', entryId, 'to', newBuilding?.buildingName, newDay);
       
       if (!entryId || !newBuilding || !newDay) {
         console.error('Invalid parameters for move entry');
@@ -368,18 +648,38 @@ const ScheduleView = () => {
         return;
       }
 
-      // Check for conflicts
-      const existingEntry = schedule.find(e =>
-        e?.id !== entryId &&
-        e?.buildingName === newBuilding.buildingName &&
-        e?.day === newDay.toLowerCase() &&
-        e?.status !== 'cancelled'
-      );
+      // Enhanced conflict validation
+      const tempEntry = {
+        ...entry,
+        clientName: newBuilding.clientName,
+        buildingName: newBuilding.buildingName,
+        day: newDay.toLowerCase() as any
+      };
 
-      if (existingEntry) {
+      const validation = validateScheduleChange(tempEntry, entryId);
+      
+      if (validation.hasConflicts && !validation.canProceed) {
+        const conflictMessages = validation.conflicts.map(c => c.description).join('\n');
         Alert.alert(
-          'Conflict Detected',
-          `There's already a scheduled task for ${newBuilding.buildingName} on ${newDay}. Do you want to continue?`,
+          'Critical Conflict Detected',
+          `Moving this entry will create critical conflicts:\n\n${conflictMessages}\n\nThis move is not recommended. Would you like to see resolution suggestions instead?`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { 
+              text: 'Show Conflicts', 
+              onPress: () => setShowConflictPanel(true)
+            },
+            { 
+              text: 'Force Move', 
+              style: 'destructive',
+              onPress: () => performMove(entry, newBuilding, newDay)
+            }
+          ]
+        );
+      } else if (validation.warnings.length > 0) {
+        Alert.alert(
+          'Schedule Warning',
+          validation.warnings.join('\n') + '\n\nDo you want to continue?',
           [
             { text: 'Cancel', style: 'cancel' },
             { 
@@ -393,9 +693,85 @@ const ScheduleView = () => {
       }
     } catch (error) {
       console.error('Error moving entry:', error);
-      Alert.alert('Error', 'Failed to move schedule entry.');
+      showToast('Failed to move schedule entry', 'error');
     }
-  }, [schedule, performMove]);
+  }, [schedule, validateScheduleChange, performMove, showToast]);
+
+  // Enhanced suggestion handlers
+  const handleApplySuggestion = useCallback(async (suggestion: any) => {
+    try {
+      console.log('Applying suggestion:', suggestion.id);
+      
+      for (const change of suggestion.suggestedChanges) {
+        if (change.entryId) {
+          const updates: Partial<ScheduleEntry> = {};
+          
+          if (change.newCleaner) updates.cleanerName = change.newCleaner;
+          if (change.newDay) updates.day = change.newDay.toLowerCase() as any;
+          if (change.newTime) updates.startTime = change.newTime;
+          if (change.newHours) updates.hours = change.newHours;
+          
+          if (Object.keys(updates).length > 0) {
+            await updateScheduleEntry(currentWeekId, change.entryId, updates);
+            setSchedule(prev => prev.map(entry =>
+              entry.id === change.entryId ? { ...entry, ...updates } : entry
+            ));
+          }
+        }
+      }
+      
+      showToast('Suggestion applied successfully!', 'success');
+      
+      // If this was a conflict resolution, hide the conflict panel
+      if (suggestion.type === 'conflict_resolution') {
+        setShowConflictPanel(false);
+      }
+    } catch (error) {
+      console.error('Error applying suggestion:', error);
+      showToast('Failed to apply suggestion', 'error');
+    }
+  }, [updateScheduleEntry, currentWeekId, showToast]);
+
+  const handleDismissSuggestion = useCallback((suggestionId: string) => {
+    setDismissedSuggestions(prev => [...prev, suggestionId]);
+  }, []);
+
+  // Enhanced conflict resolution handlers
+  const handleApplyResolution = useCallback(async (conflictId: string, resolution: any) => {
+    try {
+      console.log('Applying conflict resolution:', conflictId, resolution.id);
+      
+      for (const change of resolution.changes) {
+        if (change.entryId) {
+          const updates: Partial<ScheduleEntry> = {};
+          
+          if (change.newCleaner) updates.cleanerName = change.newCleaner;
+          if (change.newDay) updates.day = change.newDay.toLowerCase() as any;
+          if (change.newTime) updates.startTime = change.newTime;
+          if (change.newHours) updates.hours = change.newHours;
+          
+          if (Object.keys(updates).length > 0) {
+            await updateScheduleEntry(currentWeekId, change.entryId, updates);
+            setSchedule(prev => prev.map(entry =>
+              entry.id === change.entryId ? { ...entry, ...updates } : entry
+            ));
+          }
+        }
+      }
+      
+      showToast('Conflict resolved successfully!', 'success');
+    } catch (error) {
+      console.error('Error applying resolution:', error);
+      showToast('Failed to apply resolution', 'error');
+    }
+  }, [updateScheduleEntry, currentWeekId, showToast]);
+
+  const handleDismissConflict = useCallback((conflictId: string) => {
+    console.log('Dismissing conflict:', conflictId);
+    // In a real app, you might want to store dismissed conflicts
+  }, []);
+
+
 
   const closeModal = useCallback(() => {
     try {
@@ -417,19 +793,19 @@ const ScheduleView = () => {
       console.log('Adding client:', newClientName);
       
       if (!newClientName?.trim()) {
-        Alert.alert('Error', 'Client name cannot be empty.');
+        showToast('Client name cannot be empty', 'error');
         return;
       }
       
       if (!clients || !addClientData) {
         console.error('Clients data or add function not available');
-        Alert.alert('Error', 'Unable to add client at this time.');
+        showToast('Unable to add client at this time', 'error');
         return;
       }
 
       const existingClient = clients.find(c => c?.name?.toLowerCase() === newClientName.toLowerCase());
       if (existingClient) {
-        Alert.alert('Error', 'A client with this name already exists.');
+        showToast('A client with this name already exists', 'error');
         return;
       }
 
@@ -445,36 +821,291 @@ const ScheduleView = () => {
       
       await addClientData(newClient);
       console.log('Client added successfully:', newClient);
-      Alert.alert('Success', 'Client added successfully!');
+      showToast('Client added successfully!', 'success');
       closeModal();
     } catch (error) {
       console.error('Error adding client:', error);
-      Alert.alert('Error', 'Failed to add client. Please try again.');
+      showToast('Failed to add client. Please try again.', 'error');
     }
-  }, [newClientName, newClientSecurity, newClientSecurityLevel, clients, addClientData, closeModal]);
+  }, [newClientName, newClientSecurity, newClientSecurityLevel, clients, addClientData, closeModal, showToast]);
 
+  const addBuilding = useCallback(async () => {
+    try {
+      console.log('Adding building:', newBuildingName, 'for client:', selectedClientForBuilding);
+      
+      if (!newBuildingName?.trim()) {
+        showToast('Building name cannot be empty', 'error');
+        return;
+      }
+      
+      if (!selectedClientForBuilding?.trim()) {
+        showToast('Please select a client for this building', 'error');
+        return;
+      }
+      
+      if (!addBuildingData) {
+        console.error('Add building function not available');
+        showToast('Unable to add building at this time', 'error');
+        return;
+      }
+
+      const existingBuilding = clientBuildings?.find(b => 
+        b?.buildingName?.toLowerCase() === newBuildingName.toLowerCase() &&
+        b?.clientName?.toLowerCase() === selectedClientForBuilding.toLowerCase()
+      );
+      
+      if (existingBuilding) {
+        showToast('A building with this name already exists for this client', 'error');
+        return;
+      }
+
+      const newBuilding: ClientBuilding = {
+        id: String(Date.now()),
+        clientName: selectedClientForBuilding.trim(),
+        buildingName: newBuildingName.trim(),
+        isActive: true,
+        security: newBuildingSecurity.trim() || undefined,
+        securityLevel: newBuildingSecurityLevel,
+        priority: newBuildingPriority
+      };
+      
+      await addBuildingData(newBuilding);
+      console.log('Building added successfully:', newBuilding);
+      showToast('Building added successfully!', 'success');
+      closeModal();
+    } catch (error) {
+      console.error('Error adding building:', error);
+      showToast('Failed to add building. Please try again.', 'error');
+    }
+  }, [newBuildingName, selectedClientForBuilding, newBuildingSecurity, newBuildingSecurityLevel, newBuildingPriority, clientBuildings, addBuildingData, closeModal, showToast]);
+
+  const addCleaner = useCallback(async () => {
+    try {
+      console.log('Adding cleaner:', newCleanerName);
+      
+      if (!newCleanerName?.trim()) {
+        showToast('Cleaner name cannot be empty', 'error');
+        return;
+      }
+      
+      if (!addCleanerData) {
+        console.error('Add cleaner function not available');
+        showToast('Unable to add cleaner at this time', 'error');
+        return;
+      }
+
+      const existingCleaner = cleaners?.find(c => c?.name?.toLowerCase() === newCleanerName.toLowerCase());
+      if (existingCleaner) {
+        showToast('A cleaner with this name already exists', 'error');
+        return;
+      }
+
+      const newCleaner: Cleaner = {
+        id: String(Date.now()),
+        name: newCleanerName.trim(),
+        isActive: true,
+        email: '',
+        phone: ''
+      };
+      
+      await addCleanerData(newCleaner);
+      console.log('Cleaner added successfully:', newCleaner);
+      showToast('Cleaner added successfully!', 'success');
+      closeModal();
+    } catch (error) {
+      console.error('Error adding cleaner:', error);
+      showToast('Failed to add cleaner. Please try again.', 'error');
+    }
+  }, [newCleanerName, cleaners, addCleanerData, closeModal, showToast]);
+
+  const editClient = useCallback(async () => {
+    try {
+      console.log('Editing client:', selectedClient?.id, 'with name:', newClientName);
+      
+      if (!selectedClient?.id) {
+        showToast('No client selected for editing', 'error');
+        return;
+      }
+      
+      if (!newClientName?.trim()) {
+        showToast('Client name cannot be empty', 'error');
+        return;
+      }
+      
+      if (!updateClient) {
+        console.error('Update client function not available');
+        showToast('Unable to update client at this time', 'error');
+        return;
+      }
+
+      const updates = {
+        name: newClientName.trim(),
+        security: newClientSecurity.trim() || undefined,
+        securityLevel: newClientSecurityLevel
+      };
+      
+      await updateClient(selectedClient.id, updates);
+      console.log('Client updated successfully:', selectedClient.id);
+      showToast('Client updated successfully!', 'success');
+      closeModal();
+    } catch (error) {
+      console.error('Error updating client:', error);
+      showToast('Failed to update client. Please try again.', 'error');
+    }
+  }, [selectedClient, newClientName, newClientSecurity, newClientSecurityLevel, updateClient, closeModal, showToast]);
+
+  const editBuilding = useCallback(async () => {
+    try {
+      console.log('Editing building:', selectedClientBuilding?.id, 'with name:', newBuildingName);
+      
+      if (!selectedClientBuilding?.id) {
+        showToast('No building selected for editing', 'error');
+        return;
+      }
+      
+      if (!newBuildingName?.trim()) {
+        showToast('Building name cannot be empty', 'error');
+        return;
+      }
+      
+      if (!updateBuilding) {
+        console.error('Update building function not available');
+        showToast('Unable to update building at this time', 'error');
+        return;
+      }
+
+      const updates = {
+        buildingName: newBuildingName.trim(),
+        security: newBuildingSecurity.trim() || undefined,
+        securityLevel: newBuildingSecurityLevel,
+        priority: newBuildingPriority
+      };
+      
+      await updateBuilding(selectedClientBuilding.id, updates);
+      console.log('Building updated successfully:', selectedClientBuilding.id);
+      showToast('Building updated successfully!', 'success');
+      closeModal();
+    } catch (error) {
+      console.error('Error updating building:', error);
+      showToast('Failed to update building. Please try again.', 'error');
+    }
+  }, [selectedClientBuilding, newBuildingName, newBuildingSecurity, newBuildingSecurityLevel, newBuildingPriority, updateBuilding, closeModal, showToast]);
+
+  const deleteEntry = useCallback(async () => {
+    try {
+      console.log('Delete entry called with:', {
+        selectedEntry: selectedEntry?.id,
+        currentWeekId,
+        deleteScheduleEntry: !!deleteScheduleEntry
+      });
+      
+      if (!selectedEntry?.id || !currentWeekId) {
+        console.error('Missing required data for deletion:', {
+          entryId: selectedEntry?.id,
+          weekId: currentWeekId
+        });
+        showToast('No entry selected for deletion', 'error');
+        return;
+      }
+      
+      if (!deleteScheduleEntry) {
+        console.error('Delete function not available');
+        showToast('Unable to delete entry at this time', 'error');
+        return;
+      }
+
+      Alert.alert(
+        'Delete Shift',
+        `Are you sure you want to delete the shift for ${selectedEntry.cleanerName} at ${selectedEntry.buildingName}? This action cannot be undone.`,
+        [
+          { 
+            text: 'Cancel', 
+            style: 'cancel',
+            onPress: () => console.log('Delete cancelled by user')
+          },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                console.log('User confirmed deletion, proceeding...');
+                console.log('Deleting entry:', selectedEntry.id, 'from week:', currentWeekId);
+                
+                // Call the delete function
+                await deleteScheduleEntry(currentWeekId, selectedEntry.id);
+                
+                // Update local state immediately for better UX
+                console.log('Updating local schedule state...');
+                setSchedule(prev => {
+                  const updated = prev.filter(e => e.id !== selectedEntry.id);
+                  console.log('Local schedule updated, entries remaining:', updated.length);
+                  return updated;
+                });
+                
+                console.log('Entry deleted successfully:', selectedEntry.id);
+                showToast('Shift deleted successfully!', 'success');
+                closeModal();
+                
+                // Force reload the schedule to ensure consistency
+                setTimeout(() => {
+                  console.log('Reloading schedule after delete...');
+                  loadCurrentWeekSchedule(true); // Force refresh
+                }, 100);
+                
+              } catch (error) {
+                console.error('Error during deletion process:', error);
+                showToast('Failed to delete shift. Please try again.', 'error');
+              }
+            }
+          }
+        ]
+      );
+    } catch (error) {
+      console.error('Error in deleteEntry function:', error);
+      showToast('Failed to delete shift', 'error');
+    }
+  }, [selectedEntry, currentWeekId, deleteScheduleEntry, closeModal, showToast, loadCurrentWeekSchedule]);
+
+  // Enhanced save entry with conflict validation
   const saveEntry = useCallback(async () => {
     try {
       console.log('Saving entry for week:', currentWeekId);
+      console.log('Modal type:', modalType);
+      console.log('Form data:', { cleanerName, hours, startTime });
+      console.log('Selected building:', selectedClientBuilding);
+      console.log('Selected day:', selectedDay);
       
-      if (!cleanerName?.trim() || !hours?.trim()) {
-        Alert.alert('Error', 'Please fill all required fields.');
+      // Validation - check for multiple cleaners or single cleaner
+      const cleanersToUse = selectedCleaners.length > 0 ? selectedCleaners : (cleanerName?.trim() ? [cleanerName.trim()] : []);
+      
+      if (cleanersToUse.length === 0) {
+        showToast('Please select at least one cleaner', 'error');
+        return;
+      }
+
+      if (!hours?.trim()) {
+        showToast('Please enter the number of hours', 'error');
         return;
       }
 
       const hoursNum = parseFloat(hours);
       if (isNaN(hoursNum) || hoursNum <= 0) {
-        Alert.alert('Error', 'Please enter a valid number of hours.');
+        showToast('Please enter a valid number of hours', 'error');
         return;
       }
 
       if (!addScheduleEntry || !updateScheduleEntry || !currentWeekId) {
         console.error('Schedule functions or week ID not available');
-        Alert.alert('Error', 'Unable to save entry at this time.');
+        showToast('Unable to save entry at this time', 'error');
         return;
       }
 
-      if (modalType === 'add' && selectedClientBuilding && selectedDay) {
+      if (modalType === 'add') {
+        if (!selectedClientBuilding || !selectedDay) {
+          showToast('Missing building or day information', 'error');
+          return;
+        }
+
         const startOfWeek = getStartOfWeek(selectedDate);
         const dayIndex = getDayIndexFromName(selectedDay);
         
@@ -486,13 +1117,14 @@ const ScheduleView = () => {
         
         console.log(`Creating entry for ${selectedDay} (day index: ${dayIndex})`);
         console.log(`Week start: ${formatDateString(startOfWeek)}, Entry date: ${entryDateString}`);
-        console.log(`Entry date object:`, entryDate);
         
         const newEntry: ScheduleEntry = {
-          id: String(Date.now()),
+          id: String(Date.now() + Math.random()),
           clientName: selectedClientBuilding.clientName,
           buildingName: selectedClientBuilding.buildingName,
-          cleanerName: cleanerName.trim(),
+          cleanerName: cleanersToUse[0], // Keep backward compatibility
+          cleanerNames: cleanersToUse, // New field for multiple cleaners
+          cleanerIds: cleanersToUse.map(name => cleaners?.find(c => c.name === name)?.id).filter(Boolean) as string[],
           hours: hoursNum,
           day: selectedDay.toLowerCase() as any,
           date: entryDateString,
@@ -500,31 +1132,192 @@ const ScheduleView = () => {
           status: 'scheduled',
           weekId: currentWeekId
         };
+
+        // Enhanced conflict validation before saving
+        const validation = validateScheduleChange(newEntry);
         
+        if (validation.hasConflicts && !validation.canProceed) {
+          const conflictMessages = validation.conflicts.map(c => c.description).join('\n');
+          Alert.alert(
+            'Critical Conflict Detected',
+            `Adding this entry will create critical conflicts:\n\n${conflictMessages}\n\nWould you like to see resolution suggestions?`,
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { 
+                text: 'Show Conflicts', 
+                onPress: () => {
+                  setShowConflictPanel(true);
+                  closeModal();
+                }
+              },
+              { 
+                text: 'Add Anyway', 
+                style: 'destructive',
+                onPress: async () => {
+                  console.log('Adding new entry despite conflicts:', newEntry);
+                  await addScheduleEntry(currentWeekId, newEntry);
+                  setSchedule(prev => [...prev, newEntry]);
+                  console.log('New entry added for week:', currentWeekId);
+                  showToast('Schedule entry added with conflicts!', 'warning');
+                  closeModal();
+                }
+              }
+            ]
+          );
+          return;
+        } else if (validation.warnings.length > 0) {
+          Alert.alert(
+            'Schedule Warning',
+            validation.warnings.join('\n') + '\n\nDo you want to continue?',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { 
+                text: 'Continue', 
+                onPress: async () => {
+                  console.log('Adding new entry:', newEntry);
+                  await addScheduleEntry(currentWeekId, newEntry);
+                  setSchedule(prev => [...prev, newEntry]);
+                  console.log('New entry added for week:', currentWeekId);
+                  showToast('Schedule entry added successfully!', 'success');
+                  closeModal();
+                }
+              }
+            ]
+          );
+          return;
+        }
+        
+        console.log('Adding new entry:', newEntry);
         await addScheduleEntry(currentWeekId, newEntry);
         setSchedule(prev => [...prev, newEntry]);
-        console.log('New entry added for week:', currentWeekId, newEntry);
-        Alert.alert('Success', 'Schedule entry added successfully!');
+        console.log('New entry added for week:', currentWeekId);
+        showToast('Schedule entry added successfully!', 'success');
+        
       } else if (modalType === 'edit' && selectedEntry) {
-        const updates = {
-          cleanerName: cleanerName.trim(),
+        console.log('Editing entry - current state:', {
+          selectedEntry: {
+            id: selectedEntry.id,
+            cleanerName: selectedEntry.cleanerName,
+            cleanerNames: selectedEntry.cleanerNames,
+            hours: selectedEntry.hours,
+            startTime: selectedEntry.startTime
+          },
+          formData: {
+            cleanersToUse,
+            hoursNum,
+            startTime: startTime.trim() || undefined
+          }
+        });
+
+        const updates: Partial<ScheduleEntry> = {
+          cleanerName: cleanersToUse[0], // Keep backward compatibility
+          cleanerNames: cleanersToUse, // New field for multiple cleaners
+          cleanerIds: cleanersToUse.map(name => cleaners?.find(c => c.name === name)?.id).filter(Boolean) as string[],
           hours: hoursNum,
           startTime: startTime.trim() || undefined
         };
+
+        console.log('Prepared updates object:', JSON.stringify(updates));
+
+        // Check if there are actual changes to prevent unnecessary updates
+        const hasChanges = (
+          JSON.stringify(selectedEntry.cleanerNames || [selectedEntry.cleanerName].filter(Boolean)) !== JSON.stringify(cleanersToUse) ||
+          selectedEntry.hours !== hoursNum ||
+          (selectedEntry.startTime || '') !== (startTime.trim() || '')
+        );
+
+        console.log('Has changes detected:', hasChanges);
+
+        if (!hasChanges) {
+          console.log('No changes detected, closing modal without update');
+          showToast('No changes to save', 'warning');
+          closeModal();
+          return;
+        }
+
+        // Validate updates
+        const tempEntry = { ...selectedEntry, ...updates };
+        const validation = validateScheduleChange(tempEntry, selectedEntry.id);
         
+        if (validation.hasConflicts && !validation.canProceed) {
+          const conflictMessages = validation.conflicts.map(c => c.description).join('\n');
+          Alert.alert(
+            'Critical Conflict Detected',
+            `Updating this entry will create critical conflicts:\n\n${conflictMessages}\n\nWould you like to see resolution suggestions?`,
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { 
+                text: 'Show Conflicts', 
+                onPress: () => {
+                  setShowConflictPanel(true);
+                  closeModal();
+                }
+              },
+              { 
+                text: 'Update Anyway', 
+                style: 'destructive',
+                onPress: async () => {
+                  console.log('Force updating entry:', selectedEntry.id, 'with:', JSON.stringify(updates));
+                  await updateScheduleEntry(currentWeekId, selectedEntry.id, updates);
+                  setSchedule(prev => prev.map(entry =>
+                    entry.id === selectedEntry.id ? { ...entry, ...updates } : entry
+                  ));
+                  console.log('Entry force updated for week:', currentWeekId, selectedEntry.id);
+                  showToast('Schedule entry updated with conflicts!', 'warning');
+                  closeModal();
+                }
+              }
+            ]
+          );
+          return;
+        }
+        
+        console.log('Proceeding with entry update:', selectedEntry.id, 'with:', JSON.stringify(updates));
         await updateScheduleEntry(currentWeekId, selectedEntry.id, updates);
-        setSchedule(prev => prev.map(entry =>
-          entry.id === selectedEntry.id ? { ...entry, ...updates } : entry
-        ));
-        console.log('Entry updated for week:', currentWeekId, selectedEntry.id);
-        Alert.alert('Success', 'Schedule entry updated successfully!');
+        
+        // Update local state immediately for better UX
+        setSchedule(prev => {
+          const updated = prev.map(entry =>
+            entry.id === selectedEntry.id ? { ...entry, ...updates } : entry
+          );
+          console.log('Local schedule state updated for entry:', selectedEntry.id);
+          return updated;
+        });
+        
+        console.log('Entry successfully updated for week:', currentWeekId, selectedEntry.id);
+        showToast('Schedule entry updated successfully!', 'success');
+        
+        // Force reload the schedule to ensure consistency
+        setTimeout(() => {
+          console.log('Reloading schedule after update to ensure consistency...');
+          loadCurrentWeekSchedule(true); // Force refresh
+        }, 100);
       }
+      
       closeModal();
     } catch (error) {
       console.error('Error saving entry:', error);
-      Alert.alert('Error', 'Failed to save schedule entry. Please try again.');
+      showToast('Failed to save schedule entry. Please try again.', 'error');
     }
-  }, [modalType, selectedClientBuilding, selectedDay, selectedEntry, cleanerName, hours, startTime, currentWeekId, getStartOfWeek, selectedDate, addScheduleEntry, updateScheduleEntry, closeModal, getDayIndexFromName, formatDateString]);
+  }, [
+    modalType, 
+    selectedClientBuilding, 
+    selectedDay, 
+    selectedEntry, 
+    cleanerName, 
+    hours, 
+    startTime, 
+    currentWeekId, 
+    getStartOfWeek, 
+    selectedDate, 
+    addScheduleEntry, 
+    updateScheduleEntry, 
+    closeModal, 
+    getDayIndexFromName, 
+    formatDateString, 
+    showToast,
+    validateScheduleChange
+  ]);
 
   // Bulk operations handlers with error handling
   const handleBulkSelect = useCallback((entries: ScheduleEntry[]) => {
@@ -656,7 +1449,16 @@ const ScheduleView = () => {
                         <View style={styles.dailyEntryDetailItem}>
                           <Icon name="person" size={16} style={{ color: colors.textSecondary }} />
                           <Text style={styles.dailyEntryDetailText}>
-                            Cleaner: {entry.cleanerName}
+                            {(() => {
+                              const entryCleaners = getEntryCleaners ? getEntryCleaners(entry) : (entry.cleanerName ? [entry.cleanerName] : []);
+                              if (entryCleaners.length === 1) {
+                                return `Cleaner: ${entryCleaners[0]}`;
+                              } else if (entryCleaners.length > 1) {
+                                return `Cleaners: ${entryCleaners.join(', ')}`;
+                              } else {
+                                return 'Cleaner: Unknown';
+                              }
+                            })()}
                           </Text>
                         </View>
                         <View style={styles.dailyEntryDetailItem}>
@@ -696,21 +1498,32 @@ const ScheduleView = () => {
     }
   }, []);
 
-  // Render weekly view with error handling
+  // Enhanced weekly view with conflict indicators
   const renderWeeklyView = () => {
     try {
-      console.log('Rendering weekly view with:', {
+      console.log('Rendering enhanced weekly view with:', {
         clientBuildings: clientBuildings?.length || 0,
         clients: clients?.length || 0,
         schedule: schedule?.length || 0,
         currentWeekId,
         isCurrentWeek: isCurrentWeek(),
         bulkMode,
-        selectedEntries: selectedEntries?.length || 0
+        selectedEntries: selectedEntries?.length || 0,
+        conflicts: conflicts?.length || 0,
+        hasConflicts
       });
 
       return (
         <ScrollView style={styles.scheduleContainer} showsVerticalScrollIndicator={false}>
+          {/* Enhanced Conflict Panel */}
+          {hasConflicts && showConflictPanel && (
+            <ConflictResolutionPanel
+              conflicts={conflicts}
+              onApplyResolution={handleApplyResolution}
+              onDismissConflict={handleDismissConflict}
+            />
+          )}
+
           {/* Smart Suggestions */}
           {showSuggestions && (
             <SmartSchedulingSuggestions
@@ -718,8 +1531,8 @@ const ScheduleView = () => {
               cleaners={cleaners || []}
               clientBuildings={clientBuildings || []}
               clients={clients || []}
-              onApplySuggestion={() => {}}
-              onDismissSuggestion={() => {}}
+              onApplySuggestion={handleApplySuggestion}
+              onDismissSuggestion={handleDismissSuggestion}
             />
           )}
 
@@ -727,6 +1540,11 @@ const ScheduleView = () => {
             <Text style={styles.weekInfoText}>
               Week of {getHeaderText()} • {schedule?.length || 0} scheduled jobs
             </Text>
+            {hasConflicts && (
+              <Text style={styles.conflictWarningText}>
+                ⚠️ {conflictSummary.total} conflicts detected • {conflictSummary.critical + conflictSummary.high} high priority
+              </Text>
+            )}
             {(!schedule || schedule.length === 0) && (
               <Text style={styles.emptyWeekText}>
                 This week is empty. Add jobs by tapping on the schedule grid below.
@@ -757,6 +1575,16 @@ const ScheduleView = () => {
             >
               <Icon name="repeat" size={16} style={{ color: colors.primary }} />
               <Text style={styles.actionButtonText}>Recurring</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[styles.actionButton, hasConflicts && styles.actionButtonWarning]}
+              onPress={() => setShowConflictPanel(!showConflictPanel)}
+            >
+              <Icon name={hasConflicts ? "warning" : "shield-checkmark"} size={16} style={{ color: hasConflicts ? colors.danger : colors.success }} />
+              <Text style={[styles.actionButtonText, hasConflicts && styles.actionButtonTextWarning]}>
+                {hasConflicts ? `Conflicts (${conflictSummary.total})` : 'No Conflicts'}
+              </Text>
             </TouchableOpacity>
             
             <TouchableOpacity
@@ -796,25 +1624,13 @@ const ScheduleView = () => {
     }
   };
 
-  // Helper function to create date from string without timezone issues
-  const createDateFromString = useCallback((dateString: string): Date => {
-    try {
-      // Parse the date string manually to avoid timezone issues
-      const [year, month, day] = dateString.split('-').map(Number);
-      return new Date(year, month - 1, day); // month is 0-indexed in JavaScript Date
-    } catch (error) {
-      console.error('Error creating date from string:', error);
-      return new Date();
-    }
-  }, []);
-
   // Render monthly view with calendar
   const renderMonthlyView = () => {
     try {
       console.log('Rendering monthly view for selected date:', formatDateString(selectedDate));
       
       // Create marked dates for the calendar
-      const markedDates = {};
+      const markedDates: any = {};
       schedule.forEach(entry => {
         if (entry?.date) {
           markedDates[entry.date] = {
@@ -934,7 +1750,18 @@ const ScheduleView = () => {
                             <Text style={styles.dayEntryBuilding}>{entry.buildingName}</Text>
                             <Text style={styles.dayEntryTime}>{entry.startTime || 'No time set'}</Text>
                           </View>
-                          <Text style={styles.dayEntryCleaner}>Cleaner: {entry.cleanerName}</Text>
+                          <Text style={styles.dayEntryCleaner}>
+                            {(() => {
+                              const entryCleaners = getEntryCleaners ? getEntryCleaners(entry) : (entry.cleanerName ? [entry.cleanerName] : []);
+                              if (entryCleaners.length === 1) {
+                                return `Cleaner: ${entryCleaners[0]}`;
+                              } else if (entryCleaners.length > 1) {
+                                return `Cleaners: ${entryCleaners.join(', ')}`;
+                              } else {
+                                return 'Cleaner: Unknown';
+                              }
+                            })()}
+                          </Text>
                           <Text style={styles.dayEntryHours}>Duration: {entry.hours}h</Text>
                         </TouchableOpacity>
                       ))}
@@ -1061,13 +1888,19 @@ const ScheduleView = () => {
     <ErrorBoundary>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <View style={commonStyles.container}>
-          {/* Header */}
-          <View style={styles.header}>
+          {/* Enhanced Header with conflict indicator */}
+          <View style={[styles.header, hasConflicts && styles.headerWithConflicts]}>
             <View style={styles.headerLeft}>
               <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
                 <Icon name="arrow-back" size={24} style={{ color: colors.text }} />
               </TouchableOpacity>
               <Text style={styles.headerTitle}>Schedule</Text>
+              {hasConflicts && (
+                <View style={styles.headerConflictBadge}>
+                  <Icon name="warning" size={16} style={{ color: colors.background }} />
+                  <Text style={styles.headerConflictText}>{conflictSummary.total}</Text>
+                </View>
+              )}
             </View>
             <View style={styles.headerActions}>
               <TouchableOpacity 
@@ -1140,6 +1973,14 @@ const ScheduleView = () => {
             {renderMainContent()}
           </Animated.View>
 
+          {/* Toast */}
+          <Toast
+            message={toast.message}
+            type={toast.type}
+            visible={toast.visible}
+            onHide={hideToast}
+          />
+
           {/* Modals */}
           <ScheduleModal
             visible={modalVisible}
@@ -1150,6 +1991,7 @@ const ScheduleView = () => {
             cleaners={cleaners || []}
             clients={clients || []}
             cleanerName={cleanerName}
+            selectedCleaners={selectedCleaners}
             hours={hours}
             startTime={startTime}
             newClientName={newClientName}
@@ -1166,6 +2008,7 @@ const ScheduleView = () => {
             showSecurityLevelDropdown={showSecurityLevelDropdown}
             showPriorityDropdown={showPriorityDropdown}
             setCleanerName={setCleanerName}
+            setSelectedCleaners={setSelectedCleaners}
             setHours={setHours}
             setStartTime={setStartTime}
             setNewClientName={setNewClientName}
@@ -1183,13 +2026,22 @@ const ScheduleView = () => {
             setShowPriorityDropdown={setShowPriorityDropdown}
             onClose={closeModal}
             onSave={saveEntry}
-            onDelete={() => {}}
+            onDelete={deleteEntry}
             onAddClient={addClient}
-            onAddBuilding={() => {}}
-            onAddCleaner={() => {}}
-            onEditClient={() => {}}
-            onEditBuilding={() => {}}
-            onSwitchToEdit={() => setModalType('edit')}
+            onAddBuilding={addBuilding}
+            onAddCleaner={addCleaner}
+            onEditClient={editClient}
+            onEditBuilding={editBuilding}
+            onSwitchToEdit={() => {
+              console.log('Switching to edit mode for entry:', selectedEntry?.id);
+              console.log('Current form state before switch:', {
+                cleanerName,
+                selectedCleaners,
+                hours,
+                startTime
+              });
+              setModalType('edit');
+            }}
           />
 
           <RecurringTaskModal
@@ -1197,7 +2049,7 @@ const ScheduleView = () => {
             clientBuildings={clientBuildings || []}
             cleaners={cleaners || []}
             onClose={() => setRecurringTaskModalVisible(false)}
-            onSave={() => {}}
+            onSave={handleSaveRecurringTask}
           />
 
           {/* Bulk Actions Bottom Sheet */}
@@ -1232,6 +2084,10 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
+  headerWithConflicts: {
+    borderBottomColor: colors.danger + '30',
+    backgroundColor: colors.danger + '05',
+  },
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1244,6 +2100,21 @@ const styles = StyleSheet.create({
   headerTitle: {
     ...typography.h2,
     color: colors.text,
+    fontWeight: '600',
+  },
+  headerConflictBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.danger,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: 12,
+    marginLeft: spacing.sm,
+    gap: spacing.xs,
+  },
+  headerConflictText: {
+    ...typography.small,
+    color: colors.background,
     fontWeight: '600',
   },
   headerActions: {
@@ -1434,6 +2305,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
   },
+  conflictWarningText: {
+    ...typography.body,
+    color: colors.danger,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: spacing.xs,
+  },
   emptyWeekText: {
     ...typography.caption,
     color: colors.textSecondary,
@@ -1472,6 +2350,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
+  actionButtonWarning: {
+    backgroundColor: colors.danger + '10',
+    borderColor: colors.danger + '30',
+  },
   actionButtonText: {
     ...typography.caption,
     color: colors.text,
@@ -1479,6 +2361,9 @@ const styles = StyleSheet.create({
   },
   actionButtonTextActive: {
     color: colors.background,
+  },
+  actionButtonTextWarning: {
+    color: colors.danger,
   },
   // Monthly view styles
   monthlyContainer: {
