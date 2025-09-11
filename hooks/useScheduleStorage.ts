@@ -65,7 +65,7 @@ export const useScheduleStorage = () => {
   // Use refs to prevent unnecessary re-renders
   const loadingRef = useRef(false);
   const saveQueueRef = useRef<Map<string, ScheduleEntry[]>>(new Map());
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Optimized week ID generation with caching and error handling
   const getCurrentWeekId = useCallback((): string => {

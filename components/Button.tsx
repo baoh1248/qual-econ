@@ -2,12 +2,13 @@ import { Text, TouchableOpacity, StyleSheet, ViewStyle, TextStyle } from 'react-
 import { colors, typography, spacing } from '../styles/commonStyles';
 
 interface ButtonProps {
-  text: string;
+  text?: string;
+  title?: string; // Alternative prop name
   onPress: () => void;
   style?: ViewStyle | ViewStyle[];
   textStyle?: TextStyle;
   disabled?: boolean;
-  variant?: 'primary' | 'secondary' | 'success' | 'danger';
+  variant?: 'primary' | 'secondary' | 'success' | 'danger' | 'outline';
 }
 
 const styles = StyleSheet.create({
@@ -33,6 +34,11 @@ const styles = StyleSheet.create({
   danger: {
     backgroundColor: colors.danger,
   },
+  outline: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
   disabled: {
     backgroundColor: colors.textSecondary,
     opacity: 0.6,
@@ -47,6 +53,9 @@ const styles = StyleSheet.create({
   secondaryText: {
     color: colors.text,
   },
+  outlineText: {
+    color: colors.primary,
+  },
   disabledText: {
     color: colors.background,
   },
@@ -54,6 +63,7 @@ const styles = StyleSheet.create({
 
 export default function Button({ 
   text, 
+  title,
   onPress, 
   style, 
   textStyle, 
@@ -69,6 +79,7 @@ export default function Button({
       case 'secondary': return [styles.button, styles.secondary];
       case 'success': return [styles.button, styles.success];
       case 'danger': return [styles.button, styles.danger];
+      case 'outline': return [styles.button, styles.outline];
       default: return [styles.button, styles.primary];
     }
   };
@@ -78,6 +89,7 @@ export default function Button({
     
     switch (variant) {
       case 'secondary': return [styles.text, styles.secondaryText];
+      case 'outline': return [styles.text, styles.outlineText];
       default: return [styles.text, styles.primaryText];
     }
   };
@@ -90,7 +102,7 @@ export default function Button({
       activeOpacity={0.7}
     >
       <Text style={[getTextStyle(), textStyle]}>
-        {text}
+        {text || title}
       </Text>
     </TouchableOpacity>
   );

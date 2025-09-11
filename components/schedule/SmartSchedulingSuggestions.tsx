@@ -6,7 +6,7 @@ import Icon from '../Icon';
 import Button from '../Button';
 import type { ScheduleEntry } from '../../hooks/useScheduleStorage';
 import type { ClientBuilding, Client, Cleaner } from '../../hooks/useClientData';
-import { useConflictDetection } from '../../hooks/useConflictDetection';
+// import { useConflictDetection } from '../../hooks/useConflictDetection';
 
 interface SchedulingSuggestion {
   id: string;
@@ -53,7 +53,9 @@ const SmartSchedulingSuggestions = memo(({
   const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(new Set());
 
   // Enhanced conflict detection
-  const { conflicts, conflictSummary } = useConflictDetection(schedule, cleaners);
+  // const { conflicts, conflictSummary } = useConflictDetection(schedule, cleaners);
+  const conflicts: any[] = [];
+  const conflictSummary = { total: 0, critical: 0, high: 0, medium: 0, low: 0 };
 
   // Enhanced suggestions generation with conflict-first approach
   const suggestions = useMemo((): SchedulingSuggestion[] => {

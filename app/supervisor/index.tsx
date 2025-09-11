@@ -385,7 +385,7 @@ export default function SupervisorDashboard() {
                   borderRadius: 8 
                 }
               ]}
-              onPress={() => router.push('/supervisor/payroll')}
+              onPress={() => router.push('/supervisor/payroll' as any)}
             >
               <Icon name="time" size={24} style={{ color: colors.primary, marginBottom: spacing.xs }} />
               <Text style={[typography.caption, { color: colors.text, textAlign: 'center' }]}>Payroll Hours</Text>

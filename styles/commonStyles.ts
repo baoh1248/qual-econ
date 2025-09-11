@@ -7,6 +7,7 @@ export const colors = {
   success: '#10B981',      // Green
   warning: '#F59E0B',      // Orange
   danger: '#EF4444',       // Red
+  info: '#3B82F6',         // Info Blue
   background: '#FFFFFF',   // Clean White
   backgroundAlt: '#F8FAFC', // Light Gray
   text: '#1F2937',         // Dark Gray
@@ -189,6 +190,14 @@ export const commonStyles = StyleSheet.create({
   shadow: {
     boxShadow: `0 2px 8px ${colors.shadow}`,
     elevation: 3,
+  },
+  button: {
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
   },
 });
 

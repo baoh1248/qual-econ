@@ -296,7 +296,7 @@ export default function PhotoGallery() {
               </TouchableOpacity>
               <TouchableOpacity onPress={() => {
                 if (selectedPhoto) {
-                  router.push(`/supervisor/task/${selectedPhoto.taskId}`);
+                  router.push(`/supervisor/task/${selectedPhoto.taskId}` as any);
                   setShowPhotoModal(false);
                 }
               }}>

@@ -74,7 +74,7 @@ export default function TaskDetail() {
   const [selectedCategory, setSelectedCategory] = useState<PhotoDoc['category']>('during');
 
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    let interval: ReturnType<typeof setInterval>;
     if (isTimerRunning) {
       interval = setInterval(() => {
         setElapsedTime(prev => prev + 1);

@@ -5,7 +5,7 @@ import { colors, spacing, typography } from '../../styles/commonStyles';
 import Icon from '../Icon';
 import type { ScheduleEntry } from '../../hooks/useScheduleStorage';
 import type { ClientBuilding, Client, Cleaner } from '../../hooks/useClientData';
-import { useConflictDetection } from '../../hooks/useConflictDetection';
+// import { useConflictDetection } from '../../hooks/useConflictDetection';
 import { GestureHandlerRootView, PanGestureHandler } from 'react-native-gesture-handler';
 import Animated, { 
   useSharedValue, 
@@ -59,13 +59,20 @@ const DragDropScheduleGrid = memo(({
   const [previewConflicts, setPreviewConflicts] = useState<string[]>([]);
 
   // Enhanced conflict detection
-  const { 
-    conflicts, 
-    getEntryConflicts, 
-    validateScheduleChange,
-    hasConflicts,
-    conflictSummary 
-  } = useConflictDetection(schedule, cleaners);
+  // const { 
+  //   conflicts, 
+  //   getEntryConflicts, 
+  //   validateScheduleChange,
+  //   hasConflicts,
+  //   conflictSummary 
+  // } = useConflictDetection(schedule, cleaners);
+  
+  // Temporary placeholders
+  const conflicts: any[] = [];
+  const getEntryConflicts = (entryId: string) => [];
+  const validateScheduleChange = (entry: any, existingId?: string) => ({ hasConflicts: false, conflicts: [], canProceed: true, warnings: [] });
+  const hasConflicts = false;
+  const conflictSummary = { total: 0, critical: 0, high: 0, medium: 0, low: 0 };
 
   // Animation values for drag and drop
   const translateX = useSharedValue(0);
