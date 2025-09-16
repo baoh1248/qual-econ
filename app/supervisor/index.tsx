@@ -557,8 +557,8 @@ export default function SupervisorDashboard() {
             </Text>
             <Text style={[typography.caption, { color: colors.textSecondary, textAlign: 'center' }]}>
               {isWeb 
-                ? 'Maps are not supported on web in Natively. Please use the mobile app for GPS tracking features.'
-                : 'Tap the map icon to view real-time team locations and task progress'
+                ? 'Maps are not available yet.'
+                : 'Will be available soon.'
               }
             </Text>
           </View>
