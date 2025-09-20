@@ -216,7 +216,7 @@ export default function PayrollScreen() {
   console.log('PayrollScreen rendered');
   
   const { toast, showToast, hideToast } = useToast();
-  const { weeklySchedules, getCurrentWeekId, getWeekIdFromDate, getWeekSchedule } = useScheduleStorage();
+  const { getWeekIdFromDate, getWeekSchedule } = useScheduleStorage();
   const { cleaners } = useClientData();
   
   const [filters, setFilters] = useState<PayrollFilters>({
@@ -370,7 +370,7 @@ export default function PayrollScreen() {
     });
     
     return Array.from(cleanerHoursMap.values()).filter(cleaner => cleaner.totalHours > 0);
-  }, [weeklySchedules, selectedWeekStart, filters.dateRange, cleaners, getWeekSchedule, getWeekIdFromDate]);
+  }, [selectedWeekStart, filters.dateRange, cleaners, getWeekSchedule, getWeekIdFromDate]);
 
   // Filter and sort cleaner hours
   const filteredAndSortedHours = useMemo(() => {

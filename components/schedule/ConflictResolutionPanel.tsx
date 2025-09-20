@@ -4,42 +4,7 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert } from 'rea
 import { colors, spacing, typography, commonStyles } from '../../styles/commonStyles';
 import Icon from '../Icon';
 import Button from '../Button';
-// import type { ConflictDetails, ConflictResolution } from '../../hooks/useConflictDetection';
-
-// Temporary types until useConflictDetection is properly implemented
-export interface ConflictDetails {
-  id: string;
-  type: 'cleaner_double_booking' | 'location_overlap' | 'time_conflict' | 'workload_imbalance';
-  severity: 'critical' | 'high' | 'medium' | 'low';
-  title: string;
-  description: string;
-  affectedEntries: any[];
-  suggestedResolutions: ConflictResolution[];
-  estimatedImpact: {
-    timeWasted: number;
-    costIncrease: number;
-    efficiencyLoss: number;
-  };
-}
-
-export interface ConflictResolution {
-  id: string;
-  type: 'reassign_cleaner' | 'reschedule_time' | 'split_shift' | 'merge_shifts';
-  title: string;
-  description: string;
-  changes: {
-    entryId: string;
-    newCleaner?: string;
-    newDay?: string;
-    newTime?: string;
-    newHours?: number;
-  }[];
-  estimatedBenefit: {
-    timeSaved: number;
-    costReduction: number;
-    efficiencyGain: number;
-  };
-}
+import type { ConflictDetails, ConflictResolution } from '../../hooks/useConflictDetection';
 
 interface ConflictResolutionPanelProps {
   conflicts: ConflictDetails[];
@@ -283,7 +248,7 @@ const ConflictResolutionPanel = memo(({
                   // Could navigate to a detailed view or show more info
                   console.log('View conflict details:', conflict.id);
                 }}
-                variant="outline"
+                variant="secondary"
                 style={styles.actionButton}
               />
             </View>

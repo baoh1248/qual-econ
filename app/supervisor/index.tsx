@@ -385,7 +385,7 @@ export default function SupervisorDashboard() {
                   borderRadius: 8 
                 }
               ]}
-              onPress={() => router.push('/supervisor/payroll' as any)}
+              onPress={() => router.push('/supervisor/payroll')}
             >
               <Icon name="time" size={24} style={{ color: colors.primary, marginBottom: spacing.xs }} />
               <Text style={[typography.caption, { color: colors.text, textAlign: 'center' }]}>Payroll Hours</Text>
@@ -557,8 +557,8 @@ export default function SupervisorDashboard() {
             </Text>
             <Text style={[typography.caption, { color: colors.textSecondary, textAlign: 'center' }]}>
               {isWeb 
-                ? 'Maps are not available yet.'
-                : 'Will be available soon.'
+                ? 'Maps are not supported on web in Natively. Please use the mobile app for GPS tracking features.'
+                : 'Tap the map icon to view real-time team locations and task progress'
               }
             </Text>
           </View>

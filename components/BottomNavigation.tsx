@@ -37,7 +37,7 @@ export default function BottomNavigation({ role }: BottomNavigationProps) {
 
   const handleNavPress = (path: string) => {
     console.log('Navigation pressed:', path);
-    router.push(path as any);
+    router.push(path);
   };
 
   return (

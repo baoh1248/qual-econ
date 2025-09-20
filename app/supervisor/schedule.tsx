@@ -6,20 +6,21 @@ import { Calendar } from 'react-native-calendars';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import BottomSheet from '@gorhom/bottom-sheet';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { commonStyles, colors, spacing, typography } from '../../styles/commonStyles';
+import { commonStyles, colors, spacing, typography, buttonStyles } from '../../styles/commonStyles';
 import Icon from '../../components/Icon';
+import IconButton from '../../components/IconButton';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import ErrorBoundary from '../../components/ErrorBoundary';
 import Toast from '../../components/Toast';
 import DragDropScheduleGrid from '../../components/schedule/DragDropScheduleGrid';
 import ScheduleModal from '../../components/schedule/ScheduleModal';
 import SmartSchedulingSuggestions from '../../components/schedule/SmartSchedulingSuggestions';
-// import ConflictResolutionPanel from '../../components/schedule/ConflictResolutionPanel';
+import ConflictResolutionPanel from '../../components/schedule/ConflictResolutionPanel';
 import RecurringTaskModal from '../../components/schedule/RecurringTaskModal';
 import BulkActionsBottomSheet from '../../components/schedule/BulkActionsBottomSheet';
 import { useScheduleStorage, type ScheduleEntry } from '../../hooks/useScheduleStorage';
 import { useClientData, type Client, type ClientBuilding, type Cleaner } from '../../hooks/useClientData';
-// import { useConflictDetection } from '../../hooks/useConflictDetection';
+import { useConflictDetection } from '../../hooks/useConflictDetection';
 import { useToast } from '../../hooks/useToast';
 
 type ModalType = 'add' | 'edit' | 'add-client' | 'add-building' | 'add-cleaner' | 'details' | 'edit-client' | 'edit-building' | null;
@@ -93,22 +94,14 @@ const ScheduleView = () => {
   const [dismissedSuggestions, setDismissedSuggestions] = useState<string[]>([]);
 
   // Enhanced conflict detection
-  // const { 
-  //   conflicts, 
-  //   conflictSummary, 
-  //   validateScheduleChange,
-  //   hasConflicts,
-  //   hasCriticalConflicts,
-  //   hasHighPriorityConflicts 
-  // } = useConflictDetection(schedule, cleaners || []);
-  
-  // Temporary placeholders
-  const conflicts: any[] = [];
-  const conflictSummary = { total: 0, critical: 0, high: 0, medium: 0, low: 0 };
-  const validateScheduleChange = (entry: any, existingId?: string) => ({ hasConflicts: false, conflicts: [], canProceed: true, warnings: [] });
-  const hasConflicts = false;
-  const hasCriticalConflicts = false;
-  const hasHighPriorityConflicts = false;
+  const { 
+    conflicts, 
+    conflictSummary, 
+    validateScheduleChange,
+    hasConflicts,
+    hasCriticalConflicts,
+    hasHighPriorityConflicts 
+  } = useConflictDetection(schedule, cleaners || []);
 
   // Form states with proper initialization
   const [cleanerName, setCleanerName] = useState('');
@@ -179,14 +172,6 @@ const ScheduleView = () => {
     }
   }, []);
 
-  // Clear caches function
-  const clearCaches = useCallback(() => {
-    console.log('Clearing all caches...');
-    // Reset all data
-    setSchedule([]);
-    setCurrentWeekId('');
-  }, []);
-
   // Load schedule for current week with improved error handling
   const loadCurrentWeekSchedule = useCallback(async (forceRefresh: boolean = false) => {
     try {
@@ -208,14 +193,6 @@ const ScheduleView = () => {
         setCurrentWeekId(weekId);
         
         if (getWeekSchedule) {
-          // Force clear cache before getting fresh data if requested
-          if (forceRefresh) {
-            console.log('Force clearing cache before reload');
-            if (clearCaches) {
-              clearCaches();
-            }
-          }
-          
           const weekSchedule = getWeekSchedule(weekId, forceRefresh);
           console.log('Loaded schedule entries for week', weekId, ':', weekSchedule?.length || 0);
           console.log('Schedule entries details:', weekSchedule?.map(e => ({
@@ -237,7 +214,7 @@ const ScheduleView = () => {
       console.error('Error loading current week schedule:', error);
       setSchedule([]);
     }
-  }, [selectedDate, currentWeekId, getWeekIdFromDate, getWeekSchedule, formatDateString, clearCaches]);
+  }, [selectedDate, currentWeekId, getWeekIdFromDate, getWeekSchedule, formatDateString]);
 
   // Check if current week is the current actual week
   const isCurrentWeek = useCallback(() => {
@@ -371,7 +348,7 @@ const ScheduleView = () => {
       console.error('Error generating recurring entries:', error);
       return [];
     }
-  }, [getWeekIdFromDate, getDayOfWeekName, formatDateString]);
+  }, [getWeekIdFromDate, getDayOfWeekName, formatDateString, cleaners]);
 
   // Enhanced recurring task handler
   const handleSaveRecurringTask = useCallback(async (taskData: any) => {
@@ -559,7 +536,7 @@ const ScheduleView = () => {
     } catch (error) {
       console.error('Error in handleCellPress:', error);
     }
-  }, [schedule, bulkMode, resetForm]);
+  }, [schedule, bulkMode, resetForm, getEntryCleaners]);
 
   const handleCellLongPress = useCallback((clientBuilding: ClientBuilding, day: string) => {
     try {
@@ -605,7 +582,7 @@ const ScheduleView = () => {
     } catch (error) {
       console.error('Error in handleCellLongPress:', error);
     }
-  }, [schedule, bulkMode]);
+  }, [schedule, bulkMode, getEntryCleaners]);
 
   const handleClientLongPress = useCallback((client: Client) => {
     try {
@@ -787,8 +764,6 @@ const ScheduleView = () => {
     // In a real app, you might want to store dismissed conflicts
   }, []);
 
-
-
   const closeModal = useCallback(() => {
     try {
       console.log('Closing modal...');
@@ -921,8 +896,7 @@ const ScheduleView = () => {
         name: newCleanerName.trim(),
         isActive: true,
         email: '',
-        phone: '',
-        specialties: ['General Cleaning']
+        phone: ''
       };
       
       await addCleanerData(newCleaner);
@@ -1322,6 +1296,7 @@ const ScheduleView = () => {
     selectedDay, 
     selectedEntry, 
     cleanerName, 
+    selectedCleaners,
     hours, 
     startTime, 
     currentWeekId, 
@@ -1333,7 +1308,9 @@ const ScheduleView = () => {
     getDayIndexFromName, 
     formatDateString, 
     showToast,
-    validateScheduleChange
+    validateScheduleChange,
+    cleaners,
+    loadCurrentWeekSchedule
   ]);
 
   // Bulk operations handlers with error handling
@@ -1534,11 +1511,11 @@ const ScheduleView = () => {
         <ScrollView style={styles.scheduleContainer} showsVerticalScrollIndicator={false}>
           {/* Enhanced Conflict Panel */}
           {hasConflicts && showConflictPanel && (
-            {/* <ConflictResolutionPanel
+            <ConflictResolutionPanel
               conflicts={conflicts}
               onApplyResolution={handleApplyResolution}
               onDismissConflict={handleDismissConflict}
-            /> */}
+            />
           )}
 
           {/* Smart Suggestions */}
@@ -1908,9 +1885,11 @@ const ScheduleView = () => {
           {/* Enhanced Header with conflict indicator */}
           <View style={[styles.header, hasConflicts && styles.headerWithConflicts]}>
             <View style={styles.headerLeft}>
-              <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-                <Icon name="arrow-back" size={24} style={{ color: colors.text }} />
-              </TouchableOpacity>
+              <IconButton 
+                icon="arrow-back" 
+                onPress={() => router.back()} 
+                variant="white"
+              />
               <Text style={styles.headerTitle}>Schedule</Text>
               {hasConflicts && (
                 <View style={styles.headerConflictBadge}>
@@ -1920,24 +1899,21 @@ const ScheduleView = () => {
               )}
             </View>
             <View style={styles.headerActions}>
-              <TouchableOpacity 
+              <IconButton 
+                icon="person-add-outline" 
                 onPress={() => { setModalType('add-client'); setModalVisible(true); }}
-                style={styles.headerActionButton}
-              >
-                <Icon name="person-add-outline" size={20} style={{ color: colors.primary }} />
-              </TouchableOpacity>
-              <TouchableOpacity 
+                variant="primary"
+              />
+              <IconButton 
+                icon="business-outline" 
                 onPress={() => { setModalType('add-building'); setModalVisible(true); }}
-                style={styles.headerActionButton}
-              >
-                <Icon name="business-outline" size={20} style={{ color: colors.primary }} />
-              </TouchableOpacity>
-              <TouchableOpacity 
+                variant="primary"
+              />
+              <IconButton 
+                icon="people-outline" 
                 onPress={() => { setModalType('add-cleaner'); setModalVisible(true); }}
-                style={styles.headerActionButton}
-              >
-                <Icon name="people-outline" size={20} style={{ color: colors.primary }} />
-              </TouchableOpacity>
+                variant="primary"
+              />
             </View>
           </View>
 
@@ -1964,15 +1940,19 @@ const ScheduleView = () => {
 
           {/* Date Navigator */}
           <View style={styles.dateNavigator}>
-            <TouchableOpacity onPress={() => changeDate(-1)} style={styles.dateNavButton}>
-              <Icon name="chevron-back" size={24} style={{ color: colors.primary }} />
-            </TouchableOpacity>
+            <IconButton 
+              icon="chevron-back" 
+              onPress={() => changeDate(-1)} 
+              variant="primary"
+            />
             <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.dateDisplay}>
               <Text style={styles.dateHeaderText}>{getHeaderText()}</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => changeDate(1)} style={styles.dateNavButton}>
-              <Icon name="chevron-forward" size={24} style={{ color: colors.primary }} />
-            </TouchableOpacity>
+            <IconButton 
+              icon="chevron-forward" 
+              onPress={() => changeDate(1)} 
+              variant="primary"
+            />
           </View>
 
           {/* Date Picker */}
@@ -2071,7 +2051,7 @@ const ScheduleView = () => {
 
           {/* Bulk Actions Bottom Sheet */}
           <BulkActionsBottomSheet
-            bottomSheetRef={bulkActionsBottomSheetRef as any}
+            bottomSheetRef={bulkActionsBottomSheetRef}
             selectedEntries={(schedule || []).filter(e => selectedEntries.includes(e?.id))}
             cleaners={cleaners || []}
             onReassignCleaner={() => {}}
@@ -2110,14 +2090,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
   },
-  backButton: {
-    marginRight: spacing.md,
-    padding: spacing.xs,
-  },
   headerTitle: {
     ...typography.h2,
     color: colors.text,
     fontWeight: '600',
+    marginLeft: spacing.md,
   },
   headerConflictBadge: {
     flexDirection: 'row',
@@ -2137,12 +2114,7 @@ const styles = StyleSheet.create({
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  headerActionButton: {
-    padding: spacing.sm,
-    marginLeft: spacing.sm,
-    backgroundColor: colors.backgroundAlt,
-    borderRadius: 8,
+    gap: spacing.sm,
   },
   viewSelector: {
     flexDirection: 'row',
@@ -2150,6 +2122,8 @@ const styles = StyleSheet.create({
     margin: spacing.lg,
     borderRadius: 12,
     padding: spacing.xs,
+    borderWidth: 2,
+    borderColor: colors.border,
   },
   viewSelectorButton: {
     flex: 1,
@@ -2160,6 +2134,11 @@ const styles = StyleSheet.create({
   },
   viewSelectorButtonActive: {
     backgroundColor: colors.primary,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
   },
   viewSelectorText: {
     ...typography.body,
@@ -2168,7 +2147,7 @@ const styles = StyleSheet.create({
   },
   viewSelectorTextActive: {
     color: colors.background,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   dateNavigator: {
     flexDirection: 'row',
@@ -2176,11 +2155,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-  },
-  dateNavButton: {
-    padding: spacing.sm,
-    backgroundColor: colors.backgroundAlt,
-    borderRadius: 8,
   },
   dateDisplay: {
     flex: 1,
@@ -2206,6 +2180,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: spacing.lg,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   dailyTitle: {
     ...typography.h2,
@@ -2233,6 +2209,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   dailyEntryHeader: {
     flexDirection: 'row',
@@ -2292,6 +2270,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.backgroundAlt,
     borderRadius: 12,
     marginTop: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   emptyDayTitle: {
     ...typography.h3,
@@ -2313,7 +2293,7 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.lg,
     marginBottom: spacing.md,
     borderRadius: 12,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.border,
   },
   weekInfoText: {
@@ -2355,13 +2335,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
-    borderRadius: 8,
-    backgroundColor: colors.backgroundAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderRadius: 10,
+    backgroundColor: colors.background,
+    borderWidth: 2,
+    borderColor: colors.primary,
     flex: 1,
     justifyContent: 'center',
     gap: spacing.xs,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    elevation: 2,
   },
   actionButtonActive: {
     backgroundColor: colors.primary,
@@ -2369,12 +2354,12 @@ const styles = StyleSheet.create({
   },
   actionButtonWarning: {
     backgroundColor: colors.danger + '10',
-    borderColor: colors.danger + '30',
+    borderColor: colors.danger,
   },
   actionButtonText: {
     ...typography.caption,
-    color: colors.text,
-    fontWeight: '600',
+    color: colors.primary,
+    fontWeight: '700',
   },
   actionButtonTextActive: {
     color: colors.background,
@@ -2395,11 +2380,15 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     marginBottom: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   dailyScheduleContainer: {
     backgroundColor: colors.backgroundAlt,
     borderRadius: 12,
     padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   dailyScheduleTitle: {
     ...typography.h3,
@@ -2415,7 +2404,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     borderRadius: 8,
     padding: spacing.md,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.border,
   },
   dayEntryHeader: {
@@ -2465,10 +2454,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   retryButton: {
-    backgroundColor: colors.primary,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    borderRadius: 8,
+    ...buttonStyles.primary,
   },
   retryButtonText: {
     ...typography.body,

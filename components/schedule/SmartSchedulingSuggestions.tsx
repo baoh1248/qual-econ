@@ -6,7 +6,7 @@ import Icon from '../Icon';
 import Button from '../Button';
 import type { ScheduleEntry } from '../../hooks/useScheduleStorage';
 import type { ClientBuilding, Client, Cleaner } from '../../hooks/useClientData';
-// import { useConflictDetection } from '../../hooks/useConflictDetection';
+import { useConflictDetection } from '../../hooks/useConflictDetection';
 
 interface SchedulingSuggestion {
   id: string;
@@ -39,164 +39,28 @@ interface SmartSchedulingSuggestionsProps {
   onDismissSuggestion: (suggestionId: string) => void;
 }
 
-const SmartSchedulingSuggestions = memo(({
+const SmartSchedulingSuggestions = memo<SmartSchedulingSuggestionsProps>(({
   schedule,
   cleaners,
   clientBuildings,
   clients,
   onApplySuggestion,
   onDismissSuggestion,
-}: SmartSchedulingSuggestionsProps) => {
+}) => {
   console.log('SmartSchedulingSuggestions rendered with enhanced conflict resolution');
 
   const [expandedSuggestion, setExpandedSuggestion] = useState<string | null>(null);
   const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(new Set());
 
   // Enhanced conflict detection
-  // const { conflicts, conflictSummary } = useConflictDetection(schedule, cleaners);
-  const conflicts: any[] = [];
-  const conflictSummary = { total: 0, critical: 0, high: 0, medium: 0, low: 0 };
-
-  // Enhanced suggestions generation with conflict-first approach
-  const suggestions = useMemo((): SchedulingSuggestion[] => {
-    if (schedule.length === 0) return [];
-    
-    const generatedSuggestions: SchedulingSuggestion[] = [];
-
-    // 1. PRIORITY: Conflict resolution suggestions (highest priority)
-    const conflictSuggestions = generateConflictResolutionSuggestions(conflicts, cleaners, schedule);
-    generatedSuggestions.push(...conflictSuggestions);
-
-    // 2. Travel time optimization
-    const travelOptimizations = optimizeTravelTimeEnhanced(schedule, clientBuildings, clients);
-    generatedSuggestions.push(...travelOptimizations);
-
-    // 3. Workload balancing
-    const workloadSuggestions = balanceWorkloadEnhanced(schedule, cleaners);
-    generatedSuggestions.push(...workloadSuggestions);
-
-    // 4. Efficiency improvements
-    const efficiencySuggestions = generateEfficiencySuggestions(schedule, cleaners, clientBuildings);
-    generatedSuggestions.push(...efficiencySuggestions);
-
-    // Sort by priority (conflict resolution first, then by impact and estimated savings)
-    const sortedSuggestions = generatedSuggestions
-      .filter(s => !dismissedSuggestions.has(s.id))
-      .sort((a, b) => {
-        // Conflict resolution always comes first
-        if (a.type === 'conflict_resolution' && b.type !== 'conflict_resolution') return -1;
-        if (b.type === 'conflict_resolution' && a.type !== 'conflict_resolution') return 1;
-        
-        // Then by priority score
-        if (a.priority !== b.priority) return b.priority - a.priority;
-        
-        // Then by impact
-        const impactOrder = { critical: 4, high: 3, medium: 2, low: 1 };
-        const impactDiff = impactOrder[b.impact] - impactOrder[a.impact];
-        if (impactDiff !== 0) return impactDiff;
-        
-        // Finally by estimated savings
-        const aSavings = (a.estimatedSavings?.time || 0) + (a.estimatedSavings?.cost || 0);
-        const bSavings = (b.estimatedSavings?.time || 0) + (b.estimatedSavings?.cost || 0);
-        return bSavings - aSavings;
-      });
-
-    return sortedSuggestions.slice(0, 8); // Limit to top 8 for performance
-  }, [schedule, cleaners, clientBuildings, clients, conflicts, dismissedSuggestions]);
-
-  // Enhanced conflict resolution suggestion generator
-  function generateConflictResolutionSuggestions(
-    conflicts: any[], 
-    cleaners: Cleaner[], 
-    schedule: ScheduleEntry[]
-  ): SchedulingSuggestion[] {
-    const suggestions: SchedulingSuggestion[] = [];
-
-    for (const conflict of conflicts) {
-      if (conflict.type === 'cleaner_double_booking') {
-        // Generate suggestions for each resolution option
-        for (const resolution of conflict.suggestedResolutions) {
-          suggestions.push({
-            id: `conflict-resolution-${conflict.id}-${resolution.id}`,
-            type: 'conflict_resolution',
-            title: `Resolve ${conflict.title}`,
-            description: resolution.description,
-            impact: conflict.severity as any,
-            priority: conflict.severity === 'critical' ? 100 : conflict.severity === 'high' ? 90 : 70,
-            suggestedChanges: resolution.changes.map(change => ({
-              entryId: change.entryId,
-              newCleaner: change.newCleaner,
-              newDay: change.newDay,
-              newTime: change.newTime,
-              action: resolution.type === 'reassign_cleaner' ? 'reassign' : 
-                     resolution.type === 'reschedule_time' ? 'reschedule' : 'move'
-            })),
-            estimatedSavings: {
-              time: resolution.estimatedBenefit.timeSaved,
-              cost: resolution.estimatedBenefit.costReduction,
-              efficiency: resolution.estimatedBenefit.efficiencyGain
-            },
-            conflictIds: [conflict.id]
-          });
-        }
-      } else if (conflict.type === 'time_conflict') {
-        // Time overlap resolution
-        suggestions.push({
-          id: `time-conflict-resolution-${conflict.id}`,
-          type: 'conflict_resolution',
-          title: 'Resolve Time Overlap',
-          description: `Reschedule overlapping shifts to prevent conflicts`,
-          impact: 'high',
-          priority: 85,
-          suggestedChanges: conflict.suggestedResolutions.flatMap(res => 
-            res.changes.map(change => ({
-              entryId: change.entryId,
-              newTime: change.newTime,
-              action: 'reschedule' as const
-            }))
-          ),
-          estimatedSavings: {
-            time: 60,
-            cost: 100,
-            efficiency: 25
-          },
-          conflictIds: [conflict.id]
-        });
-      } else if (conflict.type === 'workload_imbalance') {
-        // Workload balancing resolution
-        suggestions.push({
-          id: `workload-resolution-${conflict.id}`,
-          type: 'conflict_resolution',
-          title: 'Balance Workload',
-          description: conflict.description,
-          impact: 'medium',
-          priority: 60,
-          suggestedChanges: conflict.suggestedResolutions.flatMap(res => 
-            res.changes.map(change => ({
-              entryId: change.entryId,
-              newCleaner: change.newCleaner,
-              action: 'reassign' as const
-            }))
-          ),
-          estimatedSavings: {
-            time: 0,
-            cost: 50,
-            efficiency: 15
-          },
-          conflictIds: [conflict.id]
-        });
-      }
-    }
-
-    return suggestions;
-  }
+  const { conflicts, conflictSummary } = useConflictDetection(schedule, cleaners);
 
   // Enhanced travel optimization with client grouping
-  function optimizeTravelTimeEnhanced(
+  const optimizeTravelTimeEnhanced = useCallback((
     schedule: ScheduleEntry[], 
     buildings: ClientBuilding[], 
     clients: Client[]
-  ): SchedulingSuggestion[] {
+  ): SchedulingSuggestion[] => {
     const suggestions: SchedulingSuggestion[] = [];
     const cleanerDayGroups = new Map<string, ScheduleEntry[]>();
 
@@ -297,6 +161,140 @@ const SmartSchedulingSuggestions = memo(({
     }
 
     return suggestions.slice(0, 3); // Limit travel suggestions
+  }, []);
+
+  // Enhanced suggestions generation with conflict-first approach
+  const suggestions = useMemo((): SchedulingSuggestion[] => {
+    if (schedule.length === 0) return [];
+    
+    const generatedSuggestions: SchedulingSuggestion[] = [];
+
+    // 1. PRIORITY: Conflict resolution suggestions (highest priority)
+    const conflictSuggestions = generateConflictResolutionSuggestions(conflicts, cleaners, schedule);
+    generatedSuggestions.push(...conflictSuggestions);
+
+    // 2. Travel time optimization
+    const travelOptimizations = optimizeTravelTimeEnhanced(schedule, clientBuildings, clients);
+    generatedSuggestions.push(...travelOptimizations);
+
+    // 3. Workload balancing
+    const workloadSuggestions = balanceWorkloadEnhanced(schedule, cleaners);
+    generatedSuggestions.push(...workloadSuggestions);
+
+    // 4. Efficiency improvements
+    const efficiencySuggestions = generateEfficiencySuggestions(schedule, cleaners, clientBuildings);
+    generatedSuggestions.push(...efficiencySuggestions);
+
+    // Sort by priority (conflict resolution first, then by impact and estimated savings)
+    const sortedSuggestions = generatedSuggestions
+      .filter(s => !dismissedSuggestions.has(s.id))
+      .sort((a, b) => {
+        // Conflict resolution always comes first
+        if (a.type === 'conflict_resolution' && b.type !== 'conflict_resolution') return -1;
+        if (b.type === 'conflict_resolution' && a.type !== 'conflict_resolution') return 1;
+        
+        // Then by priority score
+        if (a.priority !== b.priority) return b.priority - a.priority;
+        
+        // Then by impact
+        const impactOrder = { critical: 4, high: 3, medium: 2, low: 1 };
+        const impactDiff = impactOrder[b.impact] - impactOrder[a.impact];
+        if (impactDiff !== 0) return impactDiff;
+        
+        // Finally by estimated savings
+        const aSavings = (a.estimatedSavings?.time || 0) + (a.estimatedSavings?.cost || 0);
+        const bSavings = (b.estimatedSavings?.time || 0) + (b.estimatedSavings?.cost || 0);
+        return bSavings - aSavings;
+      });
+
+    return sortedSuggestions.slice(0, 8); // Limit to top 8 for performance
+  }, [schedule, cleaners, clientBuildings, clients, conflicts, dismissedSuggestions, optimizeTravelTimeEnhanced]);
+
+  // Enhanced conflict resolution suggestion generator
+  function generateConflictResolutionSuggestions(
+    conflicts: any[], 
+    cleaners: Cleaner[], 
+    schedule: ScheduleEntry[]
+  ): SchedulingSuggestion[] {
+    const suggestions: SchedulingSuggestion[] = [];
+
+    for (const conflict of conflicts) {
+      if (conflict.type === 'cleaner_double_booking') {
+        // Generate suggestions for each resolution option
+        for (const resolution of conflict.suggestedResolutions) {
+          suggestions.push({
+            id: `conflict-resolution-${conflict.id}-${resolution.id}`,
+            type: 'conflict_resolution',
+            title: `Resolve ${conflict.title}`,
+            description: resolution.description,
+            impact: conflict.severity as any,
+            priority: conflict.severity === 'critical' ? 100 : conflict.severity === 'high' ? 90 : 70,
+            suggestedChanges: resolution.changes.map(change => ({
+              entryId: change.entryId,
+              newCleaner: change.newCleaner,
+              newDay: change.newDay,
+              newTime: change.newTime,
+              action: resolution.type === 'reassign_cleaner' ? 'reassign' : 
+                     resolution.type === 'reschedule_time' ? 'reschedule' : 'move'
+            })),
+            estimatedSavings: {
+              time: resolution.estimatedBenefit.timeSaved,
+              cost: resolution.estimatedBenefit.costReduction,
+              efficiency: resolution.estimatedBenefit.efficiencyGain
+            },
+            conflictIds: [conflict.id]
+          });
+        }
+      } else if (conflict.type === 'time_conflict') {
+        // Time overlap resolution
+        suggestions.push({
+          id: `time-conflict-resolution-${conflict.id}`,
+          type: 'conflict_resolution',
+          title: 'Resolve Time Overlap',
+          description: `Reschedule overlapping shifts to prevent conflicts`,
+          impact: 'high',
+          priority: 85,
+          suggestedChanges: conflict.suggestedResolutions.flatMap(res => 
+            res.changes.map(change => ({
+              entryId: change.entryId,
+              newTime: change.newTime,
+              action: 'reschedule' as const
+            }))
+          ),
+          estimatedSavings: {
+            time: 60,
+            cost: 100,
+            efficiency: 25
+          },
+          conflictIds: [conflict.id]
+        });
+      } else if (conflict.type === 'workload_imbalance') {
+        // Workload balancing resolution
+        suggestions.push({
+          id: `workload-resolution-${conflict.id}`,
+          type: 'conflict_resolution',
+          title: 'Balance Workload',
+          description: conflict.description,
+          impact: 'medium',
+          priority: 60,
+          suggestedChanges: conflict.suggestedResolutions.flatMap(res => 
+            res.changes.map(change => ({
+              entryId: change.entryId,
+              newCleaner: change.newCleaner,
+              action: 'reassign' as const
+            }))
+          ),
+          estimatedSavings: {
+            time: 0,
+            cost: 50,
+            efficiency: 15
+          },
+          conflictIds: [conflict.id]
+        });
+      }
+    }
+
+    return suggestions;
   }
 
   // Enhanced workload balancing

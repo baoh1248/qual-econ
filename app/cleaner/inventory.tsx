@@ -2,9 +2,10 @@
 import { Text, View, ScrollView, TouchableOpacity, TextInput, Alert, Modal, StyleSheet, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { useState, useEffect, useRef } from 'react';
-import { commonStyles, colors, spacing, typography } from '../../styles/commonStyles';
+import { commonStyles, colors, spacing, typography, buttonStyles, getContrastColor } from '../../styles/commonStyles';
 import Icon from '../../components/Icon';
 import Button from '../../components/Button';
+import IconButton from '../../components/IconButton';
 
 interface InventoryItem {
   id: string;
@@ -346,13 +347,13 @@ export default function InventoryScreen() {
 
             <View style={styles.modalButtons}>
               <Button
-                text="Cancel"
+                title="Cancel"
                 onPress={cancelExit}
                 variant="secondary"
                 style={{ flex: 1 }}
               />
               <Button
-                text="Confirm & Exit"
+                title="Confirm & Exit"
                 onPress={confirmExit}
                 variant="primary"
                 style={{ flex: 1 }}
@@ -367,13 +368,17 @@ export default function InventoryScreen() {
   return (
     <View style={commonStyles.container}>
       <View style={commonStyles.header}>
-        <TouchableOpacity onPress={handleBackPress}>
-          <Icon name="arrow-back" size={24} style={{ color: colors.background }} />
-        </TouchableOpacity>
+        <IconButton 
+          icon="arrow-back" 
+          onPress={handleBackPress} 
+          variant="white"
+        />
         <Text style={commonStyles.headerTitle}>Inventory Management</Text>
-        <TouchableOpacity onPress={() => Alert.alert('Scan QR', 'QR code scanner would open here')}>
-          <Icon name="qr-code" size={24} style={{ color: colors.background }} />
-        </TouchableOpacity>
+        <IconButton 
+          icon="qr-code" 
+          onPress={() => Alert.alert('Scan QR', 'QR code scanner would open here')}
+          variant="primary"
+        />
       </View>
 
       <View style={commonStyles.content}>
@@ -415,14 +420,7 @@ export default function InventoryScreen() {
               <TouchableOpacity
                 key={category.id}
                 style={[
-                  {
-                    paddingHorizontal: spacing.md,
-                    paddingVertical: spacing.sm,
-                    borderRadius: 20,
-                    backgroundColor: selectedCategory === category.id ? colors.primary : colors.backgroundAlt,
-                    borderWidth: 1,
-                    borderColor: selectedCategory === category.id ? colors.primary : colors.border,
-                  }
+                  selectedCategory === category.id ? buttonStyles.filterButtonActive : buttonStyles.filterButton
                 ]}
                 onPress={() => setSelectedCategory(category.id)}
               >
@@ -431,15 +429,19 @@ export default function InventoryScreen() {
                     name={category.icon as any} 
                     size={16} 
                     style={{ 
-                      color: selectedCategory === category.id ? colors.background : colors.textSecondary,
+                      color: selectedCategory === category.id 
+                        ? colors.background 
+                        : colors.text,
                       marginRight: spacing.xs 
                     }} 
                   />
                   <Text style={[
                     typography.caption,
                     { 
-                      color: selectedCategory === category.id ? colors.background : colors.text,
-                      fontWeight: selectedCategory === category.id ? '600' : '400'
+                      color: selectedCategory === category.id 
+                        ? colors.background 
+                        : colors.text,
+                      fontWeight: selectedCategory === category.id ? '700' : '600'
                     }
                   ]}>
                     {category.name}
@@ -457,17 +459,20 @@ export default function InventoryScreen() {
             { 
               backgroundColor: colors.warning + '20',
               borderColor: colors.warning,
-              borderWidth: 1,
+              borderWidth: 2,
               marginBottom: spacing.md 
             }
           ]}>
             <View style={[commonStyles.row, { alignItems: 'center' }]}>
               <Icon name="warning" size={20} style={{ color: colors.warning, marginRight: spacing.sm }} />
-              <Text style={[typography.caption, { color: colors.warning, flex: 1 }]}>
+              <Text style={[typography.caption, { color: colors.warning, flex: 1, fontWeight: '600' }]}>
                 You have unsaved inventory changes
               </Text>
-              <TouchableOpacity onPress={() => setShowExitConfirmation(true)}>
-                <Text style={[typography.caption, { color: colors.warning, fontWeight: '600' }]}>
+              <TouchableOpacity 
+                onPress={() => setShowExitConfirmation(true)}
+                style={[buttonStyles.iconButtonWarning]}
+              >
+                <Text style={[typography.caption, { color: colors.background, fontWeight: '700' }]}>
                   Review
                 </Text>
               </TouchableOpacity>
@@ -499,7 +504,7 @@ export default function InventoryScreen() {
                   </View>
                   <View style={[
                     commonStyles.statusBadge,
-                    { backgroundColor: stockStatus.color + '20' }
+                    { backgroundColor: stockStatus.color + '20', borderColor: stockStatus.color }
                   ]}>
                     <Text style={[
                       typography.small,
@@ -526,29 +531,23 @@ export default function InventoryScreen() {
                 </View>
 
                 <View style={[commonStyles.row, { gap: spacing.sm }]}>
-                  <TouchableOpacity
-                    style={[
-                      {
-                        flex: 1,
-                        paddingVertical: spacing.sm,
-                        paddingHorizontal: spacing.md,
-                        backgroundColor: colors.backgroundAlt,
-                        borderRadius: 6,
-                        alignItems: 'center',
-                      }
-                    ]}
+                  <IconButton
+                    icon="remove"
                     onPress={() => updateStock(item.id, Math.max(0, item.currentStock - 1))}
-                  >
-                    <Icon name="remove" size={16} style={{ color: colors.danger }} />
-                  </TouchableOpacity>
+                    variant="primary"
+                    size="small"
+                    style={{ flex: 1 }}
+                  />
 
                   <View style={[
                     {
                       flex: 2,
                       paddingVertical: spacing.sm,
                       backgroundColor: colors.backgroundAlt,
-                      borderRadius: 6,
+                      borderRadius: 8,
                       alignItems: 'center',
+                      borderWidth: 2,
+                      borderColor: colors.border,
                     }
                   ]}>
                     <Text style={[typography.body, { color: colors.text, fontWeight: '600' }]}>
@@ -556,37 +555,20 @@ export default function InventoryScreen() {
                     </Text>
                   </View>
 
-                  <TouchableOpacity
-                    style={[
-                      {
-                        flex: 1,
-                        paddingVertical: spacing.sm,
-                        paddingHorizontal: spacing.md,
-                        backgroundColor: colors.backgroundAlt,
-                        borderRadius: 6,
-                        alignItems: 'center',
-                      }
-                    ]}
+                  <IconButton
+                    icon="add"
                     onPress={() => updateStock(item.id, item.currentStock + 1)}
-                  >
-                    <Icon name="add" size={16} style={{ color: colors.success }} />
-                  </TouchableOpacity>
+                    variant="primary"
+                    size="small"
+                    style={{ flex: 1 }}
+                  />
 
                   {stockStatus.status === 'low' && (
                     <TouchableOpacity
-                      style={[
-                        {
-                          flex: 2,
-                          paddingVertical: spacing.sm,
-                          paddingHorizontal: spacing.md,
-                          backgroundColor: colors.danger,
-                          borderRadius: 6,
-                          alignItems: 'center',
-                        }
-                      ]}
+                      style={[buttonStyles.iconButtonDanger, { flex: 2 }]}
                       onPress={() => requestRestock(item.id)}
                     >
-                      <Text style={[typography.caption, { color: colors.background, fontWeight: '600' }]}>
+                      <Text style={[typography.caption, { color: colors.background, fontWeight: '700' }]}>
                         Request
                       </Text>
                     </TouchableOpacity>

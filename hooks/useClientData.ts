@@ -19,7 +19,6 @@ export interface ClientBuilding {
   priority: 'low' | 'medium' | 'high';
   security?: string;
   securityLevel: 'low' | 'medium' | 'high';
-  isActive?: boolean;
 }
 
 export interface Cleaner {
@@ -28,8 +27,6 @@ export interface Cleaner {
   isActive: boolean;
   avatar?: string;
   specialties: string[];
-  email?: string;
-  phone?: string;
 }
 
 const STORAGE_KEYS = {
@@ -51,7 +48,7 @@ export const useClientData = () => {
   const [error, setError] = useState<string | null>(null);
   
   const loadingRef = useRef(false);
-  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Debounced save operations
   const debouncedSave = useCallback(async (key: string, data: any) => {

@@ -2,12 +2,15 @@
 import { Text, View, ScrollView, TouchableOpacity, TextInput, Alert, Modal, StyleSheet, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { useState, useEffect } from 'react';
-import { commonStyles, colors, spacing, typography } from '../../styles/commonStyles';
+import { commonStyles, colors, spacing, typography, buttonStyles, getContrastColor } from '../../styles/commonStyles';
 import Icon from '../../components/Icon';
 import Button from '../../components/Button';
+import IconButton from '../../components/IconButton';
 import Toast from '../../components/Toast';
 import { useToast } from '../../hooks/useToast';
 import AnimatedCard from '../../components/AnimatedCard';
+import SendItemsModal from '../../components/inventory/SendItemsModal';
+import TransferHistoryModal from '../../components/inventory/TransferHistoryModal';
 
 interface InventoryItem {
   id: string;
@@ -47,6 +50,8 @@ export default function SupervisorInventoryScreen() {
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [showRequestsModal, setShowRequestsModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showSendItemsModal, setShowSendItemsModal] = useState(false);
+  const [showTransferHistoryModal, setShowTransferHistoryModal] = useState(false);
   
   const [inventory, setInventory] = useState<InventoryItem[]>([
     {
@@ -68,7 +73,7 @@ export default function SupervisorInventoryScreen() {
       id: '2',
       name: 'Vacuum Cleaner',
       category: 'equipment',
-      currentStock: 1,
+      currentStock: 3,
       minStock: 2,
       maxStock: 5,
       unit: 'units',
@@ -83,7 +88,7 @@ export default function SupervisorInventoryScreen() {
       id: '3',
       name: 'Disinfectant Spray',
       category: 'cleaning-supplies',
-      currentStock: 5,
+      currentStock: 12,
       minStock: 12,
       maxStock: 40,
       unit: 'bottles',
@@ -123,6 +128,21 @@ export default function SupervisorInventoryScreen() {
       supplier: 'Textile Solutions',
       autoReorderEnabled: true,
       reorderQuantity: 100,
+    },
+    {
+      id: '6',
+      name: 'Toilet Paper',
+      category: 'cleaning-supplies',
+      currentStock: 24,
+      minStock: 20,
+      maxStock: 100,
+      unit: 'rolls',
+      lastUpdated: new Date(),
+      location: 'Storage Room A',
+      cost: 1.50,
+      supplier: 'Paper Products Inc',
+      autoReorderEnabled: true,
+      reorderQuantity: 50,
     },
   ]);
 
@@ -233,6 +253,19 @@ export default function SupervisorInventoryScreen() {
     console.log(`Stock updated for item ${itemId}: ${newStock}`);
   };
 
+  const handleItemsSent = (itemIds: string[], quantities: number[]) => {
+    setInventory(prev => prev.map(item => {
+      const index = itemIds.indexOf(item.id);
+      if (index !== -1) {
+        const newStock = Math.max(0, item.currentStock - quantities[index]);
+        console.log(`Reducing stock for ${item.name}: ${item.currentStock} -> ${newStock}`);
+        return { ...item, currentStock: newStock, lastUpdated: new Date() };
+      }
+      return item;
+    }));
+    showToast('Items sent successfully', 'success');
+  };
+
   const toggleAutoReorder = (itemId: string) => {
     setInventory(prev => prev.map(item => 
       item.id === itemId 
@@ -275,32 +308,36 @@ export default function SupervisorInventoryScreen() {
       <Toast {...toast} onHide={hideToast} />
       
       <View style={commonStyles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Icon name="arrow-back" size={24} style={{ color: colors.background }} />
-        </TouchableOpacity>
+        <IconButton 
+          icon="arrow-back" 
+          onPress={() => router.back()} 
+          variant="white"
+        />
         <Text style={commonStyles.headerTitle}>Inventory Management</Text>
-        <TouchableOpacity onPress={() => setShowRequestsModal(true)}>
-          <View style={{ position: 'relative' }}>
-            <Icon name="notifications" size={24} style={{ color: colors.background }} />
-            {pendingRequests > 0 && (
-              <View style={{
-                position: 'absolute',
-                top: -4,
-                right: -4,
-                backgroundColor: colors.danger,
-                borderRadius: 8,
-                minWidth: 16,
-                height: 16,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}>
-                <Text style={[typography.small, { color: colors.background, fontSize: 10 }]}>
-                  {pendingRequests}
-                </Text>
-              </View>
-            )}
-          </View>
-        </TouchableOpacity>
+        <IconButton 
+          icon="notifications" 
+          onPress={() => setShowRequestsModal(true)} 
+          variant="primary"
+          style={{ position: 'relative' }}
+        >
+          {pendingRequests > 0 && (
+            <View style={{
+              position: 'absolute',
+              top: -4,
+              right: -4,
+              backgroundColor: colors.danger,
+              borderRadius: 8,
+              minWidth: 16,
+              height: 16,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+              <Text style={[typography.small, { color: colors.background, fontSize: 10 }]}>
+                {pendingRequests}
+              </Text>
+            </View>
+          )}
+        </IconButton>
       </View>
 
       <View style={commonStyles.content}>
@@ -323,6 +360,24 @@ export default function SupervisorInventoryScreen() {
             </View>
           </View>
         </AnimatedCard>
+
+        {/* Action Buttons */}
+        <View style={[commonStyles.row, { gap: spacing.sm, marginBottom: spacing.md }]}>
+          <Button
+            text="Send Items"
+            onPress={() => setShowSendItemsModal(true)}
+            style={{ flex: 1 }}
+            variant="primary"
+            icon="send"
+          />
+          <Button
+            text="Transfer History"
+            onPress={() => setShowTransferHistoryModal(true)}
+            style={{ flex: 1 }}
+            variant="secondary"
+            icon="time"
+          />
+        </View>
 
         {/* Search and Filter */}
         <View style={{ marginBottom: spacing.md }}>
@@ -348,17 +403,12 @@ export default function SupervisorInventoryScreen() {
               value={searchQuery}
               onChangeText={setSearchQuery}
             />
-            <TouchableOpacity
-              style={{
-                marginLeft: spacing.sm,
-                padding: spacing.sm,
-                backgroundColor: colors.backgroundAlt,
-                borderRadius: 8,
-              }}
+            <IconButton
+              icon="settings"
               onPress={() => setShowSettingsModal(true)}
-            >
-              <Icon name="settings" size={20} style={{ color: colors.primary }} />
-            </TouchableOpacity>
+              variant="white"
+              style={{ marginLeft: spacing.sm }}
+            />
           </View>
 
           {/* Category Filter */}
@@ -371,14 +421,7 @@ export default function SupervisorInventoryScreen() {
                 <TouchableOpacity
                   key={category.id}
                   style={[
-                    {
-                      paddingHorizontal: spacing.md,
-                      paddingVertical: spacing.sm,
-                      borderRadius: 20,
-                      backgroundColor: selectedCategory === category.id ? colors.primary : colors.backgroundAlt,
-                      borderWidth: 1,
-                      borderColor: selectedCategory === category.id ? colors.primary : colors.border,
-                    }
+                    selectedCategory === category.id ? buttonStyles.filterButtonActive : buttonStyles.filterButton
                   ]}
                   onPress={() => setSelectedCategory(category.id)}
                 >
@@ -387,15 +430,19 @@ export default function SupervisorInventoryScreen() {
                       name={category.icon as any} 
                       size={16} 
                       style={{ 
-                        color: selectedCategory === category.id ? colors.background : colors.textSecondary,
+                        color: selectedCategory === category.id 
+                          ? colors.background 
+                          : colors.text,
                         marginRight: spacing.xs 
                       }} 
                     />
                     <Text style={[
                       typography.caption,
                       { 
-                        color: selectedCategory === category.id ? colors.background : colors.text,
-                        fontWeight: selectedCategory === category.id ? '600' : '400'
+                        color: selectedCategory === category.id 
+                          ? colors.background 
+                          : colors.text,
+                        fontWeight: selectedCategory === category.id ? '700' : '600'
                       }
                     ]}>
                       {category.name}
@@ -437,7 +484,7 @@ export default function SupervisorInventoryScreen() {
                     </View>
                     <View style={[
                       commonStyles.statusBadge,
-                      { backgroundColor: stockStatus.color + '20' }
+                      { backgroundColor: stockStatus.color + '20', borderColor: stockStatus.color }
                     ]}>
                       <Text style={[
                         typography.small,
@@ -487,35 +534,19 @@ export default function SupervisorInventoryScreen() {
 
                   <View style={[commonStyles.row, commonStyles.spaceBetween]}>
                     <View style={[commonStyles.row, { gap: spacing.sm }]}>
-                      <TouchableOpacity
-                        style={[
-                          {
-                            paddingVertical: spacing.sm,
-                            paddingHorizontal: spacing.md,
-                            backgroundColor: colors.backgroundAlt,
-                            borderRadius: 6,
-                            alignItems: 'center',
-                          }
-                        ]}
+                      <IconButton
+                        icon="remove"
                         onPress={() => updateStock(item.id, item.currentStock - 1)}
-                      >
-                        <Icon name="remove" size={16} style={{ color: colors.danger }} />
-                      </TouchableOpacity>
+                        variant="primary"
+                        size="small"
+                      />
 
-                      <TouchableOpacity
-                        style={[
-                          {
-                            paddingVertical: spacing.sm,
-                            paddingHorizontal: spacing.md,
-                            backgroundColor: colors.backgroundAlt,
-                            borderRadius: 6,
-                            alignItems: 'center',
-                          }
-                        ]}
+                      <IconButton
+                        icon="add"
                         onPress={() => updateStock(item.id, item.currentStock + 1)}
-                      >
-                        <Icon name="add" size={16} style={{ color: colors.success }} />
-                      </TouchableOpacity>
+                        variant="primary"
+                        size="small"
+                      />
                     </View>
 
                     <View style={[commonStyles.row, { alignItems: 'center' }]}>
@@ -530,6 +561,8 @@ export default function SupervisorInventoryScreen() {
                           backgroundColor: item.autoReorderEnabled ? colors.success : colors.backgroundAlt,
                           justifyContent: 'center',
                           paddingHorizontal: 2,
+                          borderWidth: 2,
+                          borderColor: item.autoReorderEnabled ? colors.success : colors.border,
                         }}
                         onPress={() => toggleAutoReorder(item.id)}
                       >
@@ -565,6 +598,28 @@ export default function SupervisorInventoryScreen() {
           )}
         </ScrollView>
       </View>
+
+      {/* Send Items Modal */}
+      <SendItemsModal
+        visible={showSendItemsModal}
+        onClose={() => setShowSendItemsModal(false)}
+        inventory={inventory}
+        onItemsSent={handleItemsSent}
+        onSuccess={() => {
+          // Refresh any data if needed
+          console.log('Items sent successfully');
+        }}
+      />
+
+      {/* Transfer History Modal */}
+      <TransferHistoryModal
+        visible={showTransferHistoryModal}
+        onClose={() => setShowTransferHistoryModal(false)}
+        onRefresh={() => {
+          // Refresh inventory data if needed
+          console.log('Transfer history refreshed');
+        }}
+      />
 
       {/* Restock Requests Modal */}
       <Modal
@@ -614,11 +669,13 @@ export default function SupervisorInventoryScreen() {
             }),
           }}>
             <View style={commonStyles.header}>
-              <TouchableOpacity onPress={() => setShowRequestsModal(false)}>
-                <Icon name="close" size={24} style={{ color: colors.background }} />
-              </TouchableOpacity>
+              <IconButton 
+                icon="close" 
+                onPress={() => setShowRequestsModal(false)} 
+                variant="white"
+              />
               <Text style={commonStyles.headerTitle}>Restock Requests</Text>
-              <View style={{ width: 24 }} />
+              <View style={{ width: 44 }} />
             </View>
             <ScrollView style={commonStyles.content}>
               {restockRequests.map(request => (
@@ -629,7 +686,7 @@ export default function SupervisorInventoryScreen() {
                     </Text>
                     <View style={[
                       commonStyles.statusBadge,
-                      { backgroundColor: getPriorityColor(request.priority) + '20' }
+                      { backgroundColor: getPriorityColor(request.priority) + '20', borderColor: getPriorityColor(request.priority) }
                     ]}>
                       <Text style={[
                         typography.small,
@@ -656,7 +713,7 @@ export default function SupervisorInventoryScreen() {
 
                   <View style={[
                     commonStyles.statusBadge,
-                    { backgroundColor: getStatusColor(request.status) + '20', marginBottom: spacing.md }
+                    { backgroundColor: getStatusColor(request.status) + '20', marginBottom: spacing.md, borderColor: getStatusColor(request.status) }
                   ]}>
                     <Text style={[
                       typography.small,
@@ -669,14 +726,16 @@ export default function SupervisorInventoryScreen() {
                   {request.status === 'pending' && (
                     <View style={[commonStyles.row, { gap: spacing.sm }]}>
                       <Button
-                        title="Approve"
+                        text="Approve"
                         onPress={() => approveRestockRequest(request.id)}
-                        style={{ flex: 1, backgroundColor: colors.success }}
+                        style={{ flex: 1 }}
+                        variant="success"
                       />
                       <Button
-                        title="Reject"
+                        text="Reject"
                         onPress={() => rejectRestockRequest(request.id)}
-                        style={{ flex: 1, backgroundColor: colors.danger }}
+                        style={{ flex: 1 }}
+                        variant="danger"
                       />
                     </View>
                   )}
