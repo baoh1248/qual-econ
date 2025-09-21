@@ -1,6 +1,6 @@
 
-import React, { memo } from 'react';
-import { View, Text, Modal, ScrollView, TouchableOpacity, TextInput, StyleSheet, Platform } from 'react-native';
+import React, { memo, useState } from 'react';
+import { View, Text, Modal, ScrollView, TouchableOpacity, TextInput, StyleSheet, Platform, Alert } from 'react-native';
 import { colors, spacing, typography, commonStyles } from '../../styles/commonStyles';
 import Button from '../Button';
 import Icon from '../Icon';
@@ -29,13 +29,11 @@ interface ScheduleModalProps {
   newBuildingName: string;
   newBuildingSecurity: string;
   newBuildingSecurityLevel: 'low' | 'medium' | 'high';
-  newBuildingPriority: 'low' | 'medium' | 'high';
   selectedClientForBuilding: string;
   newCleanerName: string;
   showClientDropdown: boolean;
   showCleanerDropdown: boolean;
   showSecurityLevelDropdown: boolean;
-  showPriorityDropdown: boolean;
 
   // Setters
   setCleanerName: (value: string) => void;
@@ -48,13 +46,11 @@ interface ScheduleModalProps {
   setNewBuildingName: (value: string) => void;
   setNewBuildingSecurity: (value: string) => void;
   setNewBuildingSecurityLevel: (value: 'low' | 'medium' | 'high') => void;
-  setNewBuildingPriority: (value: 'low' | 'medium' | 'high') => void;
   setSelectedClientForBuilding: (value: string) => void;
   setNewCleanerName: (value: string) => void;
   setShowClientDropdown: (value: boolean) => void;
   setShowCleanerDropdown: (value: boolean) => void;
   setShowSecurityLevelDropdown: (value: boolean) => void;
-  setShowPriorityDropdown: (value: boolean) => void;
 
   // Actions
   onClose: () => void;
@@ -86,13 +82,11 @@ const ScheduleModal = memo(({
   newBuildingName,
   newBuildingSecurity,
   newBuildingSecurityLevel,
-  newBuildingPriority,
   selectedClientForBuilding,
   newCleanerName,
   showClientDropdown,
   showCleanerDropdown,
   showSecurityLevelDropdown,
-  showPriorityDropdown,
   setCleanerName,
   setSelectedCleaners,
   setHours,
@@ -103,13 +97,11 @@ const ScheduleModal = memo(({
   setNewBuildingName,
   setNewBuildingSecurity,
   setNewBuildingSecurityLevel,
-  setNewBuildingPriority,
   setSelectedClientForBuilding,
   setNewCleanerName,
   setShowClientDropdown,
   setShowCleanerDropdown,
   setShowSecurityLevelDropdown,
-  setShowPriorityDropdown,
   onClose,
   onSave,
   onDelete,
@@ -121,6 +113,12 @@ const ScheduleModal = memo(({
   onSwitchToEdit,
 }: ScheduleModalProps) => {
   console.log('ScheduleModal rendered with type:', modalType, 'visible:', visible);
+
+  // Local state for cleaner search
+  const [cleanerSearchQuery, setCleanerSearchQuery] = useState('');
+  
+  // Local state for delete confirmation
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   if (!visible) return null;
 
@@ -162,10 +160,23 @@ const ScheduleModal = memo(({
     }
   };
 
-
+  // Filter cleaners based on search query
+  const getFilteredCleaners = () => {
+    if (!cleanerSearchQuery.trim()) {
+      return cleaners.filter(c => c.isActive);
+    }
+    
+    const query = cleanerSearchQuery.toLowerCase().trim();
+    return cleaners.filter(c => 
+      c.isActive && (
+        c.name.toLowerCase().includes(query) ||
+        (c.employeeId && c.employeeId.toLowerCase().includes(query)) ||
+        (c.securityLevel && c.securityLevel.toLowerCase().includes(query))
+      )
+    );
+  };
 
   const securityLevels = ['low', 'medium', 'high'];
-  const priorityLevels = ['low', 'medium', 'high'];
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -177,14 +188,7 @@ const ScheduleModal = memo(({
     }
   };
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'high': return colors.danger;
-      case 'medium': return colors.warning;
-      case 'low': return colors.success;
-      default: return colors.text;
-    }
-  };
+
 
   const getSecurityLevelColor = (level: string) => {
     switch (level) {
@@ -192,6 +196,66 @@ const ScheduleModal = memo(({
       case 'medium': return colors.warning;
       case 'low': return colors.success;
       default: return colors.text;
+    }
+  };
+
+  const getSecurityLevelIcon = (level: string) => {
+    switch (level) {
+      case 'high': return 'shield-checkmark';
+      case 'medium': return 'shield-half';
+      case 'low': return 'shield-outline';
+      default: return 'shield-outline';
+    }
+  };
+
+  const canAccessJob = (cleanerLevel: string, jobLevel: string): boolean => {
+    const levels = { low: 1, medium: 2, high: 3 };
+    return levels[cleanerLevel as keyof typeof levels] >= levels[jobLevel as keyof typeof levels];
+  };
+
+  const handleDeletePress = () => {
+    console.log('Delete button pressed, platform:', Platform.OS);
+    console.log('Selected entry:', selectedEntry?.id, selectedEntry?.cleanerName, selectedEntry?.buildingName);
+    
+    if (Platform.OS === 'web') {
+      console.log('Web platform detected, showing custom confirmation modal');
+      setShowDeleteConfirm(true);
+    } else {
+      console.log('Mobile platform detected, showing native Alert confirmation');
+      Alert.alert(
+        'Delete Shift',
+        `Are you sure you want to delete the shift for ${selectedEntry?.cleanerName} at ${selectedEntry?.buildingName}? This action cannot be undone.`,
+        [
+          { 
+            text: 'Cancel', 
+            style: 'cancel',
+            onPress: () => console.log('Delete cancelled by user')
+          },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: confirmDelete
+          }
+        ]
+      );
+    }
+  };
+
+  const confirmDelete = async () => {
+    console.log('Confirming delete operation...');
+    console.log('About to call onDelete function for entry:', selectedEntry?.id);
+    
+    try {
+      setShowDeleteConfirm(false);
+      console.log('Calling onDelete function...');
+      await onDelete();
+      console.log('Delete operation completed successfully, closing modal');
+      // Close the modal after successful deletion
+      onClose();
+    } catch (error) {
+      console.error('Error during delete confirmation:', error);
+      // Reset the confirmation state but don't close the modal so user can try again
+      setShowDeleteConfirm(false);
     }
   };
 
@@ -282,7 +346,7 @@ const ScheduleModal = memo(({
                   />
                   <Button 
                     text="Delete" 
-                    onPress={onDelete} 
+                    onPress={handleDeletePress} 
                     variant="danger"
                     style={styles.actionButton}
                   />
@@ -303,7 +367,13 @@ const ScheduleModal = memo(({
               <Text style={styles.inputLabel}>Cleaners * (Select one or more)</Text>
               <TouchableOpacity
                 style={styles.input}
-                onPress={() => setShowCleanerDropdown(!showCleanerDropdown)}
+                onPress={() => {
+                  setShowCleanerDropdown(!showCleanerDropdown);
+                  // Clear search when opening dropdown
+                  if (!showCleanerDropdown) {
+                    setCleanerSearchQuery('');
+                  }
+                }}
               >
                 <Text style={[styles.inputText, selectedCleaners.length === 0 && styles.placeholderText]}>
                   {selectedCleaners.length > 0 
@@ -333,35 +403,121 @@ const ScheduleModal = memo(({
                 </View>
               )}
               
-              {/* Multi-select cleaner dropdown */}
+              {/* Multi-select cleaner dropdown with search */}
               {showCleanerDropdown && (
                 <View style={styles.dropdownContainer}>
+                  {/* Search input */}
+                  <View style={styles.searchContainer}>
+                    <Icon name="search" size={16} style={styles.searchIcon} />
+                    <TextInput
+                      style={styles.searchInput}
+                      placeholder="Search cleaners by name, ID, or security level..."
+                      value={cleanerSearchQuery}
+                      onChangeText={setCleanerSearchQuery}
+                      placeholderTextColor={colors.textSecondary}
+                    />
+                    {cleanerSearchQuery.length > 0 && (
+                      <TouchableOpacity
+                        onPress={() => setCleanerSearchQuery('')}
+                        style={styles.clearSearchButton}
+                      >
+                        <Icon name="close-circle" size={16} style={styles.clearSearchIcon} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                  
                   <ScrollView style={styles.dropdown} nestedScrollEnabled>
-                    {cleaners.filter(c => c.isActive).map((cleaner, index) => {
-                      const isSelected = selectedCleaners.includes(cleaner.name);
-                      return (
-                        <TouchableOpacity
-                          key={index}
-                          style={[styles.dropdownItem, isSelected && styles.dropdownItemSelected]}
-                          onPress={() => toggleCleanerSelection(cleaner.name)}
-                        >
-                          <View style={styles.cleanerDropdownRow}>
-                            <Text style={[styles.dropdownText, isSelected && styles.dropdownTextSelected]}>
-                              {cleaner.name}
-                            </Text>
-                            <Icon 
-                              name={isSelected ? "checkmark-circle" : "ellipse-outline"} 
-                              size={20} 
-                              style={{ color: isSelected ? colors.background : colors.textSecondary }} 
-                            />
-                          </View>
-                        </TouchableOpacity>
-                      );
-                    })}
+                    {getFilteredCleaners().length === 0 ? (
+                      <View style={styles.noResultsContainer}>
+                        <Icon name="person-outline" size={24} style={styles.noResultsIcon} />
+                        <Text style={styles.noResultsText}>
+                          {cleanerSearchQuery.trim() 
+                            ? `No cleaners found matching "${cleanerSearchQuery}"`
+                            : 'No active cleaners available'
+                          }
+                        </Text>
+                      </View>
+                    ) : (
+                      getFilteredCleaners().map((cleaner, index) => {
+                        const isSelected = selectedCleaners.includes(cleaner.name);
+                        const securityLevel = cleaner.securityLevel || 'low';
+                        const employeeId = cleaner.employeeId || 'N/A';
+                        
+                        // Check if cleaner can access the building's security level
+                        const canAccess = selectedClientBuilding ? 
+                          canAccessJob(securityLevel, selectedClientBuilding.securityLevel) : true;
+                        
+                        return (
+                          <TouchableOpacity
+                            key={index}
+                            style={[
+                              styles.dropdownItem, 
+                              isSelected && styles.dropdownItemSelected,
+                              !canAccess && styles.dropdownItemDisabled
+                            ]}
+                            onPress={() => {
+                              if (canAccess) {
+                                toggleCleanerSelection(cleaner.name);
+                              }
+                            }}
+                            disabled={!canAccess}
+                          >
+                            <View style={styles.cleanerDropdownRow}>
+                              <View style={styles.cleanerInfo}>
+                                <Text style={[
+                                  styles.dropdownText, 
+                                  isSelected && styles.dropdownTextSelected,
+                                  !canAccess && styles.dropdownTextDisabled
+                                ]}>
+                                  {cleaner.name}
+                                </Text>
+                                <View style={styles.cleanerMetadata}>
+                                  <Text style={[
+                                    styles.cleanerMetadataText,
+                                    isSelected && styles.cleanerMetadataTextSelected,
+                                    !canAccess && styles.cleanerMetadataTextDisabled
+                                  ]}>
+                                    ID: {employeeId} • {securityLevel.toUpperCase()} Security
+                                  </Text>
+                                  {!canAccess && selectedClientBuilding && (
+                                    <Text style={styles.accessDeniedText}>
+                                      Cannot access {selectedClientBuilding.securityLevel.toUpperCase()} security jobs
+                                    </Text>
+                                  )}
+                                </View>
+                              </View>
+                              <View style={styles.cleanerActions}>
+                                <View style={[
+                                  styles.securityIndicator,
+                                  { backgroundColor: getSecurityLevelColor(securityLevel) + '20' }
+                                ]}>
+                                  <Icon 
+                                    name={getSecurityLevelIcon(securityLevel)} 
+                                    size={12} 
+                                    style={{ color: getSecurityLevelColor(securityLevel) }} 
+                                  />
+                                </View>
+                                <Icon 
+                                  name={isSelected ? "checkmark-circle" : "ellipse-outline"} 
+                                  size={20} 
+                                  style={{ 
+                                    color: isSelected ? colors.background : 
+                                           !canAccess ? colors.textSecondary + '50' : colors.textSecondary 
+                                  }} 
+                                />
+                              </View>
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      })
+                    )}
                   </ScrollView>
                   <TouchableOpacity
                     style={styles.closeDropdownButton}
-                    onPress={() => setShowCleanerDropdown(false)}
+                    onPress={() => {
+                      setShowCleanerDropdown(false);
+                      setCleanerSearchQuery('');
+                    }}
                   >
                     <Text style={styles.closeDropdownText}>Done</Text>
                   </TouchableOpacity>
@@ -505,26 +661,6 @@ const ScheduleModal = memo(({
                 onChangeText={setNewBuildingName}
               />
               
-              <Text style={styles.inputLabel}>Priority Level *</Text>
-              <TouchableOpacity
-                style={styles.input}
-                onPress={() => setShowPriorityDropdown(!showPriorityDropdown)}
-              >
-                <Text style={[styles.inputText, { color: getPriorityColor(newBuildingPriority) }]}>
-                  {newBuildingPriority.toUpperCase()}
-                </Text>
-                <Icon name="chevron-down" size={20} style={{ color: colors.textSecondary }} />
-              </TouchableOpacity>
-              {showPriorityDropdown && renderDropdown(
-                priorityLevels,
-                newBuildingPriority,
-                (value) => {
-                  setNewBuildingPriority(value as 'low' | 'medium' | 'high');
-                  setShowPriorityDropdown(false);
-                },
-                'Select priority level'
-              )}
-              
               <Text style={styles.inputLabel}>Security Level *</Text>
               <TouchableOpacity
                 style={styles.input}
@@ -585,6 +721,14 @@ const ScheduleModal = memo(({
                 value={newCleanerName}
                 onChangeText={setNewCleanerName}
               />
+              
+              <View style={styles.quickAddNote}>
+                <Icon name="information-circle-outline" size={16} style={{ color: colors.primary }} />
+                <Text style={styles.quickAddNoteText}>
+                  This is a quick add. Use the Cleaners section for full details including ID, security level, and contact info.
+                </Text>
+              </View>
+              
               <View style={styles.modalActions}>
                 <Button 
                   text="Cancel" 
@@ -676,26 +820,6 @@ const ScheduleModal = memo(({
                 onChangeText={setNewBuildingName}
               />
               
-              <Text style={styles.inputLabel}>Priority Level *</Text>
-              <TouchableOpacity
-                style={styles.input}
-                onPress={() => setShowPriorityDropdown(!showPriorityDropdown)}
-              >
-                <Text style={[styles.inputText, { color: getPriorityColor(newBuildingPriority) }]}>
-                  {newBuildingPriority.toUpperCase()}
-                </Text>
-                <Icon name="chevron-down" size={20} style={{ color: colors.textSecondary }} />
-              </TouchableOpacity>
-              {showPriorityDropdown && renderDropdown(
-                priorityLevels,
-                newBuildingPriority,
-                (value) => {
-                  setNewBuildingPriority(value as 'low' | 'medium' | 'high');
-                  setShowPriorityDropdown(false);
-                },
-                'Select priority level'
-              )}
-              
               <Text style={styles.inputLabel}>Security Level *</Text>
               <TouchableOpacity
                 style={styles.input}
@@ -749,26 +873,67 @@ const ScheduleModal = memo(({
   };
 
   return (
-    <Modal
-      animationType="fade"
-      transparent={true}
-      visible={visible}
-      onRequestClose={onClose}
-      presentationStyle={Platform.OS === 'ios' ? 'overFullScreen' : undefined}
-    >
-      <View style={styles.modalOverlay}>
-        <TouchableOpacity 
-          style={styles.modalBackdrop} 
-          activeOpacity={1} 
-          onPress={onClose}
-        />
-        <View style={styles.modalContainer}>
-          <ScrollView showsVerticalScrollIndicator={false}>
-            {renderContent()}
-          </ScrollView>
+    <>
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={visible}
+        onRequestClose={onClose}
+        presentationStyle={Platform.OS === 'ios' ? 'overFullScreen' : undefined}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity 
+            style={styles.modalBackdrop} 
+            activeOpacity={1} 
+            onPress={onClose}
+          />
+          <View style={styles.modalContainer}>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {renderContent()}
+            </ScrollView>
+          </View>
         </View>
-      </View>
-    </Modal>
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        visible={showDeleteConfirm}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setShowDeleteConfirm(false)}
+      >
+        <View style={styles.confirmModalOverlay}>
+          <View style={styles.confirmModalContainer}>
+            <View style={styles.confirmModalContent}>
+              <View style={styles.confirmIconContainer}>
+                <Icon name="trash" size={32} style={{ color: colors.danger }} />
+              </View>
+              <Text style={styles.confirmTitle}>Delete Shift</Text>
+              <Text style={styles.confirmMessage}>
+                Are you sure you want to delete the shift for {selectedEntry?.cleanerName} at {selectedEntry?.buildingName}? This action cannot be undone.
+              </Text>
+              <View style={styles.confirmActions}>
+                <Button
+                  text="Cancel"
+                  onPress={() => {
+                    console.log('Delete cancelled by user');
+                    setShowDeleteConfirm(false);
+                  }}
+                  style={styles.confirmButton}
+                  variant="secondary"
+                />
+                <Button
+                  text="Delete"
+                  onPress={confirmDelete}
+                  style={styles.confirmButton}
+                  variant="danger"
+                />
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </>
   );
 });
 
@@ -855,10 +1020,10 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   dropdown: {
-    maxHeight: 150,
+    maxHeight: 200,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
+    borderTopWidth: 0,
     backgroundColor: colors.background,
   },
   dropdownItem: {
@@ -990,6 +1155,43 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     width: '100%',
   },
+  cleanerInfo: {
+    flex: 1,
+  },
+  cleanerMetadata: {
+    marginTop: spacing.xs,
+  },
+  cleanerMetadataText: {
+    ...typography.small,
+    color: colors.textSecondary,
+  },
+  cleanerMetadataTextSelected: {
+    color: colors.background + '80',
+  },
+  cleanerMetadataTextDisabled: {
+    color: colors.textSecondary + '50',
+  },
+  accessDeniedText: {
+    ...typography.small,
+    color: colors.danger,
+    fontStyle: 'italic',
+    marginTop: 2,
+  },
+  cleanerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  securityIndicator: {
+    padding: 4,
+    borderRadius: 12,
+  },
+  dropdownItemDisabled: {
+    opacity: 0.5,
+  },
+  dropdownTextDisabled: {
+    color: colors.textSecondary + '50',
+  },
   closeDropdownButton: {
     backgroundColor: colors.primary,
     paddingVertical: spacing.md,
@@ -1001,6 +1203,123 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.background,
     fontWeight: '600',
+  },
+  quickAddNote: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: colors.primary + '10',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 8,
+    marginBottom: spacing.md,
+    gap: spacing.sm,
+  },
+  quickAddNoteText: {
+    ...typography.caption,
+    color: colors.primary,
+    fontWeight: '500',
+    flex: 1,
+  },
+
+  // New search-related styles
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderBottomWidth: 0,
+    borderTopLeftRadius: 8,
+    borderTopRightRadius: 8,
+    backgroundColor: colors.background,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  searchIcon: {
+    color: colors.textSecondary,
+    marginRight: spacing.sm,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.text,
+    paddingVertical: spacing.xs,
+  },
+  clearSearchButton: {
+    padding: spacing.xs,
+  },
+  clearSearchIcon: {
+    color: colors.textSecondary,
+  },
+  noResultsContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xl,
+    paddingHorizontal: spacing.lg,
+  },
+  noResultsIcon: {
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+  },
+  noResultsText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+
+  // Delete confirmation modal styles
+  confirmModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  confirmModalContainer: {
+    backgroundColor: colors.background,
+    borderRadius: 16,
+    width: '100%',
+    maxWidth: 400,
+    shadowColor: colors.text,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  confirmModalContent: {
+    padding: spacing.lg,
+    alignItems: 'center',
+  },
+  confirmIconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.danger + '20',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+  },
+  confirmTitle: {
+    ...typography.h3,
+    color: colors.text,
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+    fontWeight: '600',
+  },
+  confirmMessage: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: spacing.lg,
+    lineHeight: 22,
+  },
+  confirmActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    width: '100%',
+  },
+  confirmButton: {
+    flex: 1,
   },
 });
 

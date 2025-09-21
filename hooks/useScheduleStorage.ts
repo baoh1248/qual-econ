@@ -47,8 +47,8 @@ export interface ScheduleStats {
 }
 
 const STORAGE_KEYS = {
-  WEEKLY_SCHEDULES: 'weekly_schedules_v3',
-  SCHEDULE_CACHE: 'schedule_cache_v3',
+  WEEKLY_SCHEDULES: 'weekly_schedules_v4',
+  SCHEDULE_CACHE: 'schedule_cache_v4',
   LAST_CLEANUP_DATE: 'last_cleanup_date',
 };
 
@@ -385,13 +385,16 @@ export const useScheduleStorage = () => {
   // Optimized update with batching and error handling
   const updateWeekSchedule = useCallback(async (weekId: string, entries: ScheduleEntry[]) => {
     try {
-      console.log('Updating week schedule:', weekId, 'with', entries.length, 'entries');
+      console.log('=== UPDATING WEEK SCHEDULE ===');
+      console.log('Week ID:', weekId);
+      console.log('Entries count:', entries.length);
       console.log('Entries being saved:', entries.map(e => ({
         id: e.id,
         cleanerName: e.cleanerName,
         cleanerNames: e.cleanerNames,
         hours: e.hours,
-        buildingName: e.buildingName
+        buildingName: e.buildingName,
+        day: e.day
       })));
       
       if (!weekId || typeof weekId !== 'string') {
@@ -402,14 +405,27 @@ export const useScheduleStorage = () => {
         throw new Error('Invalid entries provided');
       }
 
-      // Validate entries
+      // Validate entries more thoroughly
       const validatedEntries = entries
-        .filter(entry => entry && typeof entry === 'object')
+        .filter(entry => {
+          if (!entry || typeof entry !== 'object') {
+            console.warn('Filtering out invalid entry:', entry);
+            return false;
+          }
+          if (!entry.id || !entry.clientName || !entry.buildingName) {
+            console.warn('Filtering out entry with missing required fields:', entry);
+            return false;
+          }
+          return true;
+        })
         .map(entry => ({
           ...entry,
           weekId,
           date: entry.date || weekId,
           id: entry.id || String(Date.now() + Math.random()),
+          hours: typeof entry.hours === 'number' ? entry.hours : parseFloat(entry.hours as any) || 0,
+          status: entry.status || 'scheduled',
+          day: entry.day || 'monday'
         }));
 
       console.log('Validated entries for save:', validatedEntries.map(e => ({
@@ -417,7 +433,8 @@ export const useScheduleStorage = () => {
         cleanerName: e.cleanerName,
         cleanerNames: e.cleanerNames,
         hours: e.hours,
-        buildingName: e.buildingName
+        buildingName: e.buildingName,
+        day: e.day
       })));
 
       const updatedSchedules = {
@@ -466,8 +483,9 @@ export const useScheduleStorage = () => {
         debouncedSave(updatedSchedules);
       }
       
-      console.log('Week schedule updated successfully');
+      console.log('=== WEEK SCHEDULE UPDATE COMPLETED ===');
     } catch (err) {
+      console.error('=== WEEK SCHEDULE UPDATE FAILED ===');
       console.error('Error updating week schedule:', err);
       setError('Failed to update schedule');
       throw err;
@@ -507,25 +525,51 @@ export const useScheduleStorage = () => {
   // Batch operations for better performance with error handling
   const addScheduleEntry = useCallback(async (weekId: string, entry: ScheduleEntry) => {
     try {
-      console.log('Adding schedule entry to week:', weekId, 'entry:', entry.id);
+      console.log('=== ADDING SCHEDULE ENTRY ===');
+      console.log('Week ID:', weekId);
+      console.log('Entry:', {
+        id: entry.id,
+        cleanerName: entry.cleanerName,
+        cleanerNames: entry.cleanerNames,
+        hours: entry.hours,
+        buildingName: entry.buildingName,
+        day: entry.day
+      });
       
       if (!weekId || !entry) {
         throw new Error('Invalid parameters for addScheduleEntry');
       }
 
       const currentWeekSchedule = getWeekSchedule(weekId);
+      console.log('Current week schedule has', currentWeekSchedule.length, 'entries');
+      
       const validatedEntry = {
         ...entry,
         weekId,
         id: entry.id || String(Date.now() + Math.random()),
         date: entry.date || weekId,
+        hours: typeof entry.hours === 'number' ? entry.hours : parseFloat(entry.hours as any) || 0,
+        status: entry.status || 'scheduled',
+        day: entry.day || 'monday'
       };
 
+      console.log('Validated entry:', {
+        id: validatedEntry.id,
+        cleanerName: validatedEntry.cleanerName,
+        cleanerNames: validatedEntry.cleanerNames,
+        hours: validatedEntry.hours,
+        buildingName: validatedEntry.buildingName,
+        day: validatedEntry.day
+      });
+
       const updatedSchedule = [...currentWeekSchedule, validatedEntry];
+      console.log('Updated schedule will have', updatedSchedule.length, 'entries');
+      
       await updateWeekSchedule(weekId, updatedSchedule);
       
-      console.log('Schedule entry added successfully');
+      console.log('=== SCHEDULE ENTRY ADDED SUCCESSFULLY ===');
     } catch (error) {
+      console.error('=== ADD SCHEDULE ENTRY FAILED ===');
       console.error('Error adding schedule entry:', error);
       throw error;
     }
@@ -533,7 +577,10 @@ export const useScheduleStorage = () => {
 
   const updateScheduleEntry = useCallback(async (weekId: string, entryId: string, updates: Partial<ScheduleEntry>) => {
     try {
-      console.log('Updating schedule entry:', entryId, 'in week:', weekId, 'with updates:', JSON.stringify(updates));
+      console.log('=== UPDATING SCHEDULE ENTRY ===');
+      console.log('Week ID:', weekId);
+      console.log('Entry ID:', entryId);
+      console.log('Updates:', JSON.stringify(updates));
       
       if (!weekId || !entryId || !updates) {
         throw new Error('Invalid parameters for updateScheduleEntry');
@@ -546,6 +593,8 @@ export const useScheduleStorage = () => {
       }
 
       const currentWeekSchedule = getWeekSchedule(weekId);
+      console.log('Current week schedule has', currentWeekSchedule.length, 'entries');
+      
       const entryIndex = currentWeekSchedule.findIndex(entry => entry?.id === entryId);
       
       if (entryIndex === -1) {
@@ -566,6 +615,9 @@ export const useScheduleStorage = () => {
         ...originalEntry, 
         ...updates,
         weekId,
+        hours: updates.hours !== undefined ? 
+          (typeof updates.hours === 'number' ? updates.hours : parseFloat(updates.hours as any) || 0) :
+          originalEntry.hours
       };
       
       console.log('Updated entry after merge:', JSON.stringify({
@@ -580,6 +632,8 @@ export const useScheduleStorage = () => {
       const updatedSchedule = [...currentWeekSchedule];
       updatedSchedule[entryIndex] = updatedEntry;
       
+      console.log('Updated schedule will have', updatedSchedule.length, 'entries');
+      
       // Force clear cache to ensure fresh data
       scheduleCache.delete(weekId);
       statsCache.clear();
@@ -587,8 +641,9 @@ export const useScheduleStorage = () => {
       
       await updateWeekSchedule(weekId, updatedSchedule);
       
-      console.log('Schedule entry updated successfully with changes:', JSON.stringify(updates));
+      console.log('=== SCHEDULE ENTRY UPDATED SUCCESSFULLY ===');
     } catch (error) {
+      console.error('=== UPDATE SCHEDULE ENTRY FAILED ===');
       console.error('Error updating schedule entry:', error);
       throw error;
     }
@@ -596,7 +651,9 @@ export const useScheduleStorage = () => {
 
   const deleteScheduleEntry = useCallback(async (weekId: string, entryId: string) => {
     try {
-      console.log('Deleting schedule entry:', entryId, 'from week:', weekId);
+      console.log('=== DELETING SCHEDULE ENTRY ===');
+      console.log('Week ID:', weekId);
+      console.log('Entry ID:', entryId);
       
       if (!weekId || !entryId) {
         throw new Error('Invalid parameters for deleteScheduleEntry');
@@ -610,15 +667,25 @@ export const useScheduleStorage = () => {
         throw new Error(`Schedule entry ${entryId} not found in week ${weekId}`);
       }
       
-      console.log('Found entry to delete:', entryToDelete.buildingName, entryToDelete.cleanerName);
+      console.log('Found entry to delete:', {
+        id: entryToDelete.id,
+        cleanerName: entryToDelete.cleanerName,
+        buildingName: entryToDelete.buildingName
+      });
       
       const updatedSchedule = currentWeekSchedule.filter(entry => entry?.id !== entryId);
       console.log('Updated schedule will have', updatedSchedule.length, 'entries');
       
+      // Force clear cache to ensure fresh data
+      scheduleCache.delete(weekId);
+      statsCache.clear();
+      conflictsCache.clear();
+      
       await updateWeekSchedule(weekId, updatedSchedule);
       
-      console.log('Schedule entry deleted successfully');
+      console.log('=== SCHEDULE ENTRY DELETED SUCCESSFULLY ===');
     } catch (error) {
+      console.error('=== DELETE SCHEDULE ENTRY FAILED ===');
       console.error('Error deleting schedule entry:', error);
       throw error;
     }

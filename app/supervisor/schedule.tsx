@@ -101,7 +101,7 @@ const ScheduleView = () => {
     hasConflicts,
     hasCriticalConflicts,
     hasHighPriorityConflicts 
-  } = useConflictDetection(schedule, cleaners || []);
+  } = useConflictDetection(schedule, cleaners || [], clientBuildings || []);
 
   // Form states with proper initialization
   const [cleanerName, setCleanerName] = useState('');
@@ -114,13 +114,11 @@ const ScheduleView = () => {
   const [newBuildingName, setNewBuildingName] = useState('');
   const [newBuildingSecurity, setNewBuildingSecurity] = useState('');
   const [newBuildingSecurityLevel, setNewBuildingSecurityLevel] = useState<'low' | 'medium' | 'high'>('medium');
-  const [newBuildingPriority, setNewBuildingPriority] = useState<'low' | 'medium' | 'high'>('medium');
   const [selectedClientForBuilding, setSelectedClientForBuilding] = useState('');
   const [newCleanerName, setNewCleanerName] = useState('');
   const [showClientDropdown, setShowClientDropdown] = useState(false);
   const [showCleanerDropdown, setShowCleanerDropdown] = useState(false);
   const [showSecurityLevelDropdown, setShowSecurityLevelDropdown] = useState(false);
-  const [showPriorityDropdown, setShowPriorityDropdown] = useState(false);
 
   // Helper functions for consistent date handling (same as payroll)
   const formatDateString = useCallback((date: Date): string => {
@@ -202,6 +200,7 @@ const ScheduleView = () => {
             hours: e.hours,
             buildingName: e.buildingName
           })));
+          
           setSchedule(weekSchedule || []);
         } else {
           console.error('getWeekSchedule function not available');
@@ -429,13 +428,11 @@ const ScheduleView = () => {
       setNewBuildingName('');
       setNewBuildingSecurity('');
       setNewBuildingSecurityLevel('medium');
-      setNewBuildingPriority('medium');
       setSelectedClientForBuilding('');
       setNewCleanerName('');
       setShowClientDropdown(false);
       setShowCleanerDropdown(false);
       setShowSecurityLevelDropdown(false);
-      setShowPriorityDropdown(false);
     } catch (error) {
       console.error('Error resetting form:', error);
     }
@@ -617,7 +614,6 @@ const ScheduleView = () => {
       setNewBuildingName(building.buildingName || '');
       setNewBuildingSecurity(building.security || '');
       setNewBuildingSecurityLevel(building.securityLevel || 'medium');
-      setNewBuildingPriority(building.priority || 'medium');
       setModalType('edit-building');
       setModalVisible(true);
     } catch (error) {
@@ -653,34 +649,46 @@ const ScheduleView = () => {
       
       if (validation.hasConflicts && !validation.canProceed) {
         const conflictMessages = validation.conflicts.map(c => c.description).join('\n');
-        Alert.alert(
-          'Critical Conflict Detected',
-          `Moving this entry will create critical conflicts:\n\n${conflictMessages}\n\nThis move is not recommended. Would you like to see resolution suggestions instead?`,
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { 
-              text: 'Show Conflicts', 
-              onPress: () => setShowConflictPanel(true)
-            },
-            { 
-              text: 'Force Move', 
-              style: 'destructive',
-              onPress: () => performMove(entry, newBuilding, newDay)
-            }
-          ]
-        );
+        if (Platform.OS === 'web') {
+          // For web, show toast and conflict panel
+          showToast('Critical conflicts detected. Check conflict panel for resolution.', 'error');
+          setShowConflictPanel(true);
+        } else {
+          Alert.alert(
+            'Critical Conflict Detected',
+            `Moving this entry will create critical conflicts:\n\n${conflictMessages}\n\nThis move is not recommended. Would you like to see resolution suggestions instead?`,
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { 
+                text: 'Show Conflicts', 
+                onPress: () => setShowConflictPanel(true)
+              },
+              { 
+                text: 'Force Move', 
+                style: 'destructive',
+                onPress: () => performMove(entry, newBuilding, newDay)
+              }
+            ]
+          );
+        }
       } else if (validation.warnings.length > 0) {
-        Alert.alert(
-          'Schedule Warning',
-          validation.warnings.join('\n') + '\n\nDo you want to continue?',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { 
-              text: 'Continue', 
-              onPress: () => performMove(entry, newBuilding, newDay)
-            }
-          ]
-        );
+        if (Platform.OS === 'web') {
+          // For web, show toast and proceed
+          showToast('Schedule warnings detected. Move completed.', 'warning');
+          await performMove(entry, newBuilding, newDay);
+        } else {
+          Alert.alert(
+            'Schedule Warning',
+            validation.warnings.join('\n') + '\n\nDo you want to continue?',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { 
+                text: 'Continue', 
+                onPress: () => performMove(entry, newBuilding, newDay)
+              }
+            ]
+          );
+        }
       } else {
         await performMove(entry, newBuilding, newDay);
       }
@@ -856,8 +864,7 @@ const ScheduleView = () => {
         buildingName: newBuildingName.trim(),
         isActive: true,
         security: newBuildingSecurity.trim() || undefined,
-        securityLevel: newBuildingSecurityLevel,
-        priority: newBuildingPriority
+        securityLevel: newBuildingSecurityLevel
       };
       
       await addBuildingData(newBuilding);
@@ -868,7 +875,7 @@ const ScheduleView = () => {
       console.error('Error adding building:', error);
       showToast('Failed to add building. Please try again.', 'error');
     }
-  }, [newBuildingName, selectedClientForBuilding, newBuildingSecurity, newBuildingSecurityLevel, newBuildingPriority, clientBuildings, addBuildingData, closeModal, showToast]);
+  }, [newBuildingName, selectedClientForBuilding, newBuildingSecurity, newBuildingSecurityLevel, clientBuildings, addBuildingData, closeModal, showToast]);
 
   const addCleaner = useCallback(async () => {
     try {
@@ -895,8 +902,11 @@ const ScheduleView = () => {
         id: String(Date.now()),
         name: newCleanerName.trim(),
         isActive: true,
-        email: '',
-        phone: ''
+        specialties: [],
+        employeeId: String(Date.now()).slice(-4), // Generate a simple ID from timestamp
+        securityLevel: 'low', // Default to low security level
+        phoneNumber: '', // Empty phone number - to be filled later
+        email: '' // Empty email - to be filled later
       };
       
       await addCleanerData(newCleaner);
@@ -968,8 +978,7 @@ const ScheduleView = () => {
       const updates = {
         buildingName: newBuildingName.trim(),
         security: newBuildingSecurity.trim() || undefined,
-        securityLevel: newBuildingSecurityLevel,
-        priority: newBuildingPriority
+        securityLevel: newBuildingSecurityLevel
       };
       
       await updateBuilding(selectedClientBuilding.id, updates);
@@ -980,12 +989,15 @@ const ScheduleView = () => {
       console.error('Error updating building:', error);
       showToast('Failed to update building. Please try again.', 'error');
     }
-  }, [selectedClientBuilding, newBuildingName, newBuildingSecurity, newBuildingSecurityLevel, newBuildingPriority, updateBuilding, closeModal, showToast]);
+  }, [selectedClientBuilding, newBuildingName, newBuildingSecurity, newBuildingSecurityLevel, updateBuilding, closeModal, showToast]);
 
-  const deleteEntry = useCallback(async () => {
+  const performDeleteEntry = useCallback(async () => {
+    console.log('=== STARTING DELETE OPERATION ===');
     try {
-      console.log('Delete entry called with:', {
+      console.log('Performing delete entry with:', {
         selectedEntry: selectedEntry?.id,
+        selectedEntryName: selectedEntry?.cleanerName,
+        selectedEntryBuilding: selectedEntry?.buildingName,
         currentWeekId,
         deleteScheduleEntry: !!deleteScheduleEntry
       });
@@ -996,66 +1008,38 @@ const ScheduleView = () => {
           weekId: currentWeekId
         });
         showToast('No entry selected for deletion', 'error');
-        return;
+        throw new Error('Missing required data for deletion');
       }
       
       if (!deleteScheduleEntry) {
         console.error('Delete function not available');
         showToast('Unable to delete entry at this time', 'error');
-        return;
+        throw new Error('Delete function not available');
       }
 
-      Alert.alert(
-        'Delete Shift',
-        `Are you sure you want to delete the shift for ${selectedEntry.cleanerName} at ${selectedEntry.buildingName}? This action cannot be undone.`,
-        [
-          { 
-            text: 'Cancel', 
-            style: 'cancel',
-            onPress: () => console.log('Delete cancelled by user')
-          },
-          {
-            text: 'Delete',
-            style: 'destructive',
-            onPress: async () => {
-              try {
-                console.log('User confirmed deletion, proceeding...');
-                console.log('Deleting entry:', selectedEntry.id, 'from week:', currentWeekId);
-                
-                // Call the delete function
-                await deleteScheduleEntry(currentWeekId, selectedEntry.id);
-                
-                // Update local state immediately for better UX
-                console.log('Updating local schedule state...');
-                setSchedule(prev => {
-                  const updated = prev.filter(e => e.id !== selectedEntry.id);
-                  console.log('Local schedule updated, entries remaining:', updated.length);
-                  return updated;
-                });
-                
-                console.log('Entry deleted successfully:', selectedEntry.id);
-                showToast('Shift deleted successfully!', 'success');
-                closeModal();
-                
-                // Force reload the schedule to ensure consistency
-                setTimeout(() => {
-                  console.log('Reloading schedule after delete...');
-                  loadCurrentWeekSchedule(true); // Force refresh
-                }, 100);
-                
-              } catch (error) {
-                console.error('Error during deletion process:', error);
-                showToast('Failed to delete shift. Please try again.', 'error');
-              }
-            }
-          }
-        ]
-      );
+      console.log('About to delete entry:', selectedEntry.id, 'from week:', currentWeekId);
+      console.log('Current schedule length before delete:', schedule.length);
+      
+      // Call the delete function to update storage
+      await deleteScheduleEntry(currentWeekId, selectedEntry.id);
+      console.log('deleteScheduleEntry completed successfully');
+      
+      // Reload the schedule from storage to ensure consistency
+      console.log('Reloading schedule after deletion...');
+      await loadCurrentWeekSchedule(true);
+      
+      console.log('Entry deleted successfully:', selectedEntry.id);
+      showToast('Shift deleted successfully!', 'success');
+      
+      console.log('=== DELETE OPERATION COMPLETED ===');
+      
     } catch (error) {
-      console.error('Error in deleteEntry function:', error);
-      showToast('Failed to delete shift', 'error');
+      console.error('=== DELETE OPERATION FAILED ===');
+      console.error('Error during deletion process:', error);
+      showToast('Failed to delete shift. Please try again.', 'error');
+      throw error; // Re-throw so the modal can handle the error
     }
-  }, [selectedEntry, currentWeekId, deleteScheduleEntry, closeModal, showToast, loadCurrentWeekSchedule]);
+  }, [selectedEntry, currentWeekId, deleteScheduleEntry, showToast, loadCurrentWeekSchedule, schedule.length]);
 
   // Enhanced save entry with conflict validation
   const saveEntry = useCallback(async () => {
@@ -1129,53 +1113,66 @@ const ScheduleView = () => {
         
         if (validation.hasConflicts && !validation.canProceed) {
           const conflictMessages = validation.conflicts.map(c => c.description).join('\n');
-          Alert.alert(
-            'Critical Conflict Detected',
-            `Adding this entry will create critical conflicts:\n\n${conflictMessages}\n\nWould you like to see resolution suggestions?`,
-            [
-              { text: 'Cancel', style: 'cancel' },
-              { 
-                text: 'Show Conflicts', 
-                onPress: () => {
-                  setShowConflictPanel(true);
-                  closeModal();
+          if (Platform.OS === 'web') {
+            // For web, show toast and conflict panel
+            showToast('Critical conflicts detected. Check conflict panel for resolution.', 'error');
+            setShowConflictPanel(true);
+            closeModal();
+            return;
+          } else {
+            Alert.alert(
+              'Critical Conflict Detected',
+              `Adding this entry will create critical conflicts:\n\n${conflictMessages}\n\nWould you like to see resolution suggestions?`,
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { 
+                  text: 'Show Conflicts', 
+                  onPress: () => {
+                    setShowConflictPanel(true);
+                    closeModal();
+                  }
+                },
+                { 
+                  text: 'Add Anyway', 
+                  style: 'destructive',
+                  onPress: async () => {
+                    console.log('Adding new entry despite conflicts:', newEntry);
+                    await addScheduleEntry(currentWeekId, newEntry);
+                    setSchedule(prev => [...prev, newEntry]);
+                    console.log('New entry added for week:', currentWeekId);
+                    showToast('Schedule entry added with conflicts!', 'warning');
+                    closeModal();
+                  }
                 }
-              },
-              { 
-                text: 'Add Anyway', 
-                style: 'destructive',
-                onPress: async () => {
-                  console.log('Adding new entry despite conflicts:', newEntry);
-                  await addScheduleEntry(currentWeekId, newEntry);
-                  setSchedule(prev => [...prev, newEntry]);
-                  console.log('New entry added for week:', currentWeekId);
-                  showToast('Schedule entry added with conflicts!', 'warning');
-                  closeModal();
-                }
-              }
-            ]
-          );
-          return;
+              ]
+            );
+            return;
+          }
         } else if (validation.warnings.length > 0) {
-          Alert.alert(
-            'Schedule Warning',
-            validation.warnings.join('\n') + '\n\nDo you want to continue?',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              { 
-                text: 'Continue', 
-                onPress: async () => {
-                  console.log('Adding new entry:', newEntry);
-                  await addScheduleEntry(currentWeekId, newEntry);
-                  setSchedule(prev => [...prev, newEntry]);
-                  console.log('New entry added for week:', currentWeekId);
-                  showToast('Schedule entry added successfully!', 'success');
-                  closeModal();
+          if (Platform.OS === 'web') {
+            // For web, show toast and proceed
+            showToast('Schedule warnings detected. Entry added.', 'warning');
+          } else {
+            Alert.alert(
+              'Schedule Warning',
+              validation.warnings.join('\n') + '\n\nDo you want to continue?',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { 
+                  text: 'Continue', 
+                  onPress: async () => {
+                    console.log('Adding new entry:', newEntry);
+                    await addScheduleEntry(currentWeekId, newEntry);
+                    setSchedule(prev => [...prev, newEntry]);
+                    console.log('New entry added for week:', currentWeekId);
+                    showToast('Schedule entry added successfully!', 'success');
+                    closeModal();
+                  }
                 }
-              }
-            ]
-          );
-          return;
+              ]
+            );
+            return;
+          }
         }
         
         console.log('Adding new entry:', newEntry);
@@ -1232,35 +1229,43 @@ const ScheduleView = () => {
         
         if (validation.hasConflicts && !validation.canProceed) {
           const conflictMessages = validation.conflicts.map(c => c.description).join('\n');
-          Alert.alert(
-            'Critical Conflict Detected',
-            `Updating this entry will create critical conflicts:\n\n${conflictMessages}\n\nWould you like to see resolution suggestions?`,
-            [
-              { text: 'Cancel', style: 'cancel' },
-              { 
-                text: 'Show Conflicts', 
-                onPress: () => {
-                  setShowConflictPanel(true);
-                  closeModal();
+          if (Platform.OS === 'web') {
+            // For web, show toast and conflict panel
+            showToast('Critical conflicts detected. Check conflict panel for resolution.', 'error');
+            setShowConflictPanel(true);
+            closeModal();
+            return;
+          } else {
+            Alert.alert(
+              'Critical Conflict Detected',
+              `Updating this entry will create critical conflicts:\n\n${conflictMessages}\n\nWould you like to see resolution suggestions?`,
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { 
+                  text: 'Show Conflicts', 
+                  onPress: () => {
+                    setShowConflictPanel(true);
+                    closeModal();
+                  }
+                },
+                { 
+                  text: 'Update Anyway', 
+                  style: 'destructive',
+                  onPress: async () => {
+                    console.log('Force updating entry:', selectedEntry.id, 'with:', JSON.stringify(updates));
+                    await updateScheduleEntry(currentWeekId, selectedEntry.id, updates);
+                    setSchedule(prev => prev.map(entry =>
+                      entry.id === selectedEntry.id ? { ...entry, ...updates } : entry
+                    ));
+                    console.log('Entry force updated for week:', currentWeekId, selectedEntry.id);
+                    showToast('Schedule entry updated with conflicts!', 'warning');
+                    closeModal();
+                  }
                 }
-              },
-              { 
-                text: 'Update Anyway', 
-                style: 'destructive',
-                onPress: async () => {
-                  console.log('Force updating entry:', selectedEntry.id, 'with:', JSON.stringify(updates));
-                  await updateScheduleEntry(currentWeekId, selectedEntry.id, updates);
-                  setSchedule(prev => prev.map(entry =>
-                    entry.id === selectedEntry.id ? { ...entry, ...updates } : entry
-                  ));
-                  console.log('Entry force updated for week:', currentWeekId, selectedEntry.id);
-                  showToast('Schedule entry updated with conflicts!', 'warning');
-                  closeModal();
-                }
-              }
-            ]
-          );
-          return;
+              ]
+            );
+            return;
+          }
         }
         
         console.log('Proceeding with entry update:', selectedEntry.id, 'with:', JSON.stringify(updates));
@@ -1997,13 +2002,11 @@ const ScheduleView = () => {
             newBuildingName={newBuildingName}
             newBuildingSecurity={newBuildingSecurity}
             newBuildingSecurityLevel={newBuildingSecurityLevel}
-            newBuildingPriority={newBuildingPriority}
             selectedClientForBuilding={selectedClientForBuilding}
             newCleanerName={newCleanerName}
             showClientDropdown={showClientDropdown}
             showCleanerDropdown={showCleanerDropdown}
             showSecurityLevelDropdown={showSecurityLevelDropdown}
-            showPriorityDropdown={showPriorityDropdown}
             setCleanerName={setCleanerName}
             setSelectedCleaners={setSelectedCleaners}
             setHours={setHours}
@@ -2014,16 +2017,14 @@ const ScheduleView = () => {
             setNewBuildingName={setNewBuildingName}
             setNewBuildingSecurity={setNewBuildingSecurity}
             setNewBuildingSecurityLevel={setNewBuildingSecurityLevel}
-            setNewBuildingPriority={setNewBuildingPriority}
             setSelectedClientForBuilding={setSelectedClientForBuilding}
             setNewCleanerName={setNewCleanerName}
             setShowClientDropdown={setShowClientDropdown}
             setShowCleanerDropdown={setShowCleanerDropdown}
             setShowSecurityLevelDropdown={setShowSecurityLevelDropdown}
-            setShowPriorityDropdown={setShowPriorityDropdown}
             onClose={closeModal}
             onSave={saveEntry}
-            onDelete={deleteEntry}
+            onDelete={performDeleteEntry}
             onAddClient={addClient}
             onAddBuilding={addBuilding}
             onAddCleaner={addCleaner}

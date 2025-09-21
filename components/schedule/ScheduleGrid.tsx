@@ -50,8 +50,9 @@ const ScheduleGrid = memo(({
   const scheduleMap = useMemo(() => {
     const map = new Map<string, ScheduleEntry>();
     schedule.forEach(entry => {
-      if (entry && entry.buildingName && entry.day) {
-        const key = `${entry.buildingName}-${entry.day.toLowerCase()}`;
+      if (entry && entry.clientName && entry.buildingName && entry.day) {
+        // Include clientName in the key to ensure uniqueness across different clients
+        const key = `${entry.clientName}-${entry.buildingName}-${entry.day.toLowerCase()}`;
         map.set(key, entry);
       }
     });
@@ -59,8 +60,9 @@ const ScheduleGrid = memo(({
     return map;
   }, [schedule]);
 
-  const getScheduleEntry = useCallback((buildingName: string, day: string): ScheduleEntry | null => {
-    const key = `${buildingName}-${day.toLowerCase()}`;
+  const getScheduleEntry = useCallback((clientName: string, buildingName: string, day: string): ScheduleEntry | null => {
+    // Include clientName in the key to ensure uniqueness across different clients
+    const key = `${clientName}-${buildingName}-${day.toLowerCase()}`;
     return scheduleMap.get(key) || null;
   }, [scheduleMap]);
 
@@ -94,7 +96,7 @@ const ScheduleGrid = memo(({
 
   const renderCell = useCallback((building: ClientBuilding, day: string) => {
     const dayKey = day.toLowerCase() as 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
-    const entry = getScheduleEntry(building.buildingName, day);
+    const entry = getScheduleEntry(building.clientName, building.buildingName, day);
     
     return (
       <TouchableOpacity

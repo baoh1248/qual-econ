@@ -53,7 +53,7 @@ const SmartSchedulingSuggestions = memo<SmartSchedulingSuggestionsProps>(({
   const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(new Set());
 
   // Enhanced conflict detection
-  const { conflicts, conflictSummary } = useConflictDetection(schedule, cleaners);
+  const { conflicts, conflictSummary } = useConflictDetection(schedule, cleaners, clientBuildings);
 
   // Enhanced travel optimization with client grouping
   const optimizeTravelTimeEnhanced = useCallback((

@@ -16,7 +16,6 @@ export interface ClientBuilding {
   clientName: string;
   buildingName: string;
   address?: string;
-  priority: 'low' | 'medium' | 'high';
   security?: string;
   securityLevel: 'low' | 'medium' | 'high';
 }
@@ -27,6 +26,16 @@ export interface Cleaner {
   isActive: boolean;
   avatar?: string;
   specialties: string[];
+  employeeId: string; // New field for ID number
+  securityLevel: 'low' | 'medium' | 'high'; // New field for security level
+  phoneNumber: string; // New field for phone number
+  email?: string; // Optional email field
+  hireDate?: string; // Optional hire date
+  emergencyContact?: {
+    name: string;
+    phone: string;
+    relationship: string; // Keep for backward compatibility but won't be used in new forms
+  }; // Optional emergency contact
 }
 
 const STORAGE_KEYS = {
@@ -108,7 +117,6 @@ export const useClientData = () => {
         clientName: 'TechCorp Inc.', 
         buildingName: 'Main Office', 
         address: '123 Tech Street',
-        priority: 'high',
         security: 'Badge required at main entrance',
         securityLevel: 'high'
       },
@@ -117,7 +125,6 @@ export const useClientData = () => {
         clientName: 'TechCorp Inc.', 
         buildingName: 'Warehouse', 
         address: '456 Storage Ave',
-        priority: 'medium',
         security: 'Key code: 1234',
         securityLevel: 'medium'
       },
@@ -126,7 +133,6 @@ export const useClientData = () => {
         clientName: 'MedCenter Hospital', 
         buildingName: 'Emergency Wing', 
         address: '789 Health Blvd',
-        priority: 'high',
         security: 'ID check and escort required',
         securityLevel: 'high'
       },
@@ -135,7 +141,6 @@ export const useClientData = () => {
         clientName: 'Downtown Mall', 
         buildingName: 'Food Court', 
         address: '321 Shopping St',
-        priority: 'medium',
         security: 'Security desk check-in',
         securityLevel: 'medium'
       },
@@ -151,19 +156,44 @@ export const useClientData = () => {
         id: '1', 
         name: 'John Doe', 
         isActive: true, 
-        specialties: ['Office Cleaning', 'Deep Cleaning'] 
+        specialties: ['Office Cleaning', 'Deep Cleaning'],
+        employeeId: '4',
+        securityLevel: 'high',
+        phoneNumber: '+1 (555) 123-4567',
+        email: 'john.doe@cleaningcompany.com',
+        hireDate: '2023-01-15',
+        emergencyContact: {
+          name: 'Jane Doe',
+          phone: '+1 (555) 987-6543',
+          relationship: 'Spouse'
+        }
       },
       { 
         id: '2', 
         name: 'Jane Smith', 
         isActive: true, 
-        specialties: ['Medical Facilities', 'Sanitization'] 
+        specialties: ['Medical Facilities', 'Sanitization'],
+        employeeId: '2',
+        securityLevel: 'medium',
+        phoneNumber: '+1 (555) 234-5678',
+        email: 'jane.smith@cleaningcompany.com',
+        hireDate: '2023-03-20',
+        emergencyContact: {
+          name: 'Bob Smith',
+          phone: '+1 (555) 876-5432',
+          relationship: 'Brother'
+        }
       },
       { 
         id: '3', 
-        name: 'Mike Johnson', 
+        name: 'Johnson Smith', 
         isActive: true, 
-        specialties: ['Industrial', 'Equipment Maintenance'] 
+        specialties: ['Industrial', 'Equipment Maintenance'],
+        employeeId: '9',
+        securityLevel: 'low',
+        phoneNumber: '+1 (555) 345-6789',
+        email: 'johnson.smith@cleaningcompany.com',
+        hireDate: '2023-05-10'
       },
     ];
     

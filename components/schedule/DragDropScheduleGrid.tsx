@@ -65,7 +65,7 @@ const DragDropScheduleGrid = memo(({
     validateScheduleChange,
     hasConflicts,
     conflictSummary 
-  } = useConflictDetection(schedule, cleaners);
+  } = useConflictDetection(schedule, cleaners, clientBuildings);
 
   // Animation values for drag and drop
   const translateX = useSharedValue(0);
@@ -113,12 +113,13 @@ const DragDropScheduleGrid = memo(({
       }
 
       for (const entry of schedule) {
-        if (!entry || !entry.buildingName || !entry.day) {
+        if (!entry || !entry.clientName || !entry.buildingName || !entry.day) {
           console.warn('Invalid schedule entry:', entry);
           continue;
         }
 
-        const key = `${entry.buildingName}|${entry.day.toLowerCase()}`;
+        // Include clientName in the key to ensure uniqueness across different clients
+        const key = `${entry.clientName}|${entry.buildingName}|${entry.day.toLowerCase()}`;
         map.set(key, entry);
       }
       
@@ -152,13 +153,14 @@ const DragDropScheduleGrid = memo(({
   }, [conflicts]);
 
   // Optimized lookup function with error handling
-  const getScheduleEntry = useCallback((buildingName: string, day: string): ScheduleEntry | null => {
+  const getScheduleEntry = useCallback((clientName: string, buildingName: string, day: string): ScheduleEntry | null => {
     try {
-      if (!buildingName || !day) {
+      if (!clientName || !buildingName || !day) {
         return null;
       }
 
-      const key = `${buildingName}|${day.toLowerCase()}`;
+      // Include clientName in the key to ensure uniqueness across different clients
+      const key = `${clientName}|${buildingName}|${day.toLowerCase()}`;
       return scheduleMap.get(key) || null;
     } catch (error) {
       console.error('Error getting schedule entry:', error);
@@ -192,19 +194,7 @@ const DragDropScheduleGrid = memo(({
     }
   }, []);
 
-  const getPriorityColor = useCallback((priority: string) => {
-    try {
-      switch (priority) {
-        case 'high': return colors.danger;
-        case 'medium': return colors.warning;
-        case 'low': return colors.success;
-        default: return colors.text;
-      }
-    } catch (error) {
-      console.error('Error getting priority color:', error);
-      return colors.text;
-    }
-  }, []);
+
 
   const getSecurityLevelColor = useCallback((level: string) => {
     try {
@@ -508,7 +498,7 @@ const DragDropScheduleGrid = memo(({
       }
 
       const dayKey = day.toLowerCase() as 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
-      const entry = getScheduleEntry(building.buildingName, day);
+      const entry = getScheduleEntry(building.clientName, building.buildingName, day);
       const isDropTarget = dropTarget?.building?.id === building.id && dropTarget?.day === dayKey;
       const isSelected = entry && selectedEntriesSet.has(entry.id);
       const isDraggedEntry = draggedEntry?.id === entry?.id;
@@ -718,9 +708,6 @@ const DragDropScheduleGrid = memo(({
                 )}
               </View>
               <View style={styles.buildingMeta}>
-                <View style={[styles.priorityBadge, { backgroundColor: getPriorityColor(building.priority || 'medium') }]}>
-                  <Text style={styles.priorityText}>{(building.priority || 'M').charAt(0).toUpperCase()}</Text>
-                </View>
                 <View style={[styles.securityBadge, { backgroundColor: getSecurityLevelColor(building.securityLevel || 'medium') }]}>
                   <Icon name="shield" size={12} style={{ color: colors.background }} />
                 </View>
@@ -742,7 +729,6 @@ const DragDropScheduleGrid = memo(({
     hasEntryConflict,
     renderCell, 
     onBuildingLongPress, 
-    getPriorityColor, 
     getSecurityLevelColor
   ]);
 
@@ -1106,19 +1092,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.xs,
   },
-  priorityBadge: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  priorityText: {
-    ...typography.small,
-    color: colors.background,
-    fontWeight: '600',
-    fontSize: 10,
-  },
+
   securityBadge: {
     width: 20,
     height: 20,
