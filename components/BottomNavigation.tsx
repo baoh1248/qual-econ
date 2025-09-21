@@ -49,7 +49,10 @@ export default function BottomNavigation({ role }: BottomNavigationProps) {
         return (
           <TouchableOpacity
             key={item.name}
-            style={[styles.navItem, isActive && styles.activeNavItem]}
+            style={[
+              styles.navItem, 
+              isActive ? styles.activeNavItem : styles.inactiveNavItem
+            ]}
             onPress={() => handleNavPress(item.path)}
             activeOpacity={0.7}
           >
@@ -57,13 +60,13 @@ export default function BottomNavigation({ role }: BottomNavigationProps) {
               name={item.icon} 
               size={24} 
               style={{ 
-                color: isActive ? colors.primary : colors.text,
+                color: isActive ? colors.background : colors.background,
                 marginBottom: spacing.xs 
               }} 
             />
             <Text style={[
               styles.navLabel,
-              { color: isActive ? colors.primary : colors.text }
+              { color: isActive ? colors.background : colors.background }
             ]}>
               {item.label}
             </Text>
@@ -93,7 +96,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   activeNavItem: {
-    backgroundColor: colors.primary + '10',
+    backgroundColor: colors.primary,
+  },
+  inactiveNavItem: {
+    backgroundColor: colors.primary,
   },
   navLabel: {
     ...typography.small,

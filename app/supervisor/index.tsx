@@ -11,6 +11,7 @@ import Toast from '../../components/Toast';
 import { useToast } from '../../hooks/useToast';
 import { useInventoryAlerts } from '../../hooks/useInventoryAlerts';
 import InventoryAlertBadge from '../../components/InventoryAlertBadge';
+import CompanyLogo from '../../components/CompanyLogo';
 
 interface TeamMember {
   id: string;
@@ -195,7 +196,10 @@ export default function SupervisorDashboard() {
         <TouchableOpacity onPress={() => router.back()}>
           <Icon name="arrow-back" size={24} style={{ color: colors.background }} />
         </TouchableOpacity>
-        <Text style={commonStyles.headerTitle}>Supervisor Dashboard</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+          <CompanyLogo size="small" showText={false} variant="light" />
+          <Text style={commonStyles.headerTitle}>Supervisor Dashboard</Text>
+        </View>
         <TouchableOpacity onPress={() => showToast('Settings coming soon', 'info')}>
           <Icon name="settings" size={24} style={{ color: colors.background }} />
         </TouchableOpacity>
@@ -364,14 +368,14 @@ export default function SupervisorDashboard() {
                   minWidth: isLargeScreen ? 0 : '48%',
                   alignItems: 'center', 
                   padding: spacing.md, 
-                  backgroundColor: '#E2E8F0', 
+                  backgroundColor: colors.primary, 
                   borderRadius: 8 
                 }
               ]}
               onPress={() => router.push('/supervisor/schedule')}
             >
-              <Icon name="calendar" size={24} style={{ color: colors.primary, marginBottom: spacing.xs }} />
-              <Text style={[typography.caption, { color: colors.text, textAlign: 'center' }]}>Schedule</Text>
+              <Icon name="calendar" size={24} style={{ color: colors.background, marginBottom: spacing.xs }} />
+              <Text style={[typography.caption, { color: colors.background, textAlign: 'center' }]}>Schedule</Text>
             </TouchableOpacity>
             
             <TouchableOpacity
@@ -381,14 +385,14 @@ export default function SupervisorDashboard() {
                   minWidth: isLargeScreen ? 0 : '48%',
                   alignItems: 'center', 
                   padding: spacing.md, 
-                  backgroundColor: '#E2E8F0', 
+                  backgroundColor: colors.primary, 
                   borderRadius: 8 
                 }
               ]}
               onPress={() => router.push('/supervisor/payroll')}
             >
-              <Icon name="time" size={24} style={{ color: colors.primary, marginBottom: spacing.xs }} />
-              <Text style={[typography.caption, { color: colors.text, textAlign: 'center' }]}>Payroll Hours</Text>
+              <Icon name="time" size={24} style={{ color: colors.background, marginBottom: spacing.xs }} />
+              <Text style={[typography.caption, { color: colors.background, textAlign: 'center' }]}>Payroll Hours</Text>
             </TouchableOpacity>
             
             <TouchableOpacity
@@ -398,14 +402,14 @@ export default function SupervisorDashboard() {
                   minWidth: isLargeScreen ? 0 : '48%',
                   alignItems: 'center', 
                   padding: spacing.md, 
-                  backgroundColor: '#E2E8F0', 
+                  backgroundColor: colors.primary, 
                   borderRadius: 8 
                 }
               ]}
               onPress={() => router.push('/supervisor/inventory')}
             >
               <View style={{ position: 'relative' }}>
-                <Icon name="cube" size={24} style={{ color: colors.primary, marginBottom: spacing.xs }} />
+                <Icon name="cube" size={24} style={{ color: colors.background, marginBottom: spacing.xs }} />
                 {unacknowledgedAlerts.length > 0 && (
                   <View style={{
                     position: 'absolute',
@@ -424,7 +428,7 @@ export default function SupervisorDashboard() {
                   </View>
                 )}
               </View>
-              <Text style={[typography.caption, { color: colors.text, textAlign: 'center' }]}>Inventory</Text>
+              <Text style={[typography.caption, { color: colors.background, textAlign: 'center' }]}>Inventory</Text>
             </TouchableOpacity>
             
             <TouchableOpacity
@@ -434,14 +438,14 @@ export default function SupervisorDashboard() {
                   minWidth: isLargeScreen ? 0 : '48%',
                   alignItems: 'center', 
                   padding: spacing.md, 
-                  backgroundColor: '#E2E8F0', 
+                  backgroundColor: colors.primary, 
                   borderRadius: 8 
                 }
               ]}
               onPress={() => showToast('Analytics coming soon', 'info')}
             >
-              <Icon name="analytics" size={24} style={{ color: colors.primary, marginBottom: spacing.xs }} />
-              <Text style={[typography.caption, { color: colors.text, textAlign: 'center' }]}>Analytics</Text>
+              <Icon name="analytics" size={24} style={{ color: colors.background, marginBottom: spacing.xs }} />
+              <Text style={[typography.caption, { color: colors.background, textAlign: 'center' }]}>Analytics</Text>
             </TouchableOpacity>
             
             <TouchableOpacity
@@ -451,14 +455,14 @@ export default function SupervisorDashboard() {
                   minWidth: isLargeScreen ? 0 : '48%',
                   alignItems: 'center', 
                   padding: spacing.md, 
-                  backgroundColor: '#E2E8F0', 
+                  backgroundColor: colors.primary, 
                   borderRadius: 8 
                 }
               ]}
               onPress={() => router.push('/supervisor/photos')}
             >
-              <Icon name="camera" size={24} style={{ color: colors.primary, marginBottom: spacing.xs }} />
-              <Text style={[typography.caption, { color: colors.text, textAlign: 'center' }]}>Photos</Text>
+              <Icon name="camera" size={24} style={{ color: colors.background, marginBottom: spacing.xs }} />
+              <Text style={[typography.caption, { color: colors.background, textAlign: 'center' }]}>Photos</Text>
             </TouchableOpacity>
             
             <TouchableOpacity
@@ -468,14 +472,14 @@ export default function SupervisorDashboard() {
                   minWidth: isLargeScreen ? 0 : '48%',
                   alignItems: 'center', 
                   padding: spacing.md, 
-                  backgroundColor: '#E2E8F0', 
+                  backgroundColor: colors.primary, 
                   borderRadius: 8 
                 }
               ]}
               onPress={() => router.push('/supervisor/cleaners')}
             >
-              <Icon name="people" size={24} style={{ color: colors.primary, marginBottom: spacing.xs }} />
-              <Text style={[typography.caption, { color: colors.text, textAlign: 'center' }]}>Cleaners</Text>
+              <Icon name="people" size={24} style={{ color: colors.background, marginBottom: spacing.xs }} />
+              <Text style={[typography.caption, { color: colors.background, textAlign: 'center' }]}>Cleaners</Text>
             </TouchableOpacity>
           </View>
         </AnimatedCard>
