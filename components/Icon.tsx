@@ -25,7 +25,6 @@ export default function Icon({ name, size = 24, color = colors.text, style }: Ic
             {
               width: size,
               height: size,
-              tintColor: color,
             }
           ]}
           resizeMode="contain"
