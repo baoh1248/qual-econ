@@ -9,7 +9,7 @@ interface IconButtonProps {
   onPress: () => void;
   style?: ViewStyle;
   disabled?: boolean;
-  variant?: 'primary' | 'secondary' | 'white' | 'danger' | 'success' | 'warning';
+  variant?: 'primary' | 'secondary' | 'white' | 'danger' | 'success' | 'warning' | 'transparent';
   size?: 'small' | 'medium' | 'large';
   iconSize?: number;
   children?: React.ReactNode;
@@ -73,6 +73,13 @@ export default function IconButton({
           shadowOpacity: 0.3,
           shadowRadius: 4,
           elevation: 3,
+        };
+      case 'transparent':
+        return {
+          backgroundColor: 'transparent',
+          shadowColor: 'transparent',
+          shadowOpacity: 0,
+          elevation: 0,
         };
       default: // 'primary'
         return {
