@@ -23,8 +23,8 @@ export default function Icon({ name, size = 24, color = colors.text, style }: Ic
           style={[
             styles.iconImage,
             {
-              width: size,
-              height: size,
+              width: 55,
+              height: 55,
             }
           ]}
           resizeMode="contain"
