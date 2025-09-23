@@ -1,9 +1,7 @@
-import { View, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../styles/commonStyles';
+import { View, StyleSheet, Image } from 'react-native';
 
 interface IconProps {
-  name: keyof typeof Ionicons.glyphMap;
+  name?: string; // preserved for compatibility, not used
   size?: number;
   style?: object;
 }
@@ -11,7 +9,10 @@ interface IconProps {
 export default function Icon({ name, size = 40, style }: IconProps) {
   return (
     <View style={[styles.iconContainer, style]}>
-      <Ionicons name={name} size={size} color={"white"} />
+      <Image
+        source={require('../assets/images/qelogo.png')}
+        style={{ width: size, height: size, resizeMode: 'contain' }}
+      />
     </View>
   );
 }
