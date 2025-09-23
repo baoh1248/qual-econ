@@ -3,6 +3,7 @@ import { Text, View, ScrollView, TouchableOpacity, Alert, TextInput, Image, Moda
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState, useEffect } from 'react';
 import { commonStyles, colors, spacing, typography, statusColors } from '../../../styles/commonStyles';
+import CompanyLogo from '../../../components/CompanyLogo';
 import Icon from '../../../components/Icon';
 import Button from '../../../components/Button';
 import * as ImagePicker from 'expo-image-picker';
@@ -268,7 +269,10 @@ export default function TaskDetail() {
         <TouchableOpacity onPress={() => router.back()}>
           <Icon name="arrow-back" size={24} style={{ color: colors.background }} />
         </TouchableOpacity>
-        <Text style={[commonStyles.headerTitle, { flex: 1, textAlign: 'center' }]}>Task Details</Text>
+        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm }}>
+          <CompanyLogo size="small" showText={false} variant="light" />
+          <Text style={commonStyles.headerTitle}>Task Details</Text>
+        </View>
         <View style={{ width: 24 }} />
       </View>
 

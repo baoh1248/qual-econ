@@ -14,7 +14,7 @@ import ErrorBoundary from '../../components/ErrorBoundary';
 import Toast from '../../components/Toast';
 import DragDropScheduleGrid from '../../components/schedule/DragDropScheduleGrid';
 import ScheduleModal from '../../components/schedule/ScheduleModal';
-import SmartSchedulingSuggestions from '../../components/schedule/SmartSchedulingSuggestions';
+
 import ConflictResolutionPanel from '../../components/schedule/ConflictResolutionPanel';
 import RecurringTaskModal from '../../components/schedule/RecurringTaskModal';
 import BulkActionsBottomSheet from '../../components/schedule/BulkActionsBottomSheet';
@@ -22,6 +22,7 @@ import { useScheduleStorage, type ScheduleEntry } from '../../hooks/useScheduleS
 import { useClientData, type Client, type ClientBuilding, type Cleaner } from '../../hooks/useClientData';
 import { useConflictDetection } from '../../hooks/useConflictDetection';
 import { useToast } from '../../hooks/useToast';
+import CompanyLogo from '../../components/CompanyLogo';
 
 type ModalType = 'add' | 'edit' | 'add-client' | 'add-building' | 'add-cleaner' | 'details' | 'edit-client' | 'edit-building' | null;
 type ViewType = 'daily' | 'weekly' | 'monthly';
@@ -88,10 +89,8 @@ const ScheduleView = () => {
   // Enhanced features state
   const [bulkMode, setBulkMode] = useState(false);
   const [selectedEntries, setSelectedEntries] = useState<string[]>([]);
-  const [showSuggestions, setShowSuggestions] = useState(true);
   const [showConflictPanel, setShowConflictPanel] = useState(false);
   const [recurringTaskModalVisible, setRecurringTaskModalVisible] = useState(false);
-  const [dismissedSuggestions, setDismissedSuggestions] = useState<string[]>([]);
 
   // Enhanced conflict detection
   const { 
@@ -438,6 +437,35 @@ const ScheduleView = () => {
     }
   }, []);
 
+  // Enhanced form population for edit mode
+  const populateFormForEdit = useCallback((entry: ScheduleEntry) => {
+    try {
+      console.log('=== POPULATING FORM FOR EDIT ===');
+      console.log('Entry data:', {
+        id: entry.id,
+        cleanerName: entry.cleanerName,
+        cleanerNames: entry.cleanerNames,
+        hours: entry.hours,
+        startTime: entry.startTime
+      });
+
+      // Set basic fields
+      setCleanerName(entry.cleanerName || '');
+      setHours(entry.hours?.toString() || '');
+      setStartTime(entry.startTime || '');
+
+      // Handle multiple cleaners properly
+      const entryCleaners = getEntryCleaners ? getEntryCleaners(entry) : (entry.cleanerName ? [entry.cleanerName] : []);
+      console.log('Setting selected cleaners from entry:', entryCleaners);
+      setSelectedCleaners([...entryCleaners]); // Create a new array to ensure state update
+
+      console.log('Form populated with cleaners:', entryCleaners);
+      console.log('=== FORM POPULATION COMPLETED ===');
+    } catch (error) {
+      console.error('Error populating form for edit:', error);
+    }
+  }, [getEntryCleaners]);
+
   const performMove = useCallback(async (entry: ScheduleEntry, newBuilding: ClientBuilding, newDay: string) => {
     try {
       if (!updateScheduleEntry || !currentWeekId) {
@@ -513,15 +541,7 @@ const ScheduleView = () => {
         });
         
         setSelectedEntry(entry);
-        setCleanerName(entry.cleanerName || '');
-        
-        // Set multiple cleaners if available, otherwise use single cleaner for backward compatibility
-        const entryCleaners = getEntryCleaners ? getEntryCleaners(entry) : (entry.cleanerName ? [entry.cleanerName] : []);
-        console.log('Setting selected cleaners for details:', entryCleaners);
-        setSelectedCleaners(entryCleaners);
-        
-        setHours(entry.hours?.toString() || '');
-        setStartTime(entry.startTime || '');
+        populateFormForEdit(entry);
         setModalType('details');
       } else {
         setSelectedClientBuilding(clientBuilding);
@@ -533,7 +553,7 @@ const ScheduleView = () => {
     } catch (error) {
       console.error('Error in handleCellPress:', error);
     }
-  }, [schedule, bulkMode, resetForm, getEntryCleaners]);
+  }, [schedule, bulkMode, resetForm, populateFormForEdit]);
 
   const handleCellLongPress = useCallback((clientBuilding: ClientBuilding, day: string) => {
     try {
@@ -564,22 +584,14 @@ const ScheduleView = () => {
         });
         
         setSelectedEntry(entry);
-        setCleanerName(entry.cleanerName || '');
-        
-        // Set multiple cleaners if available, otherwise use single cleaner for backward compatibility
-        const entryCleaners = getEntryCleaners ? getEntryCleaners(entry) : (entry.cleanerName ? [entry.cleanerName] : []);
-        console.log('Setting selected cleaners for edit:', entryCleaners);
-        setSelectedCleaners(entryCleaners);
-        
-        setHours(entry.hours?.toString() || '');
-        setStartTime(entry.startTime || '');
+        populateFormForEdit(entry);
         setModalType('edit');
         setModalVisible(true);
       }
     } catch (error) {
       console.error('Error in handleCellLongPress:', error);
     }
-  }, [schedule, bulkMode, getEntryCleaners]);
+  }, [schedule, bulkMode, populateFormForEdit]);
 
   const handleClientLongPress = useCallback((client: Client) => {
     try {
@@ -698,44 +710,7 @@ const ScheduleView = () => {
     }
   }, [schedule, validateScheduleChange, performMove, showToast]);
 
-  // Enhanced suggestion handlers
-  const handleApplySuggestion = useCallback(async (suggestion: any) => {
-    try {
-      console.log('Applying suggestion:', suggestion.id);
-      
-      for (const change of suggestion.suggestedChanges) {
-        if (change.entryId) {
-          const updates: Partial<ScheduleEntry> = {};
-          
-          if (change.newCleaner) updates.cleanerName = change.newCleaner;
-          if (change.newDay) updates.day = change.newDay.toLowerCase() as any;
-          if (change.newTime) updates.startTime = change.newTime;
-          if (change.newHours) updates.hours = change.newHours;
-          
-          if (Object.keys(updates).length > 0) {
-            await updateScheduleEntry(currentWeekId, change.entryId, updates);
-            setSchedule(prev => prev.map(entry =>
-              entry.id === change.entryId ? { ...entry, ...updates } : entry
-            ));
-          }
-        }
-      }
-      
-      showToast('Suggestion applied successfully!', 'success');
-      
-      // If this was a conflict resolution, hide the conflict panel
-      if (suggestion.type === 'conflict_resolution') {
-        setShowConflictPanel(false);
-      }
-    } catch (error) {
-      console.error('Error applying suggestion:', error);
-      showToast('Failed to apply suggestion', 'error');
-    }
-  }, [updateScheduleEntry, currentWeekId, showToast]);
 
-  const handleDismissSuggestion = useCallback((suggestionId: string) => {
-    setDismissedSuggestions(prev => [...prev, suggestionId]);
-  }, []);
 
   // Enhanced conflict resolution handlers
   const handleApplyResolution = useCallback(async (conflictId: string, resolution: any) => {
@@ -1008,13 +983,13 @@ const ScheduleView = () => {
           weekId: currentWeekId
         });
         showToast('No entry selected for deletion', 'error');
-        throw new Error('Missing required data for deletion');
+        return;
       }
       
       if (!deleteScheduleEntry) {
         console.error('Delete function not available');
         showToast('Unable to delete entry at this time', 'error');
-        throw new Error('Delete function not available');
+        return;
       }
 
       console.log('About to delete entry:', selectedEntry.id, 'from week:', currentWeekId);
@@ -1024,12 +999,18 @@ const ScheduleView = () => {
       await deleteScheduleEntry(currentWeekId, selectedEntry.id);
       console.log('deleteScheduleEntry completed successfully');
       
-      // Reload the schedule from storage to ensure consistency
-      console.log('Reloading schedule after deletion...');
-      await loadCurrentWeekSchedule(true);
+      // Update local state immediately for better UX
+      setSchedule(prev => {
+        const updated = prev.filter(entry => entry.id !== selectedEntry.id);
+        console.log('Local schedule state updated, new length:', updated.length);
+        return updated;
+      });
       
       console.log('Entry deleted successfully:', selectedEntry.id);
       showToast('Shift deleted successfully!', 'success');
+      
+      // Close the modal after successful deletion
+      closeModal();
       
       console.log('=== DELETE OPERATION COMPLETED ===');
       
@@ -1037,21 +1018,29 @@ const ScheduleView = () => {
       console.error('=== DELETE OPERATION FAILED ===');
       console.error('Error during deletion process:', error);
       showToast('Failed to delete shift. Please try again.', 'error');
-      throw error; // Re-throw so the modal can handle the error
     }
-  }, [selectedEntry, currentWeekId, deleteScheduleEntry, showToast, loadCurrentWeekSchedule, schedule.length]);
+  }, [selectedEntry, currentWeekId, deleteScheduleEntry, showToast, schedule.length, closeModal]);
 
-  // Enhanced save entry with conflict validation
+  // Enhanced save entry with conflict validation and improved cleaner handling
   const saveEntry = useCallback(async () => {
     try {
+      console.log('=== SAVING ENTRY ===');
       console.log('Saving entry for week:', currentWeekId);
       console.log('Modal type:', modalType);
-      console.log('Form data:', { cleanerName, hours, startTime });
+      console.log('Form data:', { 
+        cleanerName, 
+        selectedCleaners: selectedCleaners.length > 0 ? selectedCleaners : 'none',
+        hours, 
+        startTime 
+      });
       console.log('Selected building:', selectedClientBuilding);
       console.log('Selected day:', selectedDay);
+      console.log('Selected entry (for edit):', selectedEntry?.id);
       
       // Validation - check for multiple cleaners or single cleaner
       const cleanersToUse = selectedCleaners.length > 0 ? selectedCleaners : (cleanerName?.trim() ? [cleanerName.trim()] : []);
+      
+      console.log('Cleaners to use after validation:', cleanersToUse);
       
       if (cleanersToUse.length === 0) {
         showToast('Please select at least one cleaner', 'error');
@@ -1107,6 +1096,14 @@ const ScheduleView = () => {
           status: 'scheduled',
           weekId: currentWeekId
         };
+
+        console.log('New entry to be added:', {
+          id: newEntry.id,
+          cleanerName: newEntry.cleanerName,
+          cleanerNames: newEntry.cleanerNames,
+          hours: newEntry.hours,
+          buildingName: newEntry.buildingName
+        });
 
         // Enhanced conflict validation before saving
         const validation = validateScheduleChange(newEntry);
@@ -1182,6 +1179,7 @@ const ScheduleView = () => {
         showToast('Schedule entry added successfully!', 'success');
         
       } else if (modalType === 'edit' && selectedEntry) {
+        console.log('=== EDITING ENTRY ===');
         console.log('Editing entry - current state:', {
           selectedEntry: {
             id: selectedEntry.id,
@@ -1199,7 +1197,7 @@ const ScheduleView = () => {
 
         const updates: Partial<ScheduleEntry> = {
           cleanerName: cleanersToUse[0], // Keep backward compatibility
-          cleanerNames: cleanersToUse, // New field for multiple cleaners
+          cleanerNames: [...cleanersToUse], // Ensure we create a new array
           cleanerIds: cleanersToUse.map(name => cleaners?.find(c => c.name === name)?.id).filter(Boolean) as string[],
           hours: hoursNum,
           startTime: startTime.trim() || undefined
@@ -1208,13 +1206,21 @@ const ScheduleView = () => {
         console.log('Prepared updates object:', JSON.stringify(updates));
 
         // Check if there are actual changes to prevent unnecessary updates
-        const hasChanges = (
-          JSON.stringify(selectedEntry.cleanerNames || [selectedEntry.cleanerName].filter(Boolean)) !== JSON.stringify(cleanersToUse) ||
-          selectedEntry.hours !== hoursNum ||
-          (selectedEntry.startTime || '') !== (startTime.trim() || '')
-        );
+        const currentCleaners = getEntryCleaners ? getEntryCleaners(selectedEntry) : (selectedEntry.cleanerName ? [selectedEntry.cleanerName] : []);
+        const hasCleanerChanges = JSON.stringify(currentCleaners.sort()) !== JSON.stringify(cleanersToUse.sort());
+        const hasHoursChanges = selectedEntry.hours !== hoursNum;
+        const hasTimeChanges = (selectedEntry.startTime || '') !== (startTime.trim() || '');
+        
+        const hasChanges = hasCleanerChanges || hasHoursChanges || hasTimeChanges;
 
-        console.log('Has changes detected:', hasChanges);
+        console.log('Change detection:', {
+          currentCleaners,
+          newCleaners: cleanersToUse,
+          hasCleanerChanges,
+          hasHoursChanges,
+          hasTimeChanges,
+          hasChanges
+        });
 
         if (!hasChanges) {
           console.log('No changes detected, closing modal without update');
@@ -1291,7 +1297,9 @@ const ScheduleView = () => {
       }
       
       closeModal();
+      console.log('=== SAVE ENTRY COMPLETED ===');
     } catch (error) {
+      console.error('=== SAVE ENTRY FAILED ===');
       console.error('Error saving entry:', error);
       showToast('Failed to save schedule entry. Please try again.', 'error');
     }
@@ -1315,7 +1323,8 @@ const ScheduleView = () => {
     showToast,
     validateScheduleChange,
     cleaners,
-    loadCurrentWeekSchedule
+    loadCurrentWeekSchedule,
+    getEntryCleaners
   ]);
 
   // Bulk operations handlers with error handling
@@ -1417,9 +1426,7 @@ const ScheduleView = () => {
                       ]}
                       onPress={() => {
                         setSelectedEntry(entry);
-                        setCleanerName(entry.cleanerName || '');
-                        setHours(entry.hours?.toString() || '');
-                        setStartTime(entry.startTime || '');
+                        populateFormForEdit(entry);
                         setModalType('details');
                         setModalVisible(true);
                       }}
@@ -1523,18 +1530,6 @@ const ScheduleView = () => {
             />
           )}
 
-          {/* Smart Suggestions */}
-          {showSuggestions && (
-            <SmartSchedulingSuggestions
-              schedule={schedule || []}
-              cleaners={cleaners || []}
-              clientBuildings={clientBuildings || []}
-              clients={clients || []}
-              onApplySuggestion={handleApplySuggestion}
-              onDismissSuggestion={handleDismissSuggestion}
-            />
-          )}
-
           <View style={styles.weekInfoHeader}>
             <Text style={styles.weekInfoText}>
               Week of {getHeaderText()} • {schedule?.length || 0} scheduled jobs
@@ -1584,14 +1579,6 @@ const ScheduleView = () => {
               <Text style={[styles.actionButtonText, hasConflicts && styles.actionButtonTextWarning]}>
                 {hasConflicts ? `Conflicts (${conflictSummary.total})` : 'No Conflicts'}
               </Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => setShowSuggestions(!showSuggestions)}
-            >
-              <Icon name={showSuggestions ? "bulb" : "bulb-outline"} size={16} style={{ color: colors.primary }} />
-              <Text style={styles.actionButtonText}>Suggestions</Text>
             </TouchableOpacity>
           </View>
           
@@ -1738,9 +1725,7 @@ const ScheduleView = () => {
                           style={styles.dayEntry}
                           onPress={() => {
                             setSelectedEntry(entry);
-                            setCleanerName(entry.cleanerName || '');
-                            setHours(entry.hours?.toString() || '');
-                            setStartTime(entry.startTime || '');
+                            populateFormForEdit(entry);
                             setModalType('details');
                             setModalVisible(true);
                           }}
@@ -1895,6 +1880,7 @@ const ScheduleView = () => {
                 onPress={() => router.back()} 
                 variant="white"
               />
+              <CompanyLogo size="small" showText={false} variant="dark" />
               <Text style={styles.headerTitle}>Schedule</Text>
               {hasConflicts && (
                 <View style={styles.headerConflictBadge}>
@@ -2031,14 +2017,22 @@ const ScheduleView = () => {
             onEditClient={editClient}
             onEditBuilding={editBuilding}
             onSwitchToEdit={() => {
-              console.log('Switching to edit mode for entry:', selectedEntry?.id);
+              console.log('=== SWITCHING TO EDIT MODE ===');
+              console.log('Current selected entry:', selectedEntry?.id);
               console.log('Current form state before switch:', {
                 cleanerName,
                 selectedCleaners,
                 hours,
                 startTime
               });
+              
+              // Ensure form is properly populated when switching to edit
+              if (selectedEntry) {
+                populateFormForEdit(selectedEntry);
+              }
+              
               setModalType('edit');
+              console.log('=== SWITCHED TO EDIT MODE ===');
             }}
           />
 

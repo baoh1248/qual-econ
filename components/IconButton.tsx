@@ -12,6 +12,7 @@ interface IconButtonProps {
   variant?: 'primary' | 'secondary' | 'white' | 'danger' | 'success' | 'warning';
   size?: 'small' | 'medium' | 'large';
   iconSize?: number;
+  children?: React.ReactNode;
 }
 
 export default function IconButton({
@@ -22,6 +23,7 @@ export default function IconButton({
   variant = 'primary',
   size = 'medium',
   iconSize,
+  children,
 }: IconButtonProps) {
   console.log('IconButton rendered:', icon, 'variant:', variant);
 
@@ -30,26 +32,56 @@ export default function IconButton({
       case 'white':
         return {
           backgroundColor: colors.background, // White background
+          shadowColor: colors.text,
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.1,
+          shadowRadius: 4,
+          elevation: 3,
         };
       case 'secondary':
         return {
-          backgroundColor: colors.secondary, // Darker blue background
+          backgroundColor: colors.primary, // Blue background for consistency
+          shadowColor: colors.primary,
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.3,
+          shadowRadius: 4,
+          elevation: 3,
         };
       case 'danger':
         return {
           backgroundColor: colors.danger, // Red background
+          shadowColor: colors.danger,
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.3,
+          shadowRadius: 4,
+          elevation: 3,
         };
       case 'success':
         return {
           backgroundColor: colors.success, // Green background
+          shadowColor: colors.success,
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.3,
+          shadowRadius: 4,
+          elevation: 3,
         };
       case 'warning':
         return {
           backgroundColor: colors.warning, // Orange background
+          shadowColor: colors.warning,
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.3,
+          shadowRadius: 4,
+          elevation: 3,
         };
       default: // 'primary'
         return {
           backgroundColor: colors.primary, // Blue background
+          shadowColor: colors.primary,
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.3,
+          shadowRadius: 4,
+          elevation: 3,
         };
     }
   };
@@ -123,6 +155,7 @@ export default function IconButton({
           color: getIconColor(),
         }} 
       />
+      {children}
     </TouchableOpacity>
   );
 }
@@ -131,10 +164,11 @@ const styles = StyleSheet.create({
   button: {
     alignItems: 'center',
     justifyContent: 'center',
-    // No borders or outlines - clean simple button
     borderWidth: 0,
   },
   disabled: {
     opacity: 0.6,
+    shadowOpacity: 0,
+    elevation: 0,
   },
 });

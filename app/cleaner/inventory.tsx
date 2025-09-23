@@ -3,6 +3,7 @@ import { Text, View, ScrollView, TouchableOpacity, TextInput, Alert, Modal, Styl
 import { router } from 'expo-router';
 import { useState, useEffect, useRef } from 'react';
 import { commonStyles, colors, spacing, typography, buttonStyles, getContrastColor } from '../../styles/commonStyles';
+import CompanyLogo from '../../components/CompanyLogo';
 import Icon from '../../components/Icon';
 import Button from '../../components/Button';
 import IconButton from '../../components/IconButton';
@@ -373,7 +374,10 @@ export default function InventoryScreen() {
           onPress={handleBackPress} 
           variant="white"
         />
-        <Text style={commonStyles.headerTitle}>Inventory Management</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+          <CompanyLogo size="small" showText={false} variant="light" />
+          <Text style={commonStyles.headerTitle}>Inventory Management</Text>
+        </View>
         <IconButton 
           icon="qr-code" 
           onPress={() => Alert.alert('Scan QR', 'QR code scanner would open here')}

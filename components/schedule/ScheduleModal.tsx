@@ -249,9 +249,8 @@ const ScheduleModal = memo(({
       setShowDeleteConfirm(false);
       console.log('Calling onDelete function...');
       await onDelete();
-      console.log('Delete operation completed successfully, closing modal');
-      // Close the modal after successful deletion
-      onClose();
+      console.log('Delete operation completed successfully');
+      // Don't close modal here - let the parent component handle it after successful deletion
     } catch (error) {
       console.error('Error during delete confirmation:', error);
       // Reset the confirmation state but don't close the modal so user can try again

@@ -114,25 +114,28 @@ export const useConflictDetection = (schedule: ScheduleEntry[], cleaners: Cleane
     }
   }, [schedule, cleaners, clientBuildings]);
 
-  // Real-time conflict validation for new entries
+  // Real-time conflict validation for new entries - FIXED VERSION
   const validateScheduleChange = useCallback((
     newEntry: Partial<ScheduleEntry>,
     existingEntryId?: string
   ): ConflictValidationResult => {
     try {
+      console.log('=== VALIDATING SCHEDULE CHANGE ===');
       console.log('Validating schedule change:', {
         newEntry: {
           cleanerName: newEntry.cleanerName,
           cleanerNames: newEntry.cleanerNames,
           day: newEntry.day,
           buildingName: newEntry.buildingName,
+          clientName: newEntry.clientName,
           hours: newEntry.hours
         },
-        existingEntryId
+        existingEntryId,
+        isEdit: !!existingEntryId
       });
 
-      if (!newEntry.day || !newEntry.buildingName) {
-        console.log('Missing required fields for validation');
+      if (!newEntry.day || !newEntry.buildingName || !newEntry.clientName) {
+        console.log('Missing required fields for validation, allowing to proceed');
         return {
           hasConflicts: false,
           conflicts: [],
@@ -141,33 +144,195 @@ export const useConflictDetection = (schedule: ScheduleEntry[], cleaners: Cleane
         };
       }
 
-      const tempSchedule = existingEntryId
-        ? schedule.map(entry => entry.id === existingEntryId ? { ...entry, ...newEntry } : entry)
-        : [...schedule, { ...newEntry, id: 'temp-validation' } as ScheduleEntry];
-
-      console.log('Created temp schedule with', tempSchedule.length, 'entries for validation');
-
-      const validationConflicts = detectCleanerDoubleBooking(tempSchedule, cleaners);
-      const timeConflicts = detectTimeOverlapConflicts(tempSchedule);
-      const securityConflicts = detectSecurityAccessConflicts(tempSchedule, cleaners, clientBuildings || []);
+      // Create a temporary schedule for validation
+      let tempSchedule: ScheduleEntry[];
+      let entryToValidate: ScheduleEntry;
       
-      const allConflicts = [...validationConflicts, ...timeConflicts, ...securityConflicts];
-      const criticalConflicts = allConflicts.filter(c => c.severity === 'critical' || c.severity === 'high');
+      if (existingEntryId) {
+        // For edits, replace the existing entry with the updated one
+        const originalEntry = schedule.find(entry => entry.id === existingEntryId);
+        if (!originalEntry) {
+          console.log('Original entry not found for validation, allowing to proceed');
+          return {
+            hasConflicts: false,
+            conflicts: [],
+            canProceed: true,
+            warnings: []
+          };
+        }
+        
+        entryToValidate = { ...originalEntry, ...newEntry } as ScheduleEntry;
+        tempSchedule = schedule.map(entry => 
+          entry.id === existingEntryId ? entryToValidate : entry
+        );
+        console.log('Created temp schedule for edit validation with', tempSchedule.length, 'entries');
+      } else {
+        // For new entries, add to the schedule
+        entryToValidate = { 
+          ...newEntry, 
+          id: 'temp-validation-' + Date.now(),
+          status: 'scheduled' as const,
+          weekId: 'temp'
+        } as ScheduleEntry;
+        tempSchedule = [...schedule, entryToValidate];
+        console.log('Created temp schedule for new entry validation with', tempSchedule.length, 'entries');
+      }
+
+      // Only check for conflicts that would actually be problematic
+      const validationConflicts: ConflictDetails[] = [];
+      
+      // 1. Check for cleaner double booking (only critical conflicts)
+      const cleanerConflicts = detectCleanerDoubleBooking(tempSchedule, cleaners)
+        .filter(conflict => {
+          // For edits, only flag as conflict if it involves other entries
+          if (existingEntryId) {
+            const involvedEntries = conflict.affectedEntries.filter(entry => entry.id !== existingEntryId);
+            return involvedEntries.length > 1; // Need at least 2 entries for a real conflict
+          }
+          return true;
+        });
+      validationConflicts.push(...cleanerConflicts);
+      
+      // 2. Check for time overlaps (only critical conflicts)
+      const timeConflicts = detectTimeOverlapConflicts(tempSchedule)
+        .filter(conflict => {
+          // For edits, only flag as conflict if it involves other entries
+          if (existingEntryId) {
+            const involvedEntries = conflict.affectedEntries.filter(entry => entry.id !== existingEntryId);
+            return involvedEntries.length > 0;
+          }
+          return true;
+        });
+      validationConflicts.push(...timeConflicts);
+      
+      // 3. Check for security access conflicts - IMPROVED LOGIC FOR EDITS
+      if (existingEntryId) {
+        // For edits, do a direct security check on the entry being validated
+        console.log('Performing direct security validation for edit...');
+        
+        // Find the building data to get the actual security level
+        const building = clientBuildings?.find(b => 
+          b.clientName === entryToValidate.clientName && 
+          b.buildingName === entryToValidate.buildingName
+        );
+        
+        if (building && building.securityLevel) {
+          const jobSecurityLevel = building.securityLevel;
+          console.log(`Building ${building.buildingName} requires ${jobSecurityLevel.toUpperCase()} security clearance`);
+          
+          const entryCleaners = getEntryCleaners(entryToValidate);
+          console.log(`Entry has ${entryCleaners.length} cleaner(s): ${entryCleaners.join(', ')}`);
+          
+          const unauthorizedCleaners: string[] = [];
+          
+          for (const cleanerName of entryCleaners) {
+            const cleaner = cleaners.find(c => c.name === cleanerName);
+            if (!cleaner) {
+              console.log(`❌ Cleaner ${cleanerName} not found in cleaners database`);
+              continue;
+            }
+            
+            const cleanerSecurityLevel = cleaner.securityLevel || 'low';
+            console.log(`🔍 Checking cleaner ${cleanerName}: has ${cleanerSecurityLevel.toUpperCase()} clearance`);
+            
+            const levels = { low: 1, medium: 2, high: 3 };
+            const cleanerLevelNum = levels[cleanerSecurityLevel as keyof typeof levels] || 1;
+            const jobLevelNum = levels[jobSecurityLevel as keyof typeof levels] || 1;
+            const canAccess = cleanerLevelNum >= jobLevelNum;
+            
+            if (!canAccess) {
+              console.log(`🚫 SECURITY VIOLATION: ${cleanerName} (${cleanerSecurityLevel}) cannot access ${building.buildingName} (requires ${jobSecurityLevel})`);
+              unauthorizedCleaners.push(cleanerName);
+            } else {
+              console.log(`✅ SECURITY OK: ${cleanerName} (${cleanerSecurityLevel}) can access ${building.buildingName} (requires ${jobSecurityLevel})`);
+            }
+          }
+          
+          if (unauthorizedCleaners.length > 0) {
+            console.log(`🚨 DIRECT SECURITY CONFLICT DETECTED: ${unauthorizedCleaners.length} unauthorized cleaner(s) for ${building.buildingName}`);
+            
+            // Find alternative cleaners with proper security clearance
+            const authorizedCleaners = cleaners.filter(c => {
+              if (!c.isActive) return false;
+              const cleanerLevel = c.securityLevel || 'low';
+              const levels = { low: 1, medium: 2, high: 3 };
+              const cleanerLevelNum = levels[cleanerLevel as keyof typeof levels] || 1;
+              const jobLevelNum = levels[jobSecurityLevel as keyof typeof levels] || 1;
+              return cleanerLevelNum >= jobLevelNum && !entryCleaners.includes(c.name);
+            });
+            
+            console.log(`💡 Found ${authorizedCleaners.length} alternative authorized cleaners`);
+            
+            const resolutions: ConflictResolution[] = authorizedCleaners.slice(0, 3).map(cleaner => ({
+              id: `security-reassign-${entryToValidate.id}-${cleaner.id}`,
+              type: 'reassign_cleaner',
+              title: `Reassign to ${cleaner.name}`,
+              description: `Replace unauthorized cleaner with ${cleaner.name} (${cleaner.securityLevel?.toUpperCase()} security)`,
+              changes: [{
+                entryId: entryToValidate.id,
+                newCleaner: cleaner.name
+              }],
+              estimatedBenefit: {
+                timeSaved: 0,
+                costReduction: 0,
+                efficiencyGain: 30
+              }
+            }));
+            
+            validationConflicts.push({
+              id: `security-access-${entryToValidate.id}`,
+              type: 'security_access_denied',
+              severity: 'critical',
+              title: 'Security Access Violation',
+              description: `${unauthorizedCleaners.join(', ')} lack${unauthorizedCleaners.length === 1 ? 's' : ''} required security clearance for ${building.buildingName} (requires ${jobSecurityLevel.toUpperCase()})`,
+              affectedEntries: [entryToValidate],
+              suggestedResolutions: resolutions,
+              estimatedImpact: {
+                timeWasted: 60,
+                costIncrease: 200,
+                efficiencyLoss: 50
+              }
+            });
+          } else {
+            console.log(`✅ All cleaners authorized for ${building.buildingName}`);
+          }
+        } else {
+          console.log(`⚠️  No building data or security level found for ${entryToValidate.clientName} - ${entryToValidate.buildingName}, skipping security check`);
+        }
+      } else {
+        // For new entries, use the full security conflict detection
+        const securityConflicts = detectSecurityAccessConflicts(tempSchedule, cleaners, clientBuildings || [])
+          .filter(conflict => {
+            return conflict.affectedEntries.some(entry => entry.id === entryToValidate.id);
+          });
+        validationConflicts.push(...securityConflicts);
+      }
+      
+      // Filter out low-severity conflicts for validation
+      const criticalConflicts = validationConflicts.filter(c => 
+        c.severity === 'critical' || c.severity === 'high'
+      );
       
       console.log('Validation results:', {
-        totalConflicts: allConflicts.length,
+        totalConflicts: validationConflicts.length,
         criticalConflicts: criticalConflicts.length,
-        canProceed: criticalConflicts.length === 0
+        canProceed: criticalConflicts.length === 0,
+        conflictTypes: validationConflicts.map(c => c.type)
       });
 
       const warnings: string[] = [];
-      if (allConflicts.length > 0) {
-        warnings.push(`This change will create ${allConflicts.length} scheduling conflict(s)`);
+      const mediumLowConflicts = validationConflicts.filter(c => 
+        c.severity === 'medium' || c.severity === 'low'
+      );
+      
+      if (mediumLowConflicts.length > 0) {
+        warnings.push(`This change will create ${mediumLowConflicts.length} minor scheduling issue(s)`);
       }
 
+      console.log('=== VALIDATION COMPLETED ===');
       return {
-        hasConflicts: allConflicts.length > 0,
-        conflicts: allConflicts,
+        hasConflicts: validationConflicts.length > 0,
+        conflicts: validationConflicts,
         canProceed: criticalConflicts.length === 0,
         warnings
       };
@@ -180,7 +345,7 @@ export const useConflictDetection = (schedule: ScheduleEntry[], cleaners: Cleane
         warnings: ['Unable to validate changes']
       };
     }
-  }, [schedule, cleaners, clientBuildings]);
+  }, [schedule, cleaners, clientBuildings, getEntryCleaners]);
 
   // Get conflicts for a specific entry
   const getEntryConflicts = useCallback((entryId: string): ConflictDetails[] => {
@@ -241,31 +406,38 @@ export const useConflictDetection = (schedule: ScheduleEntry[], cleaners: Cleane
 
     console.log('Cleaner-day mappings created:', cleanerDayMap.size);
 
-    // Check for conflicts
+    // Check for conflicts - only flag if there are actually multiple DIFFERENT entries
     for (const [key, entries] of cleanerDayMap) {
       if (entries.length > 1) {
-        const [cleanerName, day] = key.split('|');
-        const cleaner = cleaners.find(c => c.name === cleanerName);
+        // Filter out duplicate entries (same ID) that might occur during validation
+        const uniqueEntries = entries.filter((entry, index, arr) => 
+          arr.findIndex(e => e.id === entry.id) === index
+        );
         
-        console.log(`Double booking detected: ${cleanerName} on ${day} with ${entries.length} jobs`);
-        
-        // Generate resolution suggestions
-        const resolutions = generateCleanerConflictResolutions(entries, cleaners);
-        
-        conflicts.push({
-          id: `cleaner-conflict-${key}`,
-          type: 'cleaner_double_booking',
-          severity: entries.length > 2 ? 'critical' : 'high',
-          title: 'Cleaner Double Booking',
-          description: `${cleanerName} is scheduled for ${entries.length} jobs on ${day}`,
-          affectedEntries: entries,
-          suggestedResolutions: resolutions,
-          estimatedImpact: {
-            timeWasted: entries.length * 30, // 30 min per conflict
-            costIncrease: entries.length * 50, // $50 per conflict
-            efficiencyLoss: entries.length * 15 // 15% efficiency loss
-          }
-        });
+        if (uniqueEntries.length > 1) {
+          const [cleanerName, day] = key.split('|');
+          const cleaner = cleaners.find(c => c.name === cleanerName);
+          
+          console.log(`Double booking detected: ${cleanerName} on ${day} with ${uniqueEntries.length} unique jobs`);
+          
+          // Generate resolution suggestions
+          const resolutions = generateCleanerConflictResolutions(uniqueEntries, cleaners);
+          
+          conflicts.push({
+            id: `cleaner-conflict-${key}`,
+            type: 'cleaner_double_booking',
+            severity: uniqueEntries.length > 2 ? 'critical' : 'high',
+            title: 'Cleaner Double Booking',
+            description: `${cleanerName} is scheduled for ${uniqueEntries.length} jobs on ${day}`,
+            affectedEntries: uniqueEntries,
+            suggestedResolutions: resolutions,
+            estimatedImpact: {
+              timeWasted: uniqueEntries.length * 30, // 30 min per conflict
+              costIncrease: uniqueEntries.length * 50, // $50 per conflict
+              efficiencyLoss: uniqueEntries.length * 15 // 15% efficiency loss
+            }
+          });
+        }
       }
     }
 
@@ -296,7 +468,14 @@ export const useConflictDetection = (schedule: ScheduleEntry[], cleaners: Cleane
     for (const [key, entries] of cleanerDayEntries) {
       if (entries.length < 2) continue;
 
-      const sortedEntries = entries.sort((a, b) => 
+      // Filter out duplicate entries (same ID) that might occur during validation
+      const uniqueEntries = entries.filter((entry, index, arr) => 
+        arr.findIndex(e => e.id === entry.id) === index
+      );
+
+      if (uniqueEntries.length < 2) continue;
+
+      const sortedEntries = uniqueEntries.sort((a, b) => 
         (a.startTime || '').localeCompare(b.startTime || '')
       );
 
@@ -304,12 +483,15 @@ export const useConflictDetection = (schedule: ScheduleEntry[], cleaners: Cleane
         const current = sortedEntries[i];
         const next = sortedEntries[i + 1];
 
+        // Skip if comparing the same entry (shouldn't happen but safety check)
+        if (current.id === next.id) continue;
+
         if (current.startTime && next.startTime && current.hours) {
           const currentEnd = addHoursToTime(current.startTime, current.hours);
           if (currentEnd > next.startTime) {
             const [cleanerName, day] = key.split('|');
             
-            console.log(`Time overlap detected: ${cleanerName} on ${day}`);
+            console.log(`Time overlap detected: ${cleanerName} on ${day} between entries ${current.id} and ${next.id}`);
             
             conflicts.push({
               id: `time-conflict-${current.id}-${next.id}`,
@@ -335,7 +517,7 @@ export const useConflictDetection = (schedule: ScheduleEntry[], cleaners: Cleane
   }
 
   function detectSecurityAccessConflicts(schedule: ScheduleEntry[], cleaners: Cleaner[], clientBuildings: ClientBuilding[]): ConflictDetails[] {
-    console.log('Detecting security access conflicts...');
+    console.log('=== DETECTING SECURITY ACCESS CONFLICTS ===');
     const conflicts: ConflictDetails[] = [];
     
     // Helper function to check if cleaner can access job security level
@@ -343,7 +525,9 @@ export const useConflictDetection = (schedule: ScheduleEntry[], cleaners: Cleane
       const levels = { low: 1, medium: 2, high: 3 };
       const cleanerLevelNum = levels[cleanerLevel as keyof typeof levels] || 1;
       const jobLevelNum = levels[jobLevel as keyof typeof levels] || 1;
-      return cleanerLevelNum >= jobLevelNum;
+      const canAccess = cleanerLevelNum >= jobLevelNum;
+      console.log(`Security check: cleaner ${cleanerLevel} (${cleanerLevelNum}) vs job ${jobLevel} (${jobLevelNum}) = ${canAccess ? 'ALLOWED' : 'DENIED'}`);
+      return canAccess;
     };
 
     console.log(`Checking security conflicts for ${schedule.length} schedule entries against ${clientBuildings.length} buildings`);
@@ -351,51 +535,61 @@ export const useConflictDetection = (schedule: ScheduleEntry[], cleaners: Cleane
     for (const entry of schedule) {
       if (!entry || entry.status === 'cancelled') continue;
       
+      console.log(`\n--- Checking entry: ${entry.clientName} - ${entry.buildingName} ---`);
+      
       // Find the building data to get the actual security level
       const building = clientBuildings.find(b => 
         b.clientName === entry.clientName && 
         b.buildingName === entry.buildingName
       );
       
-      console.log(`Entry: ${entry.clientName} - ${entry.buildingName}, Found building:`, building ? `${building.buildingName} (${building.securityLevel})` : 'NOT FOUND');
+      if (!building) {
+        console.log(`⚠️  No building data found for ${entry.clientName} - ${entry.buildingName}, skipping security check`);
+        continue;
+      }
       
-      // If no building found, skip security check (no conflict)
-      if (!building || !building.securityLevel) {
-        console.log(`No building security level found for ${entry.clientName} - ${entry.buildingName}, skipping security check`);
+      if (!building.securityLevel) {
+        console.log(`⚠️  No security level defined for building ${building.buildingName}, skipping security check`);
         continue;
       }
       
       const jobSecurityLevel = building.securityLevel;
-      console.log(`Checking security for ${entry.buildingName}: job requires ${jobSecurityLevel} security`);
+      console.log(`📋 Building ${building.buildingName} requires ${jobSecurityLevel.toUpperCase()} security clearance`);
       
       const entryCleaners = getEntryCleaners(entry);
+      console.log(`👥 Entry has ${entryCleaners.length} cleaner(s): ${entryCleaners.join(', ')}`);
+      
       const unauthorizedCleaners: string[] = [];
       
       for (const cleanerName of entryCleaners) {
         const cleaner = cleaners.find(c => c.name === cleanerName);
         if (!cleaner) {
-          console.log(`Cleaner ${cleanerName} not found in cleaners list`);
+          console.log(`❌ Cleaner ${cleanerName} not found in cleaners database`);
           continue;
         }
         
         const cleanerSecurityLevel = cleaner.securityLevel || 'low';
-        console.log(`Cleaner ${cleanerName} has ${cleanerSecurityLevel} security, job requires ${jobSecurityLevel}`);
+        console.log(`🔍 Checking cleaner ${cleanerName}: has ${cleanerSecurityLevel.toUpperCase()} clearance`);
         
         if (!canAccessJob(cleanerSecurityLevel, jobSecurityLevel)) {
-          console.log(`Security conflict: ${cleanerName} (${cleanerSecurityLevel}) cannot access ${entry.buildingName} (requires ${jobSecurityLevel})`);
+          console.log(`🚫 SECURITY VIOLATION: ${cleanerName} (${cleanerSecurityLevel}) cannot access ${entry.buildingName} (requires ${jobSecurityLevel})`);
           unauthorizedCleaners.push(cleanerName);
         } else {
-          console.log(`Security OK: ${cleanerName} (${cleanerSecurityLevel}) can access ${entry.buildingName} (requires ${jobSecurityLevel})`);
+          console.log(`✅ SECURITY OK: ${cleanerName} (${cleanerSecurityLevel}) can access ${entry.buildingName} (requires ${jobSecurityLevel})`);
         }
       }
       
       if (unauthorizedCleaners.length > 0) {
+        console.log(`🚨 CONFLICT DETECTED: ${unauthorizedCleaners.length} unauthorized cleaner(s) for ${entry.buildingName}`);
+        
         // Find alternative cleaners with proper security clearance
         const authorizedCleaners = cleaners.filter(c => 
           c.isActive && 
           canAccessJob(c.securityLevel || 'low', jobSecurityLevel) &&
           !entryCleaners.includes(c.name)
         );
+        
+        console.log(`💡 Found ${authorizedCleaners.length} alternative authorized cleaners`);
         
         const resolutions: ConflictResolution[] = authorizedCleaners.slice(0, 3).map(cleaner => ({
           id: `security-reassign-${entry.id}-${cleaner.id}`,
@@ -427,10 +621,12 @@ export const useConflictDetection = (schedule: ScheduleEntry[], cleaners: Cleane
             efficiencyLoss: 50 // Major efficiency loss due to security violations
           }
         });
+      } else {
+        console.log(`✅ All cleaners authorized for ${entry.buildingName}`);
       }
     }
     
-    console.log('Security access conflicts found:', conflicts.length);
+    console.log(`=== SECURITY CONFLICTS SUMMARY: ${conflicts.length} conflicts found ===`);
     return conflicts;
   }
 

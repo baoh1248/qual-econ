@@ -1,5 +1,6 @@
 
 import { commonStyles, colors, spacing, typography, statusColors } from '../../styles/commonStyles';
+import CompanyLogo from '../../components/CompanyLogo';
 import { useState, useEffect } from 'react';
 import { Text, View, ScrollView, TouchableOpacity, Alert, RefreshControl } from 'react-native';
 import Icon from '../../components/Icon';
@@ -214,6 +215,7 @@ export default function CleanerDashboard() {
       
       <View style={commonStyles.header}>
         <View style={commonStyles.row}>
+          <CompanyLogo size="small" showText={false} variant="light" style={{ marginRight: spacing.sm }} />
           <View style={{ flex: 1 }}>
             <Text style={[commonStyles.headerTitle, { fontSize: 20 }]}>
               Welcome back, {profile.name}

@@ -3,6 +3,7 @@ import { Text, View, ScrollView, TouchableOpacity, TextInput, Alert, Modal, Styl
 import { router } from 'expo-router';
 import { useState, useEffect } from 'react';
 import { commonStyles, colors, spacing, typography, buttonStyles, getContrastColor } from '../../styles/commonStyles';
+import CompanyLogo from '../../components/CompanyLogo';
 import Icon from '../../components/Icon';
 import Button from '../../components/Button';
 import IconButton from '../../components/IconButton';
@@ -54,6 +55,20 @@ interface NewItemForm {
   reorderQuantity: string;
 }
 
+interface EditItemForm {
+  name: string;
+  category: 'cleaning-supplies' | 'equipment' | 'safety';
+  currentStock: string;
+  minStock: string;
+  maxStock: string;
+  unit: string;
+  location: string;
+  cost: string;
+  supplier: string;
+  autoReorderEnabled: boolean;
+  reorderQuantity: string;
+}
+
 export default function SupervisorInventoryScreen() {
   console.log('SupervisorInventoryScreen rendered');
 
@@ -67,13 +82,30 @@ export default function SupervisorInventoryScreen() {
   const [showSendItemsModal, setShowSendItemsModal] = useState(false);
   const [showTransferHistoryModal, setShowTransferHistoryModal] = useState(false);
   const [showAddItemModal, setShowAddItemModal] = useState(false);
+  const [showEditItemModal, setShowEditItemModal] = useState(false);
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
+  const [showEditCategoryDropdown, setShowEditCategoryDropdown] = useState(false);
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
   const [showRejectConfirmModal, setShowRejectConfirmModal] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<InventoryItem | null>(null);
+  const [itemToEdit, setItemToEdit] = useState<InventoryItem | null>(null);
   const [requestToReject, setRequestToReject] = useState<RestockRequest | null>(null);
   
   const [newItemForm, setNewItemForm] = useState<NewItemForm>({
+    name: '',
+    category: 'cleaning-supplies',
+    currentStock: '',
+    minStock: '',
+    maxStock: '',
+    unit: '',
+    location: '',
+    cost: '',
+    supplier: '',
+    autoReorderEnabled: true,
+    reorderQuantity: '',
+  });
+
+  const [editItemForm, setEditItemForm] = useState<EditItemForm>({
     name: '',
     category: 'cleaning-supplies',
     currentStock: '',
@@ -345,6 +377,82 @@ export default function SupervisorInventoryScreen() {
     setRequestToReject(null);
   };
 
+  const openEditModal = (item: InventoryItem) => {
+    setItemToEdit(item);
+    setEditItemForm({
+      name: item.name,
+      category: item.category,
+      currentStock: item.currentStock.toString(),
+      minStock: item.minStock.toString(),
+      maxStock: item.maxStock.toString(),
+      unit: item.unit,
+      location: item.location,
+      cost: item.cost.toString(),
+      supplier: item.supplier,
+      autoReorderEnabled: item.autoReorderEnabled,
+      reorderQuantity: item.reorderQuantity.toString(),
+    });
+    setShowEditItemModal(true);
+  };
+
+  const saveEditedItem = () => {
+    if (!itemToEdit) return;
+
+    // Validate form
+    if (!editItemForm.name.trim()) {
+      showToast('Please enter item name', 'error');
+      return;
+    }
+    if (!editItemForm.unit.trim()) {
+      showToast('Please enter unit', 'error');
+      return;
+    }
+    if (!editItemForm.location.trim()) {
+      showToast('Please enter location', 'error');
+      return;
+    }
+    if (!editItemForm.supplier.trim()) {
+      showToast('Please enter supplier', 'error');
+      return;
+    }
+
+    const currentStock = parseInt(editItemForm.currentStock) || 0;
+    const minStock = parseInt(editItemForm.minStock) || 0;
+    const maxStock = parseInt(editItemForm.maxStock) || 0;
+    const cost = parseFloat(editItemForm.cost) || 0;
+    const reorderQuantity = parseInt(editItemForm.reorderQuantity) || 0;
+
+    if (maxStock <= minStock) {
+      showToast('Max stock must be greater than min stock', 'error');
+      return;
+    }
+
+    const updatedItem: InventoryItem = {
+      ...itemToEdit,
+      name: editItemForm.name.trim(),
+      category: editItemForm.category,
+      currentStock,
+      minStock,
+      maxStock,
+      unit: editItemForm.unit.trim(),
+      location: editItemForm.location.trim(),
+      cost,
+      supplier: editItemForm.supplier.trim(),
+      autoReorderEnabled: editItemForm.autoReorderEnabled,
+      reorderQuantity,
+      lastUpdated: new Date(),
+    };
+
+    setInventory(prev => prev.map(item => 
+      item.id === itemToEdit.id ? updatedItem : item
+    ));
+
+    setShowEditItemModal(false);
+    setItemToEdit(null);
+    showToast('Item updated successfully', 'success');
+    console.log('Item updated:', updatedItem);
+  };
+
   const addNewItem = () => {
     // Validate form
     if (!newItemForm.name.trim()) {
@@ -480,7 +588,10 @@ export default function SupervisorInventoryScreen() {
           onPress={() => router.back()} 
           variant="white"
         />
-        <Text style={commonStyles.headerTitle}>Inventory Management</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+          <CompanyLogo size="small" showText={false} variant="light" />
+          <Text style={commonStyles.headerTitle}>Inventory Management</Text>
+        </View>
         <IconButton 
           icon="notifications" 
           onPress={() => setShowRequestsModal(true)} 
@@ -672,6 +783,12 @@ export default function SupervisorInventoryScreen() {
                         </Text>
                       </View>
                       <IconButton
+                        icon="create"
+                        onPress={() => openEditModal(item)}
+                        variant="primary"
+                        size="small"
+                      />
+                      <IconButton
                         icon="trash"
                         onPress={() => removeItem(item.id)}
                         variant="danger"
@@ -783,6 +900,306 @@ export default function SupervisorInventoryScreen() {
           )}
         </ScrollView>
       </View>
+
+      {/* Edit Item Modal */}
+      <Modal
+        visible={showEditItemModal}
+        animationType="slide"
+        presentationStyle={Platform.OS === 'ios' ? 'pageSheet' : 'overFullScreen'}
+        transparent={Platform.OS !== 'ios'}
+        onRequestClose={() => setShowEditItemModal(false)}
+      >
+        <View style={{
+          flex: 1,
+          backgroundColor: Platform.OS === 'ios' ? colors.background : 'rgba(0,0,0,0.5)',
+          justifyContent: Platform.OS === 'ios' ? 'flex-start' : 'center',
+          alignItems: Platform.OS === 'ios' ? 'stretch' : 'center',
+          ...(Platform.OS === 'web' && {
+            position: 'fixed' as any,
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 9999,
+          }),
+        }}>
+          {Platform.OS !== 'ios' && (
+            <TouchableOpacity 
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+              }} 
+              activeOpacity={1} 
+              onPress={() => setShowEditItemModal(false)}
+            />
+          )}
+          <View style={{
+            width: Platform.OS === 'ios' ? '100%' : '90%',
+            maxWidth: Platform.OS === 'ios' ? undefined : 600,
+            maxHeight: Platform.OS === 'ios' ? '100%' : '90%',
+            backgroundColor: colors.background,
+            borderRadius: Platform.OS === 'ios' ? 0 : 16,
+            overflow: 'hidden',
+            ...(Platform.OS === 'web' && {
+              zIndex: 10000,
+              position: 'relative' as any,
+            }),
+          }}>
+            <View style={commonStyles.header}>
+              <IconButton 
+                icon="close" 
+                onPress={() => setShowEditItemModal(false)} 
+                variant="white"
+              />
+              <Text style={commonStyles.headerTitle}>Edit Item</Text>
+              <View style={{ width: 44 }} />
+            </View>
+            
+            <ScrollView style={commonStyles.content}>
+              <View style={{ gap: spacing.md }}>
+                {/* Item Name */}
+                <View>
+                  <Text style={[typography.body, { color: colors.text, marginBottom: spacing.xs, fontWeight: '600' }]}>
+                    Item Name *
+                  </Text>
+                  <TextInput
+                    style={commonStyles.textInput}
+                    placeholder="Enter item name"
+                    placeholderTextColor={colors.textSecondary}
+                    value={editItemForm.name}
+                    onChangeText={(text) => setEditItemForm(prev => ({ ...prev, name: text }))}
+                  />
+                </View>
+
+                {/* Category */}
+                <View>
+                  <Text style={[typography.body, { color: colors.text, marginBottom: spacing.xs, fontWeight: '600' }]}>
+                    Category *
+                  </Text>
+                  <TouchableOpacity
+                    style={[commonStyles.textInput, commonStyles.row, commonStyles.spaceBetween]}
+                    onPress={() => setShowEditCategoryDropdown(!showEditCategoryDropdown)}
+                  >
+                    <View style={commonStyles.row}>
+                      <Icon 
+                        name={getCategoryIcon(editItemForm.category) as any} 
+                        size={20} 
+                        style={{ color: colors.primary, marginRight: spacing.sm }} 
+                      />
+                      <Text style={[typography.body, { color: colors.text }]}>
+                        {categoryOptions.find(c => c.id === editItemForm.category)?.name}
+                      </Text>
+                    </View>
+                    <Icon 
+                      name={showEditCategoryDropdown ? "chevron-up" : "chevron-down"} 
+                      size={20} 
+                      style={{ color: colors.textSecondary }} 
+                    />
+                  </TouchableOpacity>
+                  
+                  {showEditCategoryDropdown && (
+                    <View style={[commonStyles.card, { marginTop: spacing.xs, padding: 0 }]}>
+                      {categoryOptions.map(category => (
+                        <TouchableOpacity
+                          key={category.id}
+                          style={[
+                            commonStyles.row,
+                            { 
+                              padding: spacing.md,
+                              borderBottomWidth: 1,
+                              borderBottomColor: colors.border,
+                            }
+                          ]}
+                          onPress={() => {
+                            setEditItemForm(prev => ({ ...prev, category: category.id as any }));
+                            setShowEditCategoryDropdown(false);
+                          }}
+                        >
+                          <Icon 
+                            name={category.icon as any} 
+                            size={20} 
+                            style={{ color: colors.primary, marginRight: spacing.md }} 
+                          />
+                          <Text style={[typography.body, { color: colors.text }]}>
+                            {category.name}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </View>
+
+                {/* Stock Information */}
+                <View style={[commonStyles.row, { gap: spacing.sm }]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[typography.body, { color: colors.text, marginBottom: spacing.xs, fontWeight: '600' }]}>
+                      Current Stock
+                    </Text>
+                    <TextInput
+                      style={commonStyles.textInput}
+                      placeholder="0"
+                      placeholderTextColor={colors.textSecondary}
+                      value={editItemForm.currentStock}
+                      onChangeText={(text) => setEditItemForm(prev => ({ ...prev, currentStock: text }))}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[typography.body, { color: colors.text, marginBottom: spacing.xs, fontWeight: '600' }]}>
+                      Min Stock
+                    </Text>
+                    <TextInput
+                      style={commonStyles.textInput}
+                      placeholder="0"
+                      placeholderTextColor={colors.textSecondary}
+                      value={editItemForm.minStock}
+                      onChangeText={(text) => setEditItemForm(prev => ({ ...prev, minStock: text }))}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                </View>
+
+                <View style={[commonStyles.row, { gap: spacing.sm }]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[typography.body, { color: colors.text, marginBottom: spacing.xs, fontWeight: '600' }]}>
+                      Max Stock
+                    </Text>
+                    <TextInput
+                      style={commonStyles.textInput}
+                      placeholder="0"
+                      placeholderTextColor={colors.textSecondary}
+                      value={editItemForm.maxStock}
+                      onChangeText={(text) => setEditItemForm(prev => ({ ...prev, maxStock: text }))}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[typography.body, { color: colors.text, marginBottom: spacing.xs, fontWeight: '600' }]}>
+                      Unit *
+                    </Text>
+                    <TextInput
+                      style={commonStyles.textInput}
+                      placeholder="pieces, bottles, etc."
+                      placeholderTextColor={colors.textSecondary}
+                      value={editItemForm.unit}
+                      onChangeText={(text) => setEditItemForm(prev => ({ ...prev, unit: text }))}
+                    />
+                  </View>
+                </View>
+
+                {/* Location */}
+                <View>
+                  <Text style={[typography.body, { color: colors.text, marginBottom: spacing.xs, fontWeight: '600' }]}>
+                    Location *
+                  </Text>
+                  <TextInput
+                    style={commonStyles.textInput}
+                    placeholder="Storage room, cabinet, etc."
+                    placeholderTextColor={colors.textSecondary}
+                    value={editItemForm.location}
+                    onChangeText={(text) => setEditItemForm(prev => ({ ...prev, location: text }))}
+                  />
+                </View>
+
+                {/* Cost and Supplier */}
+                <View style={[commonStyles.row, { gap: spacing.sm }]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[typography.body, { color: colors.text, marginBottom: spacing.xs, fontWeight: '600' }]}>
+                      Cost per Unit
+                    </Text>
+                    <TextInput
+                      style={commonStyles.textInput}
+                      placeholder="0.00"
+                      placeholderTextColor={colors.textSecondary}
+                      value={editItemForm.cost}
+                      onChangeText={(text) => setEditItemForm(prev => ({ ...prev, cost: text }))}
+                      keyboardType="decimal-pad"
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[typography.body, { color: colors.text, marginBottom: spacing.xs, fontWeight: '600' }]}>
+                      Reorder Quantity
+                    </Text>
+                    <TextInput
+                      style={commonStyles.textInput}
+                      placeholder="0"
+                      placeholderTextColor={colors.textSecondary}
+                      value={editItemForm.reorderQuantity}
+                      onChangeText={(text) => setEditItemForm(prev => ({ ...prev, reorderQuantity: text }))}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                </View>
+
+                {/* Supplier */}
+                <View>
+                  <Text style={[typography.body, { color: colors.text, marginBottom: spacing.xs, fontWeight: '600' }]}>
+                    Supplier *
+                  </Text>
+                  <TextInput
+                    style={commonStyles.textInput}
+                    placeholder="Supplier name"
+                    placeholderTextColor={colors.textSecondary}
+                    value={editItemForm.supplier}
+                    onChangeText={(text) => setEditItemForm(prev => ({ ...prev, supplier: text }))}
+                  />
+                </View>
+
+                {/* Auto-reorder Toggle */}
+                <View style={[commonStyles.row, commonStyles.spaceBetween, { alignItems: 'center' }]}>
+                  <View>
+                    <Text style={[typography.body, { color: colors.text, fontWeight: '600' }]}>
+                      Enable Auto-reorder
+                    </Text>
+                    <Text style={[typography.caption, { color: colors.textSecondary }]}>
+                      Automatically reorder when stock is low
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={{
+                      width: 50,
+                      height: 30,
+                      borderRadius: 15,
+                      backgroundColor: editItemForm.autoReorderEnabled ? colors.success : colors.backgroundAlt,
+                      justifyContent: 'center',
+                      paddingHorizontal: 2,
+                      borderWidth: 2,
+                      borderColor: editItemForm.autoReorderEnabled ? colors.success : colors.border,
+                    }}
+                    onPress={() => setEditItemForm(prev => ({ ...prev, autoReorderEnabled: !prev.autoReorderEnabled }))}
+                  >
+                    <View style={{
+                      width: 26,
+                      height: 26,
+                      borderRadius: 13,
+                      backgroundColor: colors.background,
+                      alignSelf: editItemForm.autoReorderEnabled ? 'flex-end' : 'flex-start',
+                    }} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={[commonStyles.row, { gap: spacing.sm, padding: spacing.md, borderTopWidth: 1, borderTopColor: colors.border }]}>
+              <Button
+                text="Cancel"
+                onPress={() => setShowEditItemModal(false)}
+                style={{ flex: 1 }}
+                variant="secondary"
+              />
+              <Button
+                text="Save Changes"
+                onPress={saveEditedItem}
+                style={{ flex: 1 }}
+                variant="primary"
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Add Item Modal */}
       <Modal

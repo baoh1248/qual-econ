@@ -3,6 +3,7 @@ import { Text, View, ScrollView, TouchableOpacity, TextInput, KeyboardAvoidingVi
 import { router } from 'expo-router';
 import { useState, useRef, useEffect } from 'react';
 import { commonStyles, colors, spacing, typography } from '../../styles/commonStyles';
+import CompanyLogo from '../../components/CompanyLogo';
 import Icon from '../../components/Icon';
 
 interface Message {
@@ -238,7 +239,10 @@ export default function ChatScreen() {
           <TouchableOpacity onPress={() => router.back()}>
             <Icon name="arrow-back" size={24} style={{ color: colors.background }} />
           </TouchableOpacity>
-          <Text style={commonStyles.headerTitle}>Messages</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+            <CompanyLogo size="small" showText={false} variant="light" />
+            <Text style={commonStyles.headerTitle}>Messages</Text>
+          </View>
           <TouchableOpacity onPress={() => console.log('New chat')}>
             <Icon name="add" size={24} style={{ color: colors.background }} />
           </TouchableOpacity>
@@ -335,11 +339,14 @@ export default function ChatScreen() {
         }}>
           <Icon name="arrow-back" size={24} style={{ color: colors.background }} />
         </TouchableOpacity>
-        <View style={{ flex: 1, alignItems: 'center' }}>
-          <Text style={[commonStyles.headerTitle, { fontSize: 18 }]}>{currentRoom?.name}</Text>
-          {currentRoom?.isOnline && (
-            <Text style={[typography.small, { color: colors.background, opacity: 0.8 }]}>Online</Text>
-          )}
+        <View style={{ flex: 1, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: spacing.sm }}>
+          <CompanyLogo size="small" showText={false} variant="light" />
+          <View style={{ alignItems: 'center' }}>
+            <Text style={[commonStyles.headerTitle, { fontSize: 18 }]}>{currentRoom?.name}</Text>
+            {currentRoom?.isOnline && (
+              <Text style={[typography.small, { color: colors.background, opacity: 0.8 }]}>Online</Text>
+            )}
+          </View>
         </View>
         <TouchableOpacity onPress={() => console.log('Chat options')}>
           <Icon name="ellipsis-vertical" size={24} style={{ color: colors.background }} />

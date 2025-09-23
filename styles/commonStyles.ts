@@ -80,7 +80,7 @@ export const getContrastColor = (backgroundColor: string): string => {
 
 export const buttonStyles = StyleSheet.create({
   primary: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primary, // Blue background
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
     borderRadius: 10,
@@ -90,7 +90,7 @@ export const buttonStyles = StyleSheet.create({
     borderWidth: 0,
   },
   secondary: {
-    backgroundColor: colors.background,
+    backgroundColor: colors.primary, // Blue background for consistency
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
     borderRadius: 10,

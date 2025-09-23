@@ -17,24 +17,6 @@ interface ButtonProps {
   iconSize?: number;
 }
 
-// Helper function to determine if a color is light or dark
-const isLightColor = (color: string): boolean => {
-  // Convert hex to RGB
-  const hex = color.replace('#', '');
-  const r = parseInt(hex.substr(0, 2), 16);
-  const g = parseInt(hex.substr(2, 2), 16);
-  const b = parseInt(hex.substr(4, 2), 16);
-  
-  // Calculate luminance
-  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return luminance > 0.5;
-};
-
-// Helper function to get contrasting color
-const getContrastColor = (backgroundColor: string): string => {
-  return isLightColor(backgroundColor) ? colors.text : colors.background;
-};
-
 export default function Button({
   text,
   title, // Keep for backward compatibility
@@ -54,22 +36,18 @@ export default function Button({
     switch (variant) {
       case 'secondary':
         return {
-          backgroundColor: colors.background,
-          // Remove all borders and outlines
+          backgroundColor: colors.primary, // Blue background for consistency
           borderWidth: 0,
-          // Enhanced shadow for better visibility
-          shadowColor: colors.shadow,
+          shadowColor: colors.primary,
           shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.15,
+          shadowOpacity: 0.3,
           shadowRadius: 8,
-          elevation: 5,
+          elevation: 6,
         };
       case 'danger':
         return {
           backgroundColor: colors.danger,
-          // Remove all borders and outlines
           borderWidth: 0,
-          // Enhanced shadow
           shadowColor: colors.danger,
           shadowOffset: { width: 0, height: 4 },
           shadowOpacity: 0.3,
@@ -79,9 +57,7 @@ export default function Button({
       case 'success':
         return {
           backgroundColor: colors.success,
-          // Remove all borders and outlines
           borderWidth: 0,
-          // Enhanced shadow
           shadowColor: colors.success,
           shadowOffset: { width: 0, height: 4 },
           shadowOpacity: 0.3,
@@ -91,9 +67,7 @@ export default function Button({
       case 'warning':
         return {
           backgroundColor: colors.warning,
-          // Remove all borders and outlines
           borderWidth: 0,
-          // Enhanced shadow
           shadowColor: colors.warning,
           shadowOffset: { width: 0, height: 4 },
           shadowOpacity: 0.3,
@@ -102,10 +76,8 @@ export default function Button({
         };
       default:
         return {
-          backgroundColor: colors.primary,
-          // Remove all borders and outlines
+          backgroundColor: colors.primary, // Blue background
           borderWidth: 0,
-          // Enhanced shadow for primary buttons
           shadowColor: colors.primary,
           shadowOffset: { width: 0, height: 4 },
           shadowOpacity: 0.3,
@@ -138,14 +110,9 @@ export default function Button({
     }
   };
 
-  const getBackgroundColor = () => {
-    const variantStyles = getVariantStyles();
-    return variantStyles.backgroundColor;
-  };
-
   const getContrastingColor = () => {
-    const backgroundColor = getBackgroundColor();
-    return getContrastColor(backgroundColor);
+    // Always return white text for all button variants for better contrast
+    return colors.background; // White text
   };
 
   return (

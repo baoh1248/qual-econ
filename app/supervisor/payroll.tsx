@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Text, View, ScrollView, TouchableOpacity, TextInput, StyleSheet, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { commonStyles, colors, spacing, typography } from '../../styles/commonStyles';
+import CompanyLogo from '../../components/CompanyLogo';
 import Icon from '../../components/Icon';
 import AnimatedCard from '../../components/AnimatedCard';
 import Toast from '../../components/Toast';
@@ -529,7 +530,10 @@ export default function PayrollScreen() {
         <TouchableOpacity onPress={() => router.back()}>
           <Icon name="arrow-back" size={24} style={{ color: colors.background }} />
         </TouchableOpacity>
-        <Text style={commonStyles.headerTitle}>Payroll Hours</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+          <CompanyLogo size="small" showText={false} variant="light" />
+          <Text style={commonStyles.headerTitle}>Payroll Hours</Text>
+        </View>
         <TouchableOpacity onPress={exportPayrollData}>
           <Icon name="download" size={24} style={{ color: colors.background }} />
         </TouchableOpacity>

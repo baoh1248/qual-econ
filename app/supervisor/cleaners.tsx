@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, Alert, Modal, StyleSheet, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { commonStyles, colors, spacing, typography, buttonStyles } from '../../styles/commonStyles';
+import CompanyLogo from '../../components/CompanyLogo';
 import { useClientData, type Cleaner } from '../../hooks/useClientData';
 import { useToast } from '../../hooks/useToast';
 import Icon from '../../components/Icon';
@@ -282,7 +283,10 @@ export default function CleanersScreen() {
         <TouchableOpacity onPress={() => router.back()}>
           <Icon name="arrow-back" size={24} style={{ color: colors.background }} />
         </TouchableOpacity>
-        <Text style={commonStyles.headerTitle}>Cleaner Management</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+          <CompanyLogo size="small" showText={false} variant="light" />
+          <Text style={commonStyles.headerTitle}>Cleaner Management</Text>
+        </View>
         <TouchableOpacity onPress={() => setShowAddModal(true)}>
           <Icon name="add" size={24} style={{ color: colors.background }} />
         </TouchableOpacity>

@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Image, Alert, StyleSheet, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { commonStyles, colors, spacing, typography } from '../../styles/commonStyles';
+import CompanyLogo from '../../components/CompanyLogo';
 import { useToast } from '../../hooks/useToast';
 import Icon from '../../components/Icon';
 import AnimatedCard from '../../components/AnimatedCard';
@@ -226,7 +227,10 @@ export default function PhotosScreen() {
         <TouchableOpacity onPress={() => router.back()}>
           <Icon name="arrow-back" size={24} style={{ color: colors.background }} />
         </TouchableOpacity>
-        <Text style={commonStyles.headerTitle}>Photo Documentation</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+          <CompanyLogo size="small" showText={false} variant="light" />
+          <Text style={commonStyles.headerTitle}>Photo Documentation</Text>
+        </View>
         <TouchableOpacity onPress={() => showToast('Export coming soon', 'info')}>
           <Icon name="download" size={24} style={{ color: colors.background }} />
         </TouchableOpacity>
