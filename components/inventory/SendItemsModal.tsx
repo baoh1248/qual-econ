@@ -10,7 +10,7 @@ import { logInventoryTransfer, type InventoryTransferItem } from '../../utils/in
 interface InventoryItem {
   id: string;
   name: string;
-  currentStock: number;
+  current_stock: number;
   unit: string;
   category: string;
 }
@@ -19,7 +19,7 @@ interface SendItemsModalProps {
   visible: boolean;
   onClose: () => void;
   inventory: InventoryItem[];
-  onItemsSent: (itemIds: string[], quantities: number[]) => void;
+  onSend: (itemIds: string[], quantities: number[]) => void;
   onSuccess?: () => void;
 }
 
@@ -28,7 +28,7 @@ interface SelectedItem extends InventoryTransferItem {
   maxQuantity: number;
 }
 
-const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory, onItemsSent, onSuccess }) => {
+const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory, onSend, onSuccess }) => {
   console.log('SendItemsModal rendered');
   
   const [destination, setDestination] = useState('');
@@ -61,7 +61,7 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
 
   const filteredInventory = inventory.filter(item =>
     item.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
-    item.currentStock > 0 &&
+    item.current_stock > 0 &&
     !selectedItems.some(selected => selected.id === item.id)
   );
 
@@ -71,7 +71,7 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
       name: item.name,
       quantity: 1,
       unit: item.unit,
-      maxQuantity: item.currentStock,
+      maxQuantity: item.current_stock,
     };
     setSelectedItems(prev => [...prev, newItem]);
     setSearchQuery('');
@@ -119,7 +119,7 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
       // Update inventory quantities
       const itemIds = selectedItems.map(item => item.id);
       const quantities = selectedItems.map(item => item.quantity);
-      onItemsSent(itemIds, quantities);
+      onSend(itemIds, quantities);
 
       // Show success message
       const itemSummary = selectedItems.map(item => `${item.quantity} ${item.name}`).join(', ');
@@ -344,7 +344,7 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
                             {item.name}
                           </Text>
                           <Text style={[typography.caption, { color: colors.textSecondary }]}>
-                            Available: {item.currentStock} {item.unit}
+                            Available: {item.current_stock} {item.unit}
                           </Text>
                         </View>
                         <IconButton

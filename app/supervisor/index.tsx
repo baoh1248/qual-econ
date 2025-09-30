@@ -10,6 +10,7 @@ import ProgressRing from '../../components/ProgressRing';
 import CompanyLogo from '../../components/CompanyLogo';
 import Toast from '../../components/Toast';
 import DatabaseSetup from '../../components/DatabaseSetup';
+import LiveMap from '../../components/LiveMap';
 import { commonStyles, colors, spacing, typography, statusColors } from '../../styles/commonStyles';
 import { useToast } from '../../hooks/useToast';
 import { useInventoryAlerts } from '../../hooks/useInventoryAlerts';
@@ -50,6 +51,7 @@ const SupervisorDashboard = () => {
   
   const [refreshing, setRefreshing] = useState(false);
   const [showDatabaseSetup, setShowDatabaseSetup] = useState(false);
+  const [showLiveMap, setShowLiveMap] = useState(false);
 
   // Mock data - in a real app, this would come from your database
   const [teamMembers] = useState<TeamMember[]>([
@@ -244,10 +246,47 @@ const SupervisorDashboard = () => {
           </AnimatedCard>
         </View>
 
+        {/* Live Map Card */}
+        <AnimatedCard style={styles.liveMapCard}>
+          <TouchableOpacity 
+            style={styles.liveMapHeader}
+            onPress={() => setShowLiveMap(true)}
+          >
+            <View style={styles.liveMapTitleRow}>
+              <Icon name="map" size={24} style={{ color: colors.primary }} />
+              <Text style={styles.cardTitle}>Live Cleaner Tracking</Text>
+            </View>
+            <Icon name="chevron-forward" size={20} style={{ color: colors.textSecondary }} />
+          </TouchableOpacity>
+          <Text style={styles.liveMapDescription}>
+            Monitor your team&apos;s real-time locations and status
+          </Text>
+          <View style={styles.liveMapStats}>
+            <View style={styles.liveMapStat}>
+              <Text style={styles.liveMapStatValue}>
+                {teamMembers.filter(m => m.status === 'on-duty').length}
+              </Text>
+              <Text style={styles.liveMapStatLabel}>On Duty</Text>
+            </View>
+            <View style={styles.liveMapStat}>
+              <Text style={styles.liveMapStatValue}>
+                {teamMembers.filter(m => m.status === 'break').length}
+              </Text>
+              <Text style={styles.liveMapStatLabel}>On Break</Text>
+            </View>
+            <View style={styles.liveMapStat}>
+              <Text style={styles.liveMapStatValue}>
+                {teamMembers.filter(m => m.status === 'off-duty').length}
+              </Text>
+              <Text style={styles.liveMapStatLabel}>Off Duty</Text>
+            </View>
+          </View>
+        </AnimatedCard>
+
         {/* Task Progress */}
         <AnimatedCard style={styles.progressCard}>
           <View style={styles.progressHeader}>
-            <Text style={styles.cardTitle}>Today's Progress</Text>
+            <Text style={styles.cardTitle}>Today&apos;s Progress</Text>
             <Text style={styles.progressPercentage}>
               {Math.round((taskSummary.completed / taskSummary.total) * 100)}%
             </Text>
@@ -395,6 +434,23 @@ const SupervisorDashboard = () => {
         <DatabaseSetup onClose={() => setShowDatabaseSetup(false)} />
       </Modal>
 
+      {/* Live Map Modal */}
+      <Modal
+        visible={showLiveMap}
+        animationType="slide"
+        presentationStyle="pageSheet"
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Live Cleaner Tracking</Text>
+            <TouchableOpacity onPress={() => setShowLiveMap(false)}>
+              <Icon name="close" size={24} style={{ color: colors.text }} />
+            </TouchableOpacity>
+          </View>
+          <LiveMap />
+        </View>
+      </Modal>
+
       <Toast />
     </View>
   );
@@ -460,6 +516,46 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   statLabel: {
+    ...typography.small,
+    color: colors.textSecondary,
+  },
+  liveMapCard: {
+    marginBottom: spacing.lg,
+    padding: spacing.lg,
+  },
+  liveMapHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  liveMapTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  liveMapDescription: {
+    ...typography.small,
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
+  },
+  liveMapStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  liveMapStat: {
+    alignItems: 'center',
+  },
+  liveMapStatValue: {
+    ...typography.h2,
+    color: colors.primary,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  liveMapStatLabel: {
     ...typography.small,
     color: colors.textSecondary,
   },
@@ -658,6 +754,24 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontWeight: '500',
     marginTop: spacing.sm,
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  modalTitle: {
+    ...typography.h2,
+    color: colors.text,
+    fontWeight: '600',
   },
 });
 

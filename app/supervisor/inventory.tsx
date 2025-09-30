@@ -492,6 +492,7 @@ const SupervisorInventoryScreen = () => {
   // Delete item
   const removeItem = useCallback(async (itemId: string) => {
     try {
+      console.log('Deleting item with ID:', itemId);
       await executeQuery('delete', 'inventory_items', null, { id: itemId });
       
       setInventory(prev => prev.filter(i => i.id !== itemId));
@@ -559,7 +560,7 @@ const SupervisorInventoryScreen = () => {
     }
   }, [selectedItem, editItemForm, executeQuery, showToast]);
 
-  // Confirm delete item
+  // Confirm delete item - FIXED
   const confirmDeleteItem = () => {
     if (!itemToDelete) return;
     
@@ -567,11 +568,17 @@ const SupervisorInventoryScreen = () => {
       'Delete Item',
       `Are you sure you want to delete "${itemToDelete.name}"? This action cannot be undone.`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Cancel', 
+          style: 'cancel',
+          onPress: () => setItemToDelete(null)
+        },
         { 
           text: 'Delete', 
           style: 'destructive',
-          onPress: () => removeItem(itemToDelete.id)
+          onPress: () => {
+            removeItem(itemToDelete.id);
+          }
         }
       ]
     );
@@ -686,6 +693,13 @@ const SupervisorInventoryScreen = () => {
       );
     }
   };
+
+  // Trigger delete confirmation when itemToDelete changes
+  useEffect(() => {
+    if (itemToDelete) {
+      confirmDeleteItem();
+    }
+  }, [itemToDelete]);
 
   if (isLoading) {
     return (
@@ -1319,32 +1333,6 @@ const SupervisorInventoryScreen = () => {
         visible={showTransferModal}
         onClose={() => setShowTransferModal(false)}
       />
-
-      {/* Delete Confirmation */}
-      {itemToDelete && (
-        <Modal visible={true} transparent animationType="fade">
-          <View style={styles.overlayContainer}>
-            <View style={styles.confirmationModal}>
-              <Text style={styles.confirmationTitle}>Delete Item</Text>
-              <Text style={styles.confirmationMessage}>
-                Are you sure you want to delete "{itemToDelete.name}"? This action cannot be undone.
-              </Text>
-              <View style={styles.confirmationActions}>
-                <Button
-                  title="Cancel"
-                  onPress={() => setItemToDelete(null)}
-                  style={[buttonStyles.outline, { flex: 1, marginRight: spacing.sm }]}
-                />
-                <Button
-                  title="Delete"
-                  onPress={confirmDeleteItem}
-                  style={[buttonStyles.danger, { flex: 1 }]}
-                />
-              </View>
-            </View>
-          </View>
-        </Modal>
-      )}
 
       {/* Reject Request Confirmation */}
       {requestToReject && (
