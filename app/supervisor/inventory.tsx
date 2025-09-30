@@ -12,7 +12,6 @@ import SendItemsModal from '../../components/inventory/SendItemsModal';
 import Toast from '../../components/Toast';
 import { useToast } from '../../hooks/useToast';
 import { useDatabase } from '../../hooks/useDatabase';
-import { TABLES } from '../../utils/supabase';
 import { commonStyles, colors, spacing, typography, buttonStyles, getContrastColor } from '../../styles/commonStyles';
 
 interface InventoryItem {
@@ -131,11 +130,11 @@ const SupervisorInventoryScreen = () => {
       console.log('Loading inventory data from database...');
 
       // Load inventory items
-      const inventoryData = await executeQuery<InventoryItem>('select', TABLES.INVENTORY_ITEMS);
+      const inventoryData = await executeQuery<InventoryItem>('select', 'inventory_items');
       console.log('Loaded inventory items:', inventoryData.length);
 
       // Load restock requests
-      const requestsData = await executeQuery<RestockRequest>('select', TABLES.RESTOCK_REQUESTS);
+      const requestsData = await executeQuery<RestockRequest>('select', 'restock_requests');
       console.log('Loaded restock requests:', requestsData.length);
 
       // If no data exists, initialize with sample data
@@ -236,7 +235,7 @@ const SupervisorInventoryScreen = () => {
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         };
-        await executeQuery('insert', TABLES.INVENTORY_ITEMS, itemWithId);
+        await executeQuery('insert', 'inventory_items', itemWithId);
       }
 
       // Add sample restock request for low stock item
@@ -251,7 +250,7 @@ const SupervisorInventoryScreen = () => {
         notes: 'Auto-generated restock request due to low stock levels',
       };
 
-      await executeQuery('insert', TABLES.RESTOCK_REQUESTS, {
+      await executeQuery('insert', 'restock_requests', {
         ...lowStockRequest,
         id: `request-${Date.now()}`,
       });
@@ -329,7 +328,7 @@ const SupervisorInventoryScreen = () => {
         updated_at: new Date().toISOString(),
       };
 
-      await executeQuery('insert', TABLES.INVENTORY_ITEMS, itemWithId);
+      await executeQuery('insert', 'inventory_items', itemWithId);
       
       setInventory(prev => [...prev, itemWithId]);
       setShowAddModal(false);
@@ -368,7 +367,7 @@ const SupervisorInventoryScreen = () => {
         updated_at: new Date().toISOString(),
       };
 
-      await executeQuery('update', TABLES.INVENTORY_ITEMS, updatedItem, { id: itemId });
+      await executeQuery('update', 'inventory_items', updatedItem, { id: itemId });
       
       setInventory(prev => prev.map(i => i.id === itemId ? updatedItem : i));
       
@@ -386,7 +385,7 @@ const SupervisorInventoryScreen = () => {
         created_at: new Date().toISOString(),
       };
 
-      await executeQuery('insert', TABLES.INVENTORY_TRANSACTIONS, transaction);
+      await executeQuery('insert', 'inventory_transactions', transaction);
       
       showToast('Stock updated successfully', 'success');
     } catch (error) {
@@ -417,7 +416,7 @@ const SupervisorInventoryScreen = () => {
         id: `request-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       };
 
-      await executeQuery('insert', TABLES.RESTOCK_REQUESTS, requestWithId);
+      await executeQuery('insert', 'restock_requests', requestWithId);
       
       setRestockRequests(prev => [...prev, requestWithId]);
       showToast('Restock request submitted', 'success');
@@ -437,7 +436,7 @@ const SupervisorInventoryScreen = () => {
         updated_at: new Date().toISOString(),
       };
 
-      await executeQuery('update', TABLES.RESTOCK_REQUESTS, updatedRequest, { id: requestId });
+      await executeQuery('update', 'restock_requests', updatedRequest, { id: requestId });
       
       setRestockRequests(prev => prev.map(r => 
         r.id === requestId ? { ...r, ...updatedRequest } : r
@@ -453,7 +452,7 @@ const SupervisorInventoryScreen = () => {
   // Reject restock request
   const rejectRestockRequest = useCallback(async (requestId: string) => {
     try {
-      await executeQuery('delete', TABLES.RESTOCK_REQUESTS, null, { id: requestId });
+      await executeQuery('delete', 'restock_requests', null, { id: requestId });
       
       setRestockRequests(prev => prev.filter(r => r.id !== requestId));
       setRequestToReject(null);
@@ -476,7 +475,7 @@ const SupervisorInventoryScreen = () => {
         updated_at: new Date().toISOString(),
       };
 
-      await executeQuery('update', TABLES.INVENTORY_ITEMS, updatedItem, { id: itemId });
+      await executeQuery('update', 'inventory_items', updatedItem, { id: itemId });
       
       setInventory(prev => prev.map(i => i.id === itemId ? updatedItem : i));
       
@@ -493,7 +492,7 @@ const SupervisorInventoryScreen = () => {
   // Delete item
   const removeItem = useCallback(async (itemId: string) => {
     try {
-      await executeQuery('delete', TABLES.INVENTORY_ITEMS, null, { id: itemId });
+      await executeQuery('delete', 'inventory_items', null, { id: itemId });
       
       setInventory(prev => prev.filter(i => i.id !== itemId));
       setItemToDelete(null);
@@ -547,7 +546,7 @@ const SupervisorInventoryScreen = () => {
         updated_at: new Date().toISOString(),
       };
 
-      await executeQuery('update', TABLES.INVENTORY_ITEMS, updatedItem, { id: selectedItem.id });
+      await executeQuery('update', 'inventory_items', updatedItem, { id: selectedItem.id });
       
       setInventory(prev => prev.map(i => i.id === selectedItem.id ? updatedItem : i));
       setShowEditModal(false);
@@ -648,6 +647,46 @@ const SupervisorInventoryScreen = () => {
     }
   };
 
+  // Handle stock update with prompt
+  const handleStockUpdate = (item: InventoryItem) => {
+    if (Platform.OS === 'web') {
+      const newStock = prompt(
+        `Update stock for ${item.name}\nCurrent stock: ${item.current_stock} ${item.unit}`,
+        item.current_stock.toString()
+      );
+      
+      if (newStock !== null) {
+        const stockValue = parseInt(newStock);
+        if (!isNaN(stockValue) && stockValue >= 0) {
+          updateStock(item.id, stockValue);
+        } else {
+          showToast('Please enter a valid stock number', 'error');
+        }
+      }
+    } else {
+      Alert.prompt(
+        'Update Stock',
+        `Current stock: ${item.current_stock} ${item.unit}`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { 
+            text: 'Update', 
+            onPress: (value) => {
+              const newStock = parseInt(value || '0');
+              if (!isNaN(newStock) && newStock >= 0) {
+                updateStock(item.id, newStock);
+              } else {
+                showToast('Please enter a valid stock number', 'error');
+              }
+            }
+          }
+        ],
+        'plain-text',
+        item.current_stock.toString()
+      );
+    }
+  };
+
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
@@ -660,8 +699,13 @@ const SupervisorInventoryScreen = () => {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <CompanyLogo />
-        <Text style={styles.title}>Inventory Management</Text>
+        <TouchableOpacity onPress={() => router.back()}>
+          <Icon name="arrow-back" size={24} style={{ color: colors.background }} />
+        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+          <CompanyLogo size="small" showText={false} variant="light" />
+          <Text style={commonStyles.headerTitle}>Inventory Management</Text>
+        </View>
         <View style={styles.headerActions}>
           {/* Database status indicator */}
           <View style={[styles.statusIndicator, { 
@@ -677,7 +721,7 @@ const SupervisorInventoryScreen = () => {
             icon="add"
             onPress={() => setShowAddModal(true)}
             size={24}
-            color={colors.text}
+            color={colors.background}
           />
         </View>
       </View>
@@ -864,26 +908,7 @@ const SupervisorInventoryScreen = () => {
               <View style={styles.itemActions}>
                 <Button
                   title="Update Stock"
-                  onPress={() => {
-                    Alert.prompt(
-                      'Update Stock',
-                      `Current stock: ${item.current_stock} ${item.unit}`,
-                      [
-                        { text: 'Cancel', style: 'cancel' },
-                        { 
-                          text: 'Update', 
-                          onPress: (value) => {
-                            const newStock = parseInt(value || '0');
-                            if (!isNaN(newStock) && newStock >= 0) {
-                              updateStock(item.id, newStock);
-                            }
-                          }
-                        }
-                      ],
-                      'plain-text',
-                      item.current_stock.toString()
-                    );
-                  }}
+                  onPress={() => handleStockUpdate(item)}
                   style={[buttonStyles.secondary, { flex: 1, marginRight: spacing.sm }]}
                 />
                 
@@ -912,6 +937,374 @@ const SupervisorInventoryScreen = () => {
           </View>
         )}
       </ScrollView>
+
+      {/* Add Item Modal */}
+      <Modal visible={showAddModal} animationType="slide" presentationStyle="pageSheet">
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Add New Item</Text>
+            <IconButton
+              icon="close"
+              onPress={() => setShowAddModal(false)}
+              size={24}
+              color={colors.text}
+            />
+          </View>
+          
+          <ScrollView style={styles.modalContent}>
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Item Name *</Text>
+              <TextInput
+                style={styles.formInput}
+                value={newItemForm.name}
+                onChangeText={(text) => setNewItemForm(prev => ({ ...prev, name: text }))}
+                placeholder="Enter item name"
+                placeholderTextColor={colors.textSecondary}
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Category *</Text>
+              <View style={styles.categoryButtons}>
+                {(['cleaning-supplies', 'equipment', 'safety'] as const).map((category) => (
+                  <TouchableOpacity
+                    key={category}
+                    style={[
+                      styles.categoryButton,
+                      newItemForm.category === category && styles.categoryButtonActive
+                    ]}
+                    onPress={() => setNewItemForm(prev => ({ ...prev, category }))}
+                  >
+                    <Icon 
+                      name={getCategoryIcon(category)} 
+                      size={16} 
+                      style={{ 
+                        color: newItemForm.category === category ? colors.background : colors.primary,
+                        marginRight: spacing.xs 
+                      }} 
+                    />
+                    <Text style={[
+                      styles.categoryButtonText,
+                      newItemForm.category === category && styles.categoryButtonTextActive
+                    ]}>
+                      {category === 'cleaning-supplies' ? 'Supplies' : 
+                       category === 'equipment' ? 'Equipment' : 'Safety'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.formRow}>
+              <View style={[styles.formGroup, { flex: 1, marginRight: spacing.sm }]}>
+                <Text style={styles.formLabel}>Current Stock *</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={newItemForm.current_stock}
+                  onChangeText={(text) => setNewItemForm(prev => ({ ...prev, current_stock: text }))}
+                  placeholder="0"
+                  keyboardType="numeric"
+                  placeholderTextColor={colors.textSecondary}
+                />
+              </View>
+              
+              <View style={[styles.formGroup, { flex: 1 }]}>
+                <Text style={styles.formLabel}>Unit *</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={newItemForm.unit}
+                  onChangeText={(text) => setNewItemForm(prev => ({ ...prev, unit: text }))}
+                  placeholder="bottles, units, etc."
+                  placeholderTextColor={colors.textSecondary}
+                />
+              </View>
+            </View>
+
+            <View style={styles.formRow}>
+              <View style={[styles.formGroup, { flex: 1, marginRight: spacing.sm }]}>
+                <Text style={styles.formLabel}>Min Stock</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={newItemForm.min_stock}
+                  onChangeText={(text) => setNewItemForm(prev => ({ ...prev, min_stock: text }))}
+                  placeholder="0"
+                  keyboardType="numeric"
+                  placeholderTextColor={colors.textSecondary}
+                />
+              </View>
+              
+              <View style={[styles.formGroup, { flex: 1 }]}>
+                <Text style={styles.formLabel}>Max Stock</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={newItemForm.max_stock}
+                  onChangeText={(text) => setNewItemForm(prev => ({ ...prev, max_stock: text }))}
+                  placeholder="100"
+                  keyboardType="numeric"
+                  placeholderTextColor={colors.textSecondary}
+                />
+              </View>
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Location</Text>
+              <TextInput
+                style={styles.formInput}
+                value={newItemForm.location}
+                onChangeText={(text) => setNewItemForm(prev => ({ ...prev, location: text }))}
+                placeholder="Storage location"
+                placeholderTextColor={colors.textSecondary}
+              />
+            </View>
+
+            <View style={styles.formRow}>
+              <View style={[styles.formGroup, { flex: 1, marginRight: spacing.sm }]}>
+                <Text style={styles.formLabel}>Cost ($)</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={newItemForm.cost}
+                  onChangeText={(text) => setNewItemForm(prev => ({ ...prev, cost: text }))}
+                  placeholder="0.00"
+                  keyboardType="decimal-pad"
+                  placeholderTextColor={colors.textSecondary}
+                />
+              </View>
+              
+              <View style={[styles.formGroup, { flex: 1 }]}>
+                <Text style={styles.formLabel}>Reorder Qty</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={newItemForm.reorder_quantity}
+                  onChangeText={(text) => setNewItemForm(prev => ({ ...prev, reorder_quantity: text }))}
+                  placeholder="0"
+                  keyboardType="numeric"
+                  placeholderTextColor={colors.textSecondary}
+                />
+              </View>
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Supplier</Text>
+              <TextInput
+                style={styles.formInput}
+                value={newItemForm.supplier}
+                onChangeText={(text) => setNewItemForm(prev => ({ ...prev, supplier: text }))}
+                placeholder="Supplier name"
+                placeholderTextColor={colors.textSecondary}
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <View style={styles.switchRow}>
+                <Text style={styles.formLabel}>Auto-reorder enabled</Text>
+                <TouchableOpacity
+                  style={[styles.switch, newItemForm.auto_reorder_enabled && styles.switchActive]}
+                  onPress={() => setNewItemForm(prev => ({ ...prev, auto_reorder_enabled: !prev.auto_reorder_enabled }))}
+                >
+                  <View style={[styles.switchThumb, newItemForm.auto_reorder_enabled && styles.switchThumbActive]} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </ScrollView>
+
+          <View style={styles.modalActions}>
+            <Button
+              title="Cancel"
+              onPress={() => setShowAddModal(false)}
+              style={[buttonStyles.outline, { flex: 1, marginRight: spacing.sm }]}
+            />
+            <Button
+              title="Add Item"
+              onPress={addNewItem}
+              style={[buttonStyles.primary, { flex: 1 }]}
+            />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Edit Item Modal */}
+      <Modal visible={showEditModal} animationType="slide" presentationStyle="pageSheet">
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Edit Item</Text>
+            <IconButton
+              icon="close"
+              onPress={() => setShowEditModal(false)}
+              size={24}
+              color={colors.text}
+            />
+          </View>
+          
+          <ScrollView style={styles.modalContent}>
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Item Name *</Text>
+              <TextInput
+                style={styles.formInput}
+                value={editItemForm.name}
+                onChangeText={(text) => setEditItemForm(prev => ({ ...prev, name: text }))}
+                placeholder="Enter item name"
+                placeholderTextColor={colors.textSecondary}
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Category *</Text>
+              <View style={styles.categoryButtons}>
+                {(['cleaning-supplies', 'equipment', 'safety'] as const).map((category) => (
+                  <TouchableOpacity
+                    key={category}
+                    style={[
+                      styles.categoryButton,
+                      editItemForm.category === category && styles.categoryButtonActive
+                    ]}
+                    onPress={() => setEditItemForm(prev => ({ ...prev, category }))}
+                  >
+                    <Icon 
+                      name={getCategoryIcon(category)} 
+                      size={16} 
+                      style={{ 
+                        color: editItemForm.category === category ? colors.background : colors.primary,
+                        marginRight: spacing.xs 
+                      }} 
+                    />
+                    <Text style={[
+                      styles.categoryButtonText,
+                      editItemForm.category === category && styles.categoryButtonTextActive
+                    ]}>
+                      {category === 'cleaning-supplies' ? 'Supplies' : 
+                       category === 'equipment' ? 'Equipment' : 'Safety'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.formRow}>
+              <View style={[styles.formGroup, { flex: 1, marginRight: spacing.sm }]}>
+                <Text style={styles.formLabel}>Current Stock *</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={editItemForm.current_stock}
+                  onChangeText={(text) => setEditItemForm(prev => ({ ...prev, current_stock: text }))}
+                  placeholder="0"
+                  keyboardType="numeric"
+                  placeholderTextColor={colors.textSecondary}
+                />
+              </View>
+              
+              <View style={[styles.formGroup, { flex: 1 }]}>
+                <Text style={styles.formLabel}>Unit *</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={editItemForm.unit}
+                  onChangeText={(text) => setEditItemForm(prev => ({ ...prev, unit: text }))}
+                  placeholder="bottles, units, etc."
+                  placeholderTextColor={colors.textSecondary}
+                />
+              </View>
+            </View>
+
+            <View style={styles.formRow}>
+              <View style={[styles.formGroup, { flex: 1, marginRight: spacing.sm }]}>
+                <Text style={styles.formLabel}>Min Stock</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={editItemForm.min_stock}
+                  onChangeText={(text) => setEditItemForm(prev => ({ ...prev, min_stock: text }))}
+                  placeholder="0"
+                  keyboardType="numeric"
+                  placeholderTextColor={colors.textSecondary}
+                />
+              </View>
+              
+              <View style={[styles.formGroup, { flex: 1 }]}>
+                <Text style={styles.formLabel}>Max Stock</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={editItemForm.max_stock}
+                  onChangeText={(text) => setEditItemForm(prev => ({ ...prev, max_stock: text }))}
+                  placeholder="100"
+                  keyboardType="numeric"
+                  placeholderTextColor={colors.textSecondary}
+                />
+              </View>
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Location</Text>
+              <TextInput
+                style={styles.formInput}
+                value={editItemForm.location}
+                onChangeText={(text) => setEditItemForm(prev => ({ ...prev, location: text }))}
+                placeholder="Storage location"
+                placeholderTextColor={colors.textSecondary}
+              />
+            </View>
+
+            <View style={styles.formRow}>
+              <View style={[styles.formGroup, { flex: 1, marginRight: spacing.sm }]}>
+                <Text style={styles.formLabel}>Cost ($)</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={editItemForm.cost}
+                  onChangeText={(text) => setEditItemForm(prev => ({ ...prev, cost: text }))}
+                  placeholder="0.00"
+                  keyboardType="decimal-pad"
+                  placeholderTextColor={colors.textSecondary}
+                />
+              </View>
+              
+              <View style={[styles.formGroup, { flex: 1 }]}>
+                <Text style={styles.formLabel}>Reorder Qty</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={editItemForm.reorder_quantity}
+                  onChangeText={(text) => setEditItemForm(prev => ({ ...prev, reorder_quantity: text }))}
+                  placeholder="0"
+                  keyboardType="numeric"
+                  placeholderTextColor={colors.textSecondary}
+                />
+              </View>
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Supplier</Text>
+              <TextInput
+                style={styles.formInput}
+                value={editItemForm.supplier}
+                onChangeText={(text) => setEditItemForm(prev => ({ ...prev, supplier: text }))}
+                placeholder="Supplier name"
+                placeholderTextColor={colors.textSecondary}
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <View style={styles.switchRow}>
+                <Text style={styles.formLabel}>Auto-reorder enabled</Text>
+                <TouchableOpacity
+                  style={[styles.switch, editItemForm.auto_reorder_enabled && styles.switchActive]}
+                  onPress={() => setEditItemForm(prev => ({ ...prev, auto_reorder_enabled: !prev.auto_reorder_enabled }))}
+                >
+                  <View style={[styles.switchThumb, editItemForm.auto_reorder_enabled && styles.switchThumbActive]} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </ScrollView>
+
+          <View style={styles.modalActions}>
+            <Button
+              title="Cancel"
+              onPress={() => setShowEditModal(false)}
+              style={[buttonStyles.outline, { flex: 1, marginRight: spacing.sm }]}
+            />
+            <Button
+              title="Save Changes"
+              onPress={saveEditedItem}
+              style={[buttonStyles.primary, { flex: 1 }]}
+            />
+          </View>
+        </View>
+      </Modal>
 
       {/* Send Items Modal */}
       <SendItemsModal
@@ -1006,13 +1399,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  title: {
-    ...typography.h2,
-    color: colors.text,
-    fontWeight: '600',
+    backgroundColor: colors.primary,
   },
   headerActions: {
     flexDirection: 'row',
@@ -1233,6 +1620,113 @@ const styles = StyleSheet.create({
   },
   confirmationActions: {
     flexDirection: 'row',
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  modalTitle: {
+    ...typography.h2,
+    color: colors.text,
+    fontWeight: '600',
+  },
+  modalContent: {
+    flex: 1,
+    padding: spacing.lg,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    padding: spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  formGroup: {
+    marginBottom: spacing.md,
+  },
+  formLabel: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '500',
+    marginBottom: spacing.xs,
+  },
+  formInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    ...typography.body,
+    color: colors.text,
+    backgroundColor: colors.background,
+  },
+  formRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+  },
+  categoryButtons: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  categoryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: colors.background,
+  },
+  categoryButtonActive: {
+    backgroundColor: colors.primary,
+  },
+  categoryButtonText: {
+    ...typography.small,
+    color: colors.primary,
+    fontWeight: '500',
+  },
+  categoryButtonTextActive: {
+    color: colors.background,
+    fontWeight: '600',
+  },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  switch: {
+    width: 50,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: colors.border,
+    padding: 2,
+    justifyContent: 'center',
+  },
+  switchActive: {
+    backgroundColor: colors.success,
+  },
+  switchThumb: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: colors.background,
+    shadowColor: colors.text,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  switchThumbActive: {
+    transform: [{ translateX: 20 }],
   },
 });
 

@@ -23,10 +23,15 @@ export interface ScheduleEntry {
   estimatedDuration?: number;
   actualDuration?: number;
   tags?: string[];
-  // Payment structure
+  // Payment structure - ENHANCED
   paymentType?: 'hourly' | 'flat_rate';
   flatRateAmount?: number; // Amount for flat rate jobs
   hourlyRate?: number; // Hourly rate for hourly jobs
+  // Additional payment fields
+  overtimeRate?: number; // Overtime multiplier (default 1.5)
+  bonusAmount?: number; // Additional bonus for this job
+  deductions?: number; // Any deductions for this job
+  totalCalculatedPay?: number; // Calculated total pay for this entry
 }
 
 export interface WeeklySchedule {
@@ -48,36 +53,41 @@ export interface ScheduleStats {
   conflictCount: number;
   utilizationRate: number;
   averageHoursPerCleaner: number;
-  // Payment stats
+  // Enhanced payment stats
   totalHourlyJobs: number;
   totalFlatRateJobs: number;
   totalHourlyAmount: number;
   totalFlatRateAmount: number;
+  totalBonusAmount: number;
+  totalDeductions: number;
+  totalPayroll: number;
+  averageHourlyRate: number;
+  overtimeHours: number;
+  overtimeAmount: number;
 }
 
 const STORAGE_KEYS = {
-  WEEKLY_SCHEDULES: 'weekly_schedules_v6', // Increment version for fixes
-  SCHEDULE_CACHE: 'schedule_cache_v6',
+  WEEKLY_SCHEDULES: 'weekly_schedules_v7', // Increment version for payment enhancements
+  SCHEDULE_CACHE: 'schedule_cache_v7',
   LAST_CLEANUP_DATE: 'last_cleanup_date',
 };
 
-// FIXED: Better cache management with immediate invalidation
+// Enhanced cache management with payment calculations
 const scheduleCache = new Map<string, ScheduleEntry[]>();
 const statsCache = new Map<string, ScheduleStats>();
 const conflictsCache = new Map<string, ScheduleConflict[]>();
-let cacheVersion = 0; // Global cache version for invalidation
+let cacheVersion = 0;
 
 export const useScheduleStorage = () => {
   const [weeklySchedules, setWeeklySchedules] = useState<WeeklySchedule>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  // Use refs to prevent unnecessary re-renders
   const loadingRef = useRef(false);
   const saveQueueRef = useRef<Map<string, ScheduleEntry[]>>(new Map());
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // FIXED: Force cache invalidation with better logging
+  // Force cache invalidation
   const invalidateAllCaches = useCallback(() => {
     console.log('=== INVALIDATING ALL CACHES ===');
     cacheVersion++;
@@ -87,7 +97,7 @@ export const useScheduleStorage = () => {
     console.log('✅ All caches cleared, version:', cacheVersion);
   }, []);
 
-  // Optimized week ID generation with caching and error handling
+  // Week ID generation
   const getCurrentWeekId = useCallback((): string => {
     try {
       const now = new Date();
@@ -103,7 +113,6 @@ export const useScheduleStorage = () => {
       return `${year}-${month}-${day}`;
     } catch (error) {
       console.error('Error getting current week ID:', error);
-      // Fallback to a simple date string
       const now = new Date();
       return now.toISOString().split('T')[0];
     }
@@ -132,7 +141,39 @@ export const useScheduleStorage = () => {
     }
   }, [getCurrentWeekId]);
 
-  // FIXED: Enhanced stats calculation with payment information
+  // Enhanced payment calculation helper
+  const calculateEntryPay = useCallback((entry: ScheduleEntry, cleanerDefaultRate: number = 15): number => {
+    try {
+      const paymentType = entry.paymentType || 'hourly';
+      const hours = entry.hours || 0;
+      
+      if (paymentType === 'flat_rate') {
+        const flatRate = entry.flatRateAmount || 0;
+        const bonus = entry.bonusAmount || 0;
+        const deductions = entry.deductions || 0;
+        return flatRate + bonus - deductions;
+      } else {
+        const hourlyRate = entry.hourlyRate || cleanerDefaultRate;
+        const overtimeMultiplier = entry.overtimeRate || 1.5;
+        
+        // Calculate regular vs overtime hours (assuming 8 hours regular per day)
+        const regularHours = Math.min(hours, 8);
+        const overtimeHours = Math.max(0, hours - 8);
+        
+        const regularPay = regularHours * hourlyRate;
+        const overtimePay = overtimeHours * hourlyRate * overtimeMultiplier;
+        const bonus = entry.bonusAmount || 0;
+        const deductions = entry.deductions || 0;
+        
+        return regularPay + overtimePay + bonus - deductions;
+      }
+    } catch (error) {
+      console.error('Error calculating entry pay:', error);
+      return 0;
+    }
+  }, []);
+
+  // Enhanced stats calculation with comprehensive payment information
   const calculateScheduleStats = useCallback((schedule: ScheduleEntry[]): ScheduleStats => {
     try {
       if (!Array.isArray(schedule)) {
@@ -149,10 +190,18 @@ export const useScheduleStorage = () => {
           totalFlatRateJobs: 0,
           totalHourlyAmount: 0,
           totalFlatRateAmount: 0,
+          totalBonusAmount: 0,
+          totalDeductions: 0,
+          totalPayroll: 0,
+          averageHourlyRate: 0,
+          overtimeHours: 0,
+          overtimeAmount: 0,
         };
       }
 
-      const scheduleKey = schedule.map(e => `${e?.id || ''}-${e?.status || ''}-${e?.hours || 0}-${e?.paymentType || 'hourly'}-${e?.flatRateAmount || 0}`).filter(Boolean).sort().join(',');
+      const scheduleKey = schedule.map(e => 
+        `${e?.id || ''}-${e?.status || ''}-${e?.hours || 0}-${e?.paymentType || 'hourly'}-${e?.flatRateAmount || 0}-${e?.hourlyRate || 15}`
+      ).filter(Boolean).sort().join(',');
       
       if (statsCache.has(scheduleKey)) {
         return statsCache.get(scheduleKey)!;
@@ -166,10 +215,17 @@ export const useScheduleStorage = () => {
       let totalFlatRateJobs = 0;
       let totalHourlyAmount = 0;
       let totalFlatRateAmount = 0;
+      let totalBonusAmount = 0;
+      let totalDeductions = 0;
+      let totalPayroll = 0;
+      let overtimeHours = 0;
+      let overtimeAmount = 0;
+      let totalHourlyRateSum = 0;
+      let hourlyJobCount = 0;
       
       const cleanerHours = new Map<string, number>();
       
-      // Single pass through the data
+      // Process each entry
       for (const entry of schedule) {
         if (!entry) continue;
         
@@ -185,13 +241,32 @@ export const useScheduleStorage = () => {
 
         // Calculate payment statistics
         const paymentType = entry.paymentType || 'hourly';
+        const entryPay = calculateEntryPay(entry);
+        totalPayroll += entryPay;
+        
+        // Track bonuses and deductions
+        totalBonusAmount += entry.bonusAmount || 0;
+        totalDeductions += entry.deductions || 0;
+        
         if (paymentType === 'flat_rate') {
           totalFlatRateJobs++;
           totalFlatRateAmount += entry.flatRateAmount || 0;
         } else {
           totalHourlyJobs++;
-          const hourlyRate = entry.hourlyRate || 15; // Default $15/hour
-          totalHourlyAmount += hours * hourlyRate;
+          const hourlyRate = entry.hourlyRate || 15;
+          totalHourlyRateSum += hourlyRate;
+          hourlyJobCount++;
+          
+          // Calculate overtime for this entry (assuming 8 hours regular per day)
+          const entryOvertimeHours = Math.max(0, hours - 8);
+          overtimeHours += entryOvertimeHours;
+          
+          if (entryOvertimeHours > 0) {
+            const overtimeMultiplier = entry.overtimeRate || 1.5;
+            overtimeAmount += entryOvertimeHours * hourlyRate * (overtimeMultiplier - 1);
+          }
+          
+          totalHourlyAmount += entryPay;
         }
       }
       
@@ -199,6 +274,7 @@ export const useScheduleStorage = () => {
         ? Array.from(cleanerHours.values()).reduce((sum, hours) => sum + hours, 0) / cleanerHours.size
         : 0;
       const utilizationRate = totalEntries > 0 ? (completedEntries / totalEntries) * 100 : 0;
+      const averageHourlyRate = hourlyJobCount > 0 ? totalHourlyRateSum / hourlyJobCount : 0;
 
       const stats: ScheduleStats = {
         totalHours,
@@ -212,6 +288,12 @@ export const useScheduleStorage = () => {
         totalFlatRateJobs,
         totalHourlyAmount,
         totalFlatRateAmount,
+        totalBonusAmount,
+        totalDeductions,
+        totalPayroll,
+        averageHourlyRate,
+        overtimeHours,
+        overtimeAmount,
       };
 
       // Cache the result
@@ -231,11 +313,17 @@ export const useScheduleStorage = () => {
         totalFlatRateJobs: 0,
         totalHourlyAmount: 0,
         totalFlatRateAmount: 0,
+        totalBonusAmount: 0,
+        totalDeductions: 0,
+        totalPayroll: 0,
+        averageHourlyRate: 0,
+        overtimeHours: 0,
+        overtimeAmount: 0,
       };
     }
-  }, []);
+  }, [calculateEntryPay]);
 
-  // FIXED: Immediate save without debouncing for critical operations
+  // Immediate save without debouncing for critical operations
   const saveSchedulesImmediately = useCallback(async (schedules: WeeklySchedule) => {
     try {
       console.log('=== IMMEDIATE SAVE OPERATION ===');
@@ -260,7 +348,7 @@ export const useScheduleStorage = () => {
     }
   }, []);
 
-  // Debounced save to prevent excessive storage writes (for non-critical operations)
+  // Debounced save to prevent excessive storage writes
   const debouncedSave = useCallback(async (schedules: WeeklySchedule) => {
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
@@ -276,7 +364,7 @@ export const useScheduleStorage = () => {
     }, 300);
   }, [saveSchedulesImmediately]);
 
-  // Optimized data loading with caching and error handling
+  // Enhanced data loading with payment field defaults
   const loadData = useCallback(async () => {
     if (loadingRef.current) return;
     
@@ -292,7 +380,7 @@ export const useScheduleStorage = () => {
         const parsedSchedules = JSON.parse(schedulesData);
         
         if (typeof parsedSchedules === 'object' && parsedSchedules !== null) {
-          // Validate and clean the data
+          // Validate and clean the data with enhanced payment defaults
           const cleanedSchedules: WeeklySchedule = {};
           
           Object.entries(parsedSchedules).forEach(([weekId, entries]) => {
@@ -308,7 +396,12 @@ export const useScheduleStorage = () => {
                 // Ensure payment fields have defaults
                 paymentType: entry.paymentType || 'hourly',
                 hourlyRate: entry.hourlyRate || 15,
-                flatRateAmount: entry.flatRateAmount || 0
+                flatRateAmount: entry.flatRateAmount || 0,
+                overtimeRate: entry.overtimeRate || 1.5,
+                bonusAmount: entry.bonusAmount || 0,
+                deductions: entry.deductions || 0,
+                // Calculate total pay if not already set
+                totalCalculatedPay: entry.totalCalculatedPay || calculateEntryPay(entry, 15)
               }));
               if (validEntries.length > 0) {
                 cleanedSchedules[weekId] = validEntries as ScheduleEntry[];
@@ -340,9 +433,9 @@ export const useScheduleStorage = () => {
       setIsLoading(false);
       loadingRef.current = false;
     }
-  }, []);
+  }, [calculateEntryPay]);
 
-  // FIXED: Enhanced schedule retrieval with better cache management
+  // Enhanced schedule retrieval with payment calculations
   const getWeekSchedule = useCallback((weekId: string, forceRefresh: boolean = false): ScheduleEntry[] => {
     try {
       if (!weekId || typeof weekId !== 'string') {
@@ -360,7 +453,7 @@ export const useScheduleStorage = () => {
       console.log('🔄 Getting fresh schedule data for week:', weekId, 'forceRefresh:', forceRefresh);
       const schedule = weeklySchedules[weekId] || [];
       
-      // Validate and sort once and cache
+      // Validate and enhance with payment calculations
       const validSchedule = schedule.filter(entry => 
         entry && 
         typeof entry === 'object' && 
@@ -372,7 +465,12 @@ export const useScheduleStorage = () => {
         // Ensure payment fields have defaults
         paymentType: entry.paymentType || 'hourly',
         hourlyRate: entry.hourlyRate || 15,
-        flatRateAmount: entry.flatRateAmount || 0
+        flatRateAmount: entry.flatRateAmount || 0,
+        overtimeRate: entry.overtimeRate || 1.5,
+        bonusAmount: entry.bonusAmount || 0,
+        deductions: entry.deductions || 0,
+        // Calculate total pay
+        totalCalculatedPay: calculateEntryPay(entry, 15)
       }));
 
       const sortedSchedule = validSchedule.sort((a, b) => {
@@ -395,9 +493,9 @@ export const useScheduleStorage = () => {
       console.error('Error getting week schedule:', error);
       return [];
     }
-  }, [weeklySchedules]);
+  }, [weeklySchedules, calculateEntryPay]);
 
-  // FIXED: Enhanced update with immediate cache invalidation and save
+  // Enhanced update with payment field validation
   const updateWeekSchedule = useCallback(async (weekId: string, entries: ScheduleEntry[]) => {
     try {
       console.log('=== UPDATING WEEK SCHEDULE ===');
@@ -412,7 +510,7 @@ export const useScheduleStorage = () => {
         throw new Error('Invalid entries provided');
       }
 
-      // Validate entries more thoroughly
+      // Validate entries with enhanced payment field validation
       const validatedEntries = entries
         .filter(entry => {
           if (!entry || typeof entry !== 'object') {
@@ -425,19 +523,29 @@ export const useScheduleStorage = () => {
           }
           return true;
         })
-        .map(entry => ({
-          ...entry,
-          weekId,
-          date: entry.date || weekId,
-          id: entry.id || String(Date.now() + Math.random()),
-          hours: typeof entry.hours === 'number' ? entry.hours : parseFloat(entry.hours as any) || 0,
-          status: entry.status || 'scheduled',
-          day: entry.day || 'monday',
-          // Ensure payment fields have defaults
-          paymentType: entry.paymentType || 'hourly',
-          hourlyRate: entry.hourlyRate || 15,
-          flatRateAmount: entry.flatRateAmount || 0
-        }));
+        .map(entry => {
+          const enhancedEntry = {
+            ...entry,
+            weekId,
+            date: entry.date || weekId,
+            id: entry.id || String(Date.now() + Math.random()),
+            hours: typeof entry.hours === 'number' ? entry.hours : parseFloat(entry.hours as any) || 0,
+            status: entry.status || 'scheduled',
+            day: entry.day || 'monday',
+            // Enhanced payment fields with validation
+            paymentType: entry.paymentType || 'hourly',
+            hourlyRate: Math.max(0, entry.hourlyRate || 15),
+            flatRateAmount: Math.max(0, entry.flatRateAmount || 0),
+            overtimeRate: Math.max(1, entry.overtimeRate || 1.5),
+            bonusAmount: Math.max(0, entry.bonusAmount || 0),
+            deductions: Math.max(0, entry.deductions || 0),
+          };
+          
+          // Calculate total pay
+          enhancedEntry.totalCalculatedPay = calculateEntryPay(enhancedEntry, 15);
+          
+          return enhancedEntry;
+        });
 
       const updatedSchedules = {
         ...weeklySchedules,
@@ -446,16 +554,16 @@ export const useScheduleStorage = () => {
       
       console.log('🔄 Setting updated schedules for week:', weekId);
       
-      // CRITICAL: Update state first
+      // Update state first
       setWeeklySchedules(updatedSchedules);
       
-      // CRITICAL: Immediately invalidate all caches
+      // Immediately invalidate all caches
       invalidateAllCaches();
       
       // Update cache immediately with new data
       scheduleCache.set(weekId, validatedEntries);
       
-      // CRITICAL: Force immediate save for all schedule updates
+      // Force immediate save for all schedule updates
       await saveSchedulesImmediately(updatedSchedules);
       
       console.log('✅ WEEK SCHEDULE UPDATE COMPLETED ===');
@@ -465,9 +573,9 @@ export const useScheduleStorage = () => {
       setError('Failed to update schedule');
       throw err;
     }
-  }, [weeklySchedules, saveSchedulesImmediately, invalidateAllCaches]);
+  }, [weeklySchedules, saveSchedulesImmediately, invalidateAllCaches, calculateEntryPay]);
 
-  // Optimized stats retrieval with error handling
+  // Stats retrieval
   const getWeekStats = useCallback((weekId: string): ScheduleStats => {
     try {
       const schedule = getWeekSchedule(weekId);
@@ -486,11 +594,17 @@ export const useScheduleStorage = () => {
         totalFlatRateJobs: 0,
         totalHourlyAmount: 0,
         totalFlatRateAmount: 0,
+        totalBonusAmount: 0,
+        totalDeductions: 0,
+        totalPayroll: 0,
+        averageHourlyRate: 0,
+        overtimeHours: 0,
+        overtimeAmount: 0,
       };
     }
   }, [getWeekSchedule, calculateScheduleStats]);
 
-  // Batch operations for better performance with error handling
+  // CRUD operations
   const addScheduleEntry = useCallback(async (weekId: string, entry: ScheduleEntry) => {
     try {
       console.log('=== ADDING SCHEDULE ENTRY ===');
@@ -503,7 +617,8 @@ export const useScheduleStorage = () => {
         buildingName: entry.buildingName,
         day: entry.day,
         paymentType: entry.paymentType,
-        flatRateAmount: entry.flatRateAmount
+        flatRateAmount: entry.flatRateAmount,
+        hourlyRate: entry.hourlyRate
       });
       
       if (!weekId || !entry) {
@@ -521,11 +636,17 @@ export const useScheduleStorage = () => {
         hours: typeof entry.hours === 'number' ? entry.hours : parseFloat(entry.hours as any) || 0,
         status: entry.status || 'scheduled',
         day: entry.day || 'monday',
-        // Ensure payment fields have defaults
+        // Enhanced payment fields
         paymentType: entry.paymentType || 'hourly',
-        hourlyRate: entry.hourlyRate || 15,
-        flatRateAmount: entry.flatRateAmount || 0
+        hourlyRate: Math.max(0, entry.hourlyRate || 15),
+        flatRateAmount: Math.max(0, entry.flatRateAmount || 0),
+        overtimeRate: Math.max(1, entry.overtimeRate || 1.5),
+        bonusAmount: Math.max(0, entry.bonusAmount || 0),
+        deductions: Math.max(0, entry.deductions || 0),
       };
+      
+      // Calculate total pay
+      validatedEntry.totalCalculatedPay = calculateEntryPay(validatedEntry, 15);
 
       const updatedSchedule = [...currentWeekSchedule, validatedEntry];
       console.log('Updated schedule will have', updatedSchedule.length, 'entries');
@@ -538,7 +659,7 @@ export const useScheduleStorage = () => {
       console.error('Error adding schedule entry:', error);
       throw error;
     }
-  }, [getWeekSchedule, updateWeekSchedule]);
+  }, [getWeekSchedule, updateWeekSchedule, calculateEntryPay]);
 
   const updateScheduleEntry = useCallback(async (weekId: string, entryId: string, updates: Partial<ScheduleEntry>) => {
     try {
@@ -551,7 +672,6 @@ export const useScheduleStorage = () => {
         throw new Error('Invalid parameters for updateScheduleEntry');
       }
 
-      // Check if updates object has any meaningful changes
       if (Object.keys(updates).length === 0) {
         console.log('No updates provided, skipping update');
         return;
@@ -575,11 +695,17 @@ export const useScheduleStorage = () => {
         hours: updates.hours !== undefined ? 
           (typeof updates.hours === 'number' ? updates.hours : parseFloat(updates.hours as any) || 0) :
           originalEntry.hours,
-        // Preserve payment fields if not being updated
+        // Enhanced payment field handling
         paymentType: updates.paymentType || originalEntry.paymentType || 'hourly',
-        hourlyRate: updates.hourlyRate || originalEntry.hourlyRate || 15,
-        flatRateAmount: updates.flatRateAmount !== undefined ? updates.flatRateAmount : (originalEntry.flatRateAmount || 0)
+        hourlyRate: updates.hourlyRate !== undefined ? Math.max(0, updates.hourlyRate) : (originalEntry.hourlyRate || 15),
+        flatRateAmount: updates.flatRateAmount !== undefined ? Math.max(0, updates.flatRateAmount) : (originalEntry.flatRateAmount || 0),
+        overtimeRate: updates.overtimeRate !== undefined ? Math.max(1, updates.overtimeRate) : (originalEntry.overtimeRate || 1.5),
+        bonusAmount: updates.bonusAmount !== undefined ? Math.max(0, updates.bonusAmount) : (originalEntry.bonusAmount || 0),
+        deductions: updates.deductions !== undefined ? Math.max(0, updates.deductions) : (originalEntry.deductions || 0),
       };
+      
+      // Recalculate total pay
+      updatedEntry.totalCalculatedPay = calculateEntryPay(updatedEntry, 15);
       
       const updatedSchedule = [...currentWeekSchedule];
       updatedSchedule[entryIndex] = updatedEntry;
@@ -594,7 +720,7 @@ export const useScheduleStorage = () => {
       console.error('Error updating schedule entry:', error);
       throw error;
     }
-  }, [getWeekSchedule, updateWeekSchedule]);
+  }, [getWeekSchedule, updateWeekSchedule, calculateEntryPay]);
 
   const deleteScheduleEntry = useCallback(async (weekId: string, entryId: string) => {
     try {
@@ -633,12 +759,14 @@ export const useScheduleStorage = () => {
     }
   }, [getWeekSchedule, updateWeekSchedule]);
 
-  // Payment-related functions
+  // Enhanced payment-related functions
   const updateEntryPayment = useCallback(async (
     weekId: string, 
     entryId: string, 
     paymentType: 'hourly' | 'flat_rate',
-    amount: number
+    amount: number,
+    bonusAmount?: number,
+    deductions?: number
   ) => {
     try {
       console.log('=== UPDATING ENTRY PAYMENT ===');
@@ -646,12 +774,14 @@ export const useScheduleStorage = () => {
       
       const updates: Partial<ScheduleEntry> = {
         paymentType,
+        bonusAmount: bonusAmount || 0,
+        deductions: deductions || 0,
       };
       
       if (paymentType === 'flat_rate') {
-        updates.flatRateAmount = amount;
+        updates.flatRateAmount = Math.max(0, amount);
       } else {
-        updates.hourlyRate = amount;
+        updates.hourlyRate = Math.max(0, amount);
       }
       
       await updateScheduleEntry(weekId, entryId, updates);
@@ -674,9 +804,14 @@ export const useScheduleStorage = () => {
         flatRateJobs: stats.totalFlatRateJobs,
         totalHourlyAmount: stats.totalHourlyAmount,
         totalFlatRateAmount: stats.totalFlatRateAmount,
-        totalAmount: stats.totalHourlyAmount + stats.totalFlatRateAmount,
+        totalBonusAmount: stats.totalBonusAmount,
+        totalDeductions: stats.totalDeductions,
+        totalAmount: stats.totalPayroll,
         completedJobs: stats.completedEntries,
-        pendingJobs: stats.pendingEntries
+        pendingJobs: stats.pendingEntries,
+        averageHourlyRate: stats.averageHourlyRate,
+        overtimeHours: stats.overtimeHours,
+        overtimeAmount: stats.overtimeAmount,
       };
     } catch (error) {
       console.error('Error getting payment summary:', error);
@@ -686,14 +821,19 @@ export const useScheduleStorage = () => {
         flatRateJobs: 0,
         totalHourlyAmount: 0,
         totalFlatRateAmount: 0,
+        totalBonusAmount: 0,
+        totalDeductions: 0,
         totalAmount: 0,
         completedJobs: 0,
-        pendingJobs: 0
+        pendingJobs: 0,
+        averageHourlyRate: 0,
+        overtimeHours: 0,
+        overtimeAmount: 0,
       };
     }
   }, [getWeekSchedule, calculateScheduleStats]);
 
-  // Bulk operations with optimized performance and error handling
+  // Bulk operations
   const bulkUpdateEntries = useCallback(async (weekId: string, entryIds: string[], updates: Partial<ScheduleEntry>) => {
     try {
       if (!weekId || !Array.isArray(entryIds) || !updates) {
@@ -701,18 +841,24 @@ export const useScheduleStorage = () => {
       }
 
       const currentWeekSchedule = getWeekSchedule(weekId);
-      const entryIdSet = new Set(entryIds); // O(1) lookup
+      const entryIdSet = new Set(entryIds);
       
-      const updatedSchedule = currentWeekSchedule.map(entry =>
-        entry && entryIdSet.has(entry.id) ? { ...entry, ...updates, weekId } : entry
-      );
+      const updatedSchedule = currentWeekSchedule.map(entry => {
+        if (entry && entryIdSet.has(entry.id)) {
+          const updatedEntry = { ...entry, ...updates, weekId };
+          // Recalculate total pay for updated entries
+          updatedEntry.totalCalculatedPay = calculateEntryPay(updatedEntry, 15);
+          return updatedEntry;
+        }
+        return entry;
+      });
       
       await updateWeekSchedule(weekId, updatedSchedule);
     } catch (error) {
       console.error('Error bulk updating entries:', error);
       throw error;
     }
-  }, [getWeekSchedule, updateWeekSchedule]);
+  }, [getWeekSchedule, updateWeekSchedule, calculateEntryPay]);
 
   const bulkDeleteEntries = useCallback(async (weekId: string, entryIds: string[]) => {
     try {
@@ -721,7 +867,7 @@ export const useScheduleStorage = () => {
       }
 
       const currentWeekSchedule = getWeekSchedule(weekId);
-      const entryIdSet = new Set(entryIds); // O(1) lookup
+      const entryIdSet = new Set(entryIds);
       
       const updatedSchedule = currentWeekSchedule.filter(entry => entry && !entryIdSet.has(entry.id));
       await updateWeekSchedule(weekId, updatedSchedule);
@@ -731,7 +877,7 @@ export const useScheduleStorage = () => {
     }
   }, [getWeekSchedule, updateWeekSchedule]);
 
-  // FIXED: Clear caches with version tracking
+  // Utility functions
   const clearCaches = useCallback(() => {
     try {
       console.log('=== CLEARING CACHES ===');
@@ -752,7 +898,6 @@ export const useScheduleStorage = () => {
       delete updatedSchedules[weekId];
       setWeeklySchedules(updatedSchedules);
       
-      // Invalidate caches
       invalidateAllCaches();
       
       await saveSchedulesImmediately(updatedSchedules);
@@ -777,13 +922,12 @@ export const useScheduleStorage = () => {
     }
   }, [invalidateAllCaches]);
 
-  // Helper functions for multiple cleaners
+  // Multiple cleaners helper functions
   const getEntryCleaners = useCallback((entry: ScheduleEntry): string[] => {
     try {
       if (entry.cleanerNames && entry.cleanerNames.length > 0) {
         return entry.cleanerNames;
       }
-      // Fallback to single cleaner for backward compatibility
       return entry.cleanerName ? [entry.cleanerName] : [];
     } catch (error) {
       console.error('Error getting entry cleaners:', error);
@@ -805,7 +949,6 @@ export const useScheduleStorage = () => {
       const entry = currentWeekSchedule[entryIndex];
       const currentCleaners = getEntryCleaners(entry);
       
-      // Check if cleaner is already assigned
       if (currentCleaners.includes(cleanerName)) {
         console.log('Cleaner already assigned to this entry');
         return;
@@ -821,9 +964,11 @@ export const useScheduleStorage = () => {
         ...entry,
         cleanerNames: updatedCleaners,
         cleanerIds: updatedCleanerIds,
-        // Update single cleaner field for backward compatibility
         cleanerName: updatedCleaners[0] || '',
       };
+      
+      // Recalculate total pay
+      updatedEntry.totalCalculatedPay = calculateEntryPay(updatedEntry, 15);
 
       const updatedSchedule = [...currentWeekSchedule];
       updatedSchedule[entryIndex] = updatedEntry;
@@ -834,7 +979,7 @@ export const useScheduleStorage = () => {
       console.error('Error adding cleaner to entry:', error);
       throw error;
     }
-  }, [getWeekSchedule, getEntryCleaners, updateWeekSchedule]);
+  }, [getWeekSchedule, getEntryCleaners, updateWeekSchedule, calculateEntryPay]);
 
   const removeCleanerFromEntry = useCallback(async (weekId: string, entryId: string, cleanerName: string) => {
     try {
@@ -850,13 +995,11 @@ export const useScheduleStorage = () => {
       const entry = currentWeekSchedule[entryIndex];
       const currentCleaners = getEntryCleaners(entry);
       
-      // Check if cleaner is assigned
       if (!currentCleaners.includes(cleanerName)) {
         console.log('Cleaner not assigned to this entry');
         return;
       }
 
-      // Don't allow removing the last cleaner
       if (currentCleaners.length <= 1) {
         throw new Error('Cannot remove the last cleaner from an entry');
       }
@@ -869,9 +1012,11 @@ export const useScheduleStorage = () => {
         ...entry,
         cleanerNames: updatedCleaners,
         cleanerIds: updatedCleanerIds,
-        // Update single cleaner field for backward compatibility
         cleanerName: updatedCleaners[0] || '',
       };
+      
+      // Recalculate total pay
+      updatedEntry.totalCalculatedPay = calculateEntryPay(updatedEntry, 15);
 
       const updatedSchedule = [...currentWeekSchedule];
       updatedSchedule[entryIndex] = updatedEntry;
@@ -882,7 +1027,7 @@ export const useScheduleStorage = () => {
       console.error('Error removing cleaner from entry:', error);
       throw error;
     }
-  }, [getWeekSchedule, getEntryCleaners, updateWeekSchedule]);
+  }, [getWeekSchedule, getEntryCleaners, updateWeekSchedule, calculateEntryPay]);
 
   const updateEntryCleaners = useCallback(async (weekId: string, entryId: string, cleanerNames: string[], cleanerIds?: string[]) => {
     try {
@@ -904,9 +1049,11 @@ export const useScheduleStorage = () => {
         ...entry,
         cleanerNames: [...cleanerNames],
         cleanerIds: cleanerIds ? [...cleanerIds] : entry.cleanerIds,
-        // Update single cleaner field for backward compatibility
         cleanerName: cleanerNames[0] || '',
       };
+      
+      // Recalculate total pay
+      updatedEntry.totalCalculatedPay = calculateEntryPay(updatedEntry, 15);
 
       const updatedSchedule = [...currentWeekSchedule];
       updatedSchedule[entryIndex] = updatedEntry;
@@ -917,7 +1064,7 @@ export const useScheduleStorage = () => {
       console.error('Error updating entry cleaners:', error);
       throw error;
     }
-  }, [getWeekSchedule, updateWeekSchedule]);
+  }, [getWeekSchedule, updateWeekSchedule, calculateEntryPay]);
 
   const clearError = useCallback(() => {
     setError(null);
@@ -964,9 +1111,10 @@ export const useScheduleStorage = () => {
     removeCleanerFromEntry,
     updateEntryCleaners,
     
-    // Payment operations
+    // Enhanced payment operations
     updateEntryPayment,
     getPaymentSummary,
+    calculateEntryPay,
     
     // Utilities
     clearError,

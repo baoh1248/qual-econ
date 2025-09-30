@@ -10,6 +10,7 @@ import Toast from '../../components/Toast';
 import { useToast } from '../../hooks/useToast';
 import { useScheduleStorage, type ScheduleEntry } from '../../hooks/useScheduleStorage';
 import { useClientData, type Cleaner } from '../../hooks/useClientData';
+import { useDatabase } from '../../hooks/useDatabase';
 import Button from '../../components/Button';
 
 interface CleanerHours {
@@ -19,11 +20,20 @@ interface CleanerHours {
   completedHours: number;
   scheduledHours: number;
   overtimeHours: number;
+  regularHours: number;
+  // Payment breakdown
+  hourlyJobs: ScheduleEntry[];
+  flatRateJobs: ScheduleEntry[];
+  totalHourlyPay: number;
+  totalFlatRatePay: number;
+  totalPay: number;
+  averageHourlyRate: number;
   dailyBreakdown: {
     [date: string]: {
       hours: number;
       status: 'scheduled' | 'in-progress' | 'completed' | 'cancelled';
       entries: ScheduleEntry[];
+      pay: number;
     };
   };
   weeklyTotal: number;
@@ -34,8 +44,27 @@ interface PayrollFilters {
   searchQuery: string;
   dateRange: 'week' | 'biweekly';
   statusFilter: 'all' | 'completed' | 'scheduled' | 'in-progress';
-  sortBy: 'name' | 'hours' | 'overtime';
+  paymentTypeFilter: 'all' | 'hourly' | 'flat_rate';
+  sortBy: 'name' | 'hours' | 'overtime' | 'pay';
   sortOrder: 'asc' | 'desc';
+}
+
+interface PayrollRecord {
+  id: string;
+  cleaner_id: string;
+  cleaner_name: string;
+  week_id: string;
+  total_hours: number;
+  regular_hours: number;
+  overtime_hours: number;
+  hourly_rate: number;
+  regular_pay: number;
+  overtime_pay: number;
+  flat_rate_pay: number;
+  total_pay: number;
+  status: 'draft' | 'approved' | 'paid';
+  created_at?: string;
+  updated_at?: string;
 }
 
 const styles = StyleSheet.create({
@@ -107,6 +136,12 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: colors.primary,
   },
+  totalPay: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.success,
+    marginTop: spacing.xs,
+  },
   hoursBreakdown: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -125,6 +160,48 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.textSecondary,
     marginTop: 2,
+  },
+  paymentBreakdown: {
+    backgroundColor: colors.background,
+    borderRadius: 8,
+    padding: spacing.md,
+    marginTop: spacing.sm,
+  },
+  paymentBreakdownTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: spacing.sm,
+  },
+  paymentRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  paymentLabel: {
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  paymentValue: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: colors.text,
+  },
+  paymentTypeIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary + '20',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: 12,
+    marginLeft: spacing.sm,
+  },
+  paymentTypeText: {
+    fontSize: 11,
+    color: colors.primary,
+    fontWeight: '600',
+    marginLeft: spacing.xs,
   },
   overtimeIndicator: {
     backgroundColor: colors.warning + '20',
@@ -162,6 +239,13 @@ const styles = StyleSheet.create({
     minWidth: 60,
     textAlign: 'right',
   },
+  dayPay: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.success,
+    minWidth: 80,
+    textAlign: 'right',
+  },
   statusIndicator: {
     width: 8,
     height: 8,
@@ -195,6 +279,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text,
   },
+  summaryPayValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.success,
+  },
   exportButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -211,6 +300,22 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginLeft: spacing.sm,
   },
+  generatePayrollButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: 8,
+    marginBottom: spacing.md,
+  },
+  generatePayrollButtonText: {
+    color: colors.background,
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: spacing.sm,
+  },
 });
 
 export default function PayrollScreen() {
@@ -219,31 +324,34 @@ export default function PayrollScreen() {
   const { toast, showToast, hideToast } = useToast();
   const { getWeekIdFromDate, getWeekSchedule } = useScheduleStorage();
   const { cleaners } = useClientData();
+  const { executeQuery } = useDatabase();
   
   const [filters, setFilters] = useState<PayrollFilters>({
     searchQuery: '',
     dateRange: 'week',
     statusFilter: 'all',
+    paymentTypeFilter: 'all',
     sortBy: 'name',
     sortOrder: 'asc',
   });
   
   const [selectedWeekStart, setSelectedWeekStart] = useState<Date>(new Date());
   const [showDailyBreakdown, setShowDailyBreakdown] = useState<Set<string>>(new Set());
+  const [payrollRecords, setPayrollRecords] = useState<PayrollRecord[]>([]);
+  const [isGeneratingPayroll, setIsGeneratingPayroll] = useState(false);
 
-  // Helper function to create date from string without timezone issues (consistent with schedule)
+  // Helper function to create date from string without timezone issues
   const createDateFromString = useCallback((dateString: string): Date => {
     try {
-      // Parse the date string manually to avoid timezone issues
       const [year, month, day] = dateString.split('-').map(Number);
-      return new Date(year, month - 1, day); // month is 0-indexed in JavaScript Date
+      return new Date(year, month - 1, day);
     } catch (error) {
       console.error('Error creating date from string:', error);
       return new Date();
     }
   }, []);
 
-  // Helper function to format date string consistently (same as schedule)
+  // Helper function to format date string consistently
   const formatDateString = useCallback((date: Date): string => {
     try {
       const year = date.getFullYear();
@@ -256,7 +364,7 @@ export default function PayrollScreen() {
     }
   }, []);
 
-  // Helper function to get start of week consistently (same as schedule)
+  // Helper function to get start of week consistently
   const getStartOfWeek = useCallback((date: Date): Date => {
     try {
       const startOfWeek = new Date(date);
@@ -271,9 +379,9 @@ export default function PayrollScreen() {
     }
   }, []);
 
-  // Calculate cleaner hours based on schedule data
+  // Enhanced cleaner hours calculation with payment information
   const cleanerHoursData = useMemo(() => {
-    console.log('Calculating cleaner hours data');
+    console.log('Calculating cleaner hours data with payment information');
     
     const currentWeekId = getWeekIdFromDate(selectedWeekStart);
     const weekIds = [currentWeekId];
@@ -296,6 +404,13 @@ export default function PayrollScreen() {
         completedHours: 0,
         scheduledHours: 0,
         overtimeHours: 0,
+        regularHours: 0,
+        hourlyJobs: [],
+        flatRateJobs: [],
+        totalHourlyPay: 0,
+        totalFlatRatePay: 0,
+        totalPay: 0,
+        averageHourlyRate: 0,
         dailyBreakdown: {},
         weeklyTotal: 0,
         biWeeklyTotal: 0,
@@ -307,73 +422,121 @@ export default function PayrollScreen() {
       const weekSchedule = getWeekSchedule(weekId);
       
       weekSchedule.forEach(entry => {
-        const cleanerData = cleanerHoursMap.get(entry.cleanerName) || 
-          cleanerHoursMap.get(cleaners.find(c => c.name === entry.cleanerName)?.id || '');
+        // Handle multiple cleaners in an entry
+        const entryCleaners = entry.cleanerNames && entry.cleanerNames.length > 0 
+          ? entry.cleanerNames 
+          : (entry.cleanerName ? [entry.cleanerName] : []);
         
-        if (!cleanerData) {
-          // Create entry for cleaner not in the cleaners list
-          const newCleanerData: CleanerHours = {
-            cleanerId: entry.cleanerName,
-            cleanerName: entry.cleanerName,
-            totalHours: 0,
-            completedHours: 0,
-            scheduledHours: 0,
-            overtimeHours: 0,
-            dailyBreakdown: {},
-            weeklyTotal: 0,
-            biWeeklyTotal: 0,
-          };
-          cleanerHoursMap.set(entry.cleanerName, newCleanerData);
-        }
-        
-        const cleaner = cleanerHoursMap.get(entry.cleanerName) || 
-          cleanerHoursMap.get(cleaners.find(c => c.name === entry.cleanerName)?.id || '') ||
-          cleanerHoursMap.get(entry.cleanerName);
-        
-        if (cleaner) {
-          const hours = entry.hours || 0;
-          const entryDate = entry.date || weekId;
+        entryCleaners.forEach(cleanerName => {
+          // Find cleaner by name or ID
+          const cleaner = cleaners.find(c => c.name === cleanerName || c.id === cleanerName);
+          const cleanerId = cleaner?.id || cleanerName;
           
-          // Update totals
-          cleaner.totalHours += hours;
+          let cleanerData = cleanerHoursMap.get(cleanerId);
           
-          if (entry.status === 'completed') {
-            cleaner.completedHours += hours;
-          } else if (entry.status === 'scheduled') {
-            cleaner.scheduledHours += hours;
+          if (!cleanerData) {
+            // Create entry for cleaner not in the cleaners list
+            cleanerData = {
+              cleanerId: cleanerId,
+              cleanerName: cleanerName,
+              totalHours: 0,
+              completedHours: 0,
+              scheduledHours: 0,
+              overtimeHours: 0,
+              regularHours: 0,
+              hourlyJobs: [],
+              flatRateJobs: [],
+              totalHourlyPay: 0,
+              totalFlatRatePay: 0,
+              totalPay: 0,
+              averageHourlyRate: 0,
+              dailyBreakdown: {},
+              weeklyTotal: 0,
+              biWeeklyTotal: 0,
+            };
+            cleanerHoursMap.set(cleanerId, cleanerData);
           }
           
-          // Calculate overtime (over 40 hours per week)
-          if (cleaner.totalHours > 40) {
-            cleaner.overtimeHours = cleaner.totalHours - 40;
+          const hours = entry.hours || 0;
+          const entryDate = entry.date || weekId;
+          const paymentType = entry.paymentType || 'hourly';
+          
+          // Split hours among multiple cleaners if needed
+          const splitHours = entryCleaners.length > 1 ? hours / entryCleaners.length : hours;
+          
+          // Update totals
+          cleanerData.totalHours += splitHours;
+          
+          if (entry.status === 'completed') {
+            cleanerData.completedHours += splitHours;
+          } else if (entry.status === 'scheduled') {
+            cleanerData.scheduledHours += splitHours;
+          }
+          
+          // Calculate regular vs overtime hours (over 40 hours per week)
+          const previousRegularHours = cleanerData.regularHours;
+          const newTotalHours = cleanerData.totalHours;
+          
+          if (newTotalHours <= 40) {
+            cleanerData.regularHours = newTotalHours;
+            cleanerData.overtimeHours = 0;
+          } else {
+            cleanerData.regularHours = 40;
+            cleanerData.overtimeHours = newTotalHours - 40;
+          }
+          
+          // Calculate payment based on type
+          let entryPay = 0;
+          if (paymentType === 'flat_rate') {
+            const flatRateAmount = entry.flatRateAmount || 0;
+            entryPay = entryCleaners.length > 1 ? flatRateAmount / entryCleaners.length : flatRateAmount;
+            cleanerData.totalFlatRatePay += entryPay;
+            cleanerData.flatRateJobs.push(entry);
+          } else {
+            const hourlyRate = entry.hourlyRate || cleaner?.default_hourly_rate || 15;
+            const regularHoursForThisEntry = Math.min(splitHours, Math.max(0, 40 - previousRegularHours));
+            const overtimeHoursForThisEntry = Math.max(0, splitHours - regularHoursForThisEntry);
+            
+            entryPay = (regularHoursForThisEntry * hourlyRate) + (overtimeHoursForThisEntry * hourlyRate * 1.5);
+            cleanerData.totalHourlyPay += entryPay;
+            cleanerData.hourlyJobs.push(entry);
+          }
+          
+          cleanerData.totalPay = cleanerData.totalHourlyPay + cleanerData.totalFlatRatePay;
+          
+          // Calculate average hourly rate
+          if (cleanerData.totalHours > 0) {
+            cleanerData.averageHourlyRate = cleanerData.totalPay / cleanerData.totalHours;
           }
           
           // Daily breakdown
-          if (!cleaner.dailyBreakdown[entryDate]) {
-            cleaner.dailyBreakdown[entryDate] = {
+          if (!cleanerData.dailyBreakdown[entryDate]) {
+            cleanerData.dailyBreakdown[entryDate] = {
               hours: 0,
               status: entry.status,
               entries: [],
+              pay: 0,
             };
           }
           
-          cleaner.dailyBreakdown[entryDate].hours += hours;
-          cleaner.dailyBreakdown[entryDate].entries.push(entry);
+          cleanerData.dailyBreakdown[entryDate].hours += splitHours;
+          cleanerData.dailyBreakdown[entryDate].entries.push(entry);
+          cleanerData.dailyBreakdown[entryDate].pay += entryPay;
           
           // Update weekly/biweekly totals
           if (filters.dateRange === 'week') {
-            cleaner.weeklyTotal = cleaner.totalHours;
+            cleanerData.weeklyTotal = cleanerData.totalHours;
           } else {
-            cleaner.biWeeklyTotal = cleaner.totalHours;
+            cleanerData.biWeeklyTotal = cleanerData.totalHours;
           }
-        }
+        });
       });
     });
     
     return Array.from(cleanerHoursMap.values()).filter(cleaner => cleaner.totalHours > 0);
   }, [selectedWeekStart, filters.dateRange, cleaners, getWeekSchedule, getWeekIdFromDate]);
 
-  // Filter and sort cleaner hours
+  // Enhanced filter and sort with payment type filter
   const filteredAndSortedHours = useMemo(() => {
     let filtered = cleanerHoursData;
     
@@ -395,6 +558,18 @@ export default function PayrollScreen() {
       });
     }
     
+    // Apply payment type filter
+    if (filters.paymentTypeFilter !== 'all') {
+      filtered = filtered.filter(cleaner => {
+        if (filters.paymentTypeFilter === 'hourly') {
+          return cleaner.hourlyJobs.length > 0;
+        } else if (filters.paymentTypeFilter === 'flat_rate') {
+          return cleaner.flatRateJobs.length > 0;
+        }
+        return true;
+      });
+    }
+    
     // Apply sorting
     filtered.sort((a, b) => {
       let comparison = 0;
@@ -409,6 +584,9 @@ export default function PayrollScreen() {
         case 'overtime':
           comparison = a.overtimeHours - b.overtimeHours;
           break;
+        case 'pay':
+          comparison = a.totalPay - b.totalPay;
+          break;
       }
       
       return filters.sortOrder === 'desc' ? -comparison : comparison;
@@ -417,22 +595,90 @@ export default function PayrollScreen() {
     return filtered;
   }, [cleanerHoursData, filters]);
 
-  // Calculate summary statistics
+  // Enhanced summary statistics with payment information
   const summaryStats = useMemo(() => {
     const totalCleaners = filteredAndSortedHours.length;
     const totalHours = filteredAndSortedHours.reduce((sum, cleaner) => sum + cleaner.totalHours, 0);
     const totalCompletedHours = filteredAndSortedHours.reduce((sum, cleaner) => sum + cleaner.completedHours, 0);
     const totalOvertimeHours = filteredAndSortedHours.reduce((sum, cleaner) => sum + cleaner.overtimeHours, 0);
+    const totalPay = filteredAndSortedHours.reduce((sum, cleaner) => sum + cleaner.totalPay, 0);
+    const totalHourlyPay = filteredAndSortedHours.reduce((sum, cleaner) => sum + cleaner.totalHourlyPay, 0);
+    const totalFlatRatePay = filteredAndSortedHours.reduce((sum, cleaner) => sum + cleaner.totalFlatRatePay, 0);
+    const totalHourlyJobs = filteredAndSortedHours.reduce((sum, cleaner) => sum + cleaner.hourlyJobs.length, 0);
+    const totalFlatRateJobs = filteredAndSortedHours.reduce((sum, cleaner) => sum + cleaner.flatRateJobs.length, 0);
     const averageHours = totalCleaners > 0 ? totalHours / totalCleaners : 0;
+    const averagePay = totalCleaners > 0 ? totalPay / totalCleaners : 0;
     
     return {
       totalCleaners,
       totalHours,
       totalCompletedHours,
       totalOvertimeHours,
+      totalPay,
+      totalHourlyPay,
+      totalFlatRatePay,
+      totalHourlyJobs,
+      totalFlatRateJobs,
       averageHours,
+      averagePay,
     };
   }, [filteredAndSortedHours]);
+
+  // Generate payroll records
+  const generatePayrollRecords = useCallback(async () => {
+    try {
+      setIsGeneratingPayroll(true);
+      console.log('Generating payroll records...');
+      
+      const currentWeekId = getWeekIdFromDate(selectedWeekStart);
+      const records: Omit<PayrollRecord, 'id'>[] = [];
+      
+      for (const cleanerData of cleanerHoursData) {
+        const record: Omit<PayrollRecord, 'id'> = {
+          cleaner_id: cleanerData.cleanerId,
+          cleaner_name: cleanerData.cleanerName,
+          week_id: currentWeekId,
+          total_hours: cleanerData.totalHours,
+          regular_hours: cleanerData.regularHours,
+          overtime_hours: cleanerData.overtimeHours,
+          hourly_rate: cleanerData.averageHourlyRate,
+          regular_pay: cleanerData.totalHourlyPay - (cleanerData.overtimeHours * cleanerData.averageHourlyRate * 0.5),
+          overtime_pay: cleanerData.overtimeHours * cleanerData.averageHourlyRate * 1.5,
+          flat_rate_pay: cleanerData.totalFlatRatePay,
+          total_pay: cleanerData.totalPay,
+          status: 'draft',
+        };
+        
+        records.push(record);
+      }
+      
+      // Save to database
+      for (const record of records) {
+        const recordWithId = {
+          ...record,
+          id: `payroll-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        
+        await executeQuery('insert', 'payroll_records', recordWithId);
+      }
+      
+      showToast('Payroll records generated successfully', 'success');
+      
+      // Load the generated records
+      const savedRecords = await executeQuery<PayrollRecord>('select', 'payroll_records', null, {
+        week_id: currentWeekId
+      });
+      setPayrollRecords(savedRecords);
+      
+    } catch (error) {
+      console.error('Error generating payroll records:', error);
+      showToast('Failed to generate payroll records', 'error');
+    } finally {
+      setIsGeneratingPayroll(false);
+    }
+  }, [cleanerHoursData, selectedWeekStart, getWeekIdFromDate, executeQuery, showToast]);
 
   const updateFilter = useCallback((key: keyof PayrollFilters, value: any) => {
     setFilters(prev => ({ ...prev, [key]: value }));
@@ -460,12 +706,15 @@ export default function PayrollScreen() {
   }, []);
 
   const exportPayrollData = useCallback(() => {
-    // In a real app, this would export to CSV or PDF
     const exportData = filteredAndSortedHours.map(cleaner => ({
       name: cleaner.cleanerName,
       totalHours: cleaner.totalHours,
-      completedHours: cleaner.completedHours,
+      regularHours: cleaner.regularHours,
       overtimeHours: cleaner.overtimeHours,
+      totalPay: cleaner.totalPay,
+      hourlyPay: cleaner.totalHourlyPay,
+      flatRatePay: cleaner.totalFlatRatePay,
+      averageRate: cleaner.averageHourlyRate,
       dateRange: filters.dateRange,
     }));
     
@@ -492,7 +741,6 @@ export default function PayrollScreen() {
       endDate.setDate(endDate.getDate() + 6);
       const endDateString = formatDateString(endDate);
       
-      // Use consistent date formatting
       const startFormatted = createDateFromString(startDateString).toLocaleDateString('en-US', { 
         month: 'short', 
         day: 'numeric' 
@@ -508,7 +756,6 @@ export default function PayrollScreen() {
       endDate.setDate(endDate.getDate() + 13);
       const endDateString = formatDateString(endDate);
       
-      // Use consistent date formatting
       const startFormatted = createDateFromString(startDateString).toLocaleDateString('en-US', { 
         month: 'short', 
         day: 'numeric' 
@@ -532,7 +779,7 @@ export default function PayrollScreen() {
         </TouchableOpacity>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
           <CompanyLogo size="small" showText={false} variant="light" />
-          <Text style={commonStyles.headerTitle}>Payroll Hours</Text>
+          <Text style={commonStyles.headerTitle}>Payroll Management</Text>
         </View>
         <TouchableOpacity onPress={exportPayrollData}>
           <Icon name="download" size={24} style={{ color: colors.background }} />
@@ -552,7 +799,7 @@ export default function PayrollScreen() {
                 {formatDateRange()}
               </Text>
               <Text style={[typography.caption, { color: colors.textSecondary }]}>
-                {filters.dateRange === 'week' ? 'Weekly' : 'Bi-weekly'} Report
+                {filters.dateRange === 'week' ? 'Weekly' : 'Bi-weekly'} Payroll
               </Text>
             </View>
             
@@ -562,8 +809,22 @@ export default function PayrollScreen() {
           </View>
         </AnimatedCard>
 
-        {/* Search and Filters */}
+        {/* Generate Payroll Button */}
         <AnimatedCard index={1}>
+          <TouchableOpacity 
+            style={styles.generatePayrollButton} 
+            onPress={generatePayrollRecords}
+            disabled={isGeneratingPayroll}
+          >
+            <Icon name="calculator" size={20} style={{ color: colors.background }} />
+            <Text style={styles.generatePayrollButtonText}>
+              {isGeneratingPayroll ? 'Generating...' : 'Generate Payroll Records'}
+            </Text>
+          </TouchableOpacity>
+        </AnimatedCard>
+
+        {/* Search and Filters */}
+        <AnimatedCard index={2}>
           {/* Search Bar */}
           <View style={styles.searchContainer}>
             <Icon name="search" size={20} style={{ color: colors.textSecondary }} />
@@ -634,9 +895,30 @@ export default function PayrollScreen() {
             ))}
           </View>
 
+          {/* Payment Type Filter */}
+          <View style={styles.filterRow}>
+            {['all', 'hourly', 'flat_rate'].map((paymentType) => (
+              <TouchableOpacity
+                key={paymentType}
+                style={[
+                  styles.filterButton,
+                  filters.paymentTypeFilter === paymentType && styles.filterButtonActive,
+                ]}
+                onPress={() => updateFilter('paymentTypeFilter', paymentType)}
+              >
+                <Text style={[
+                  styles.filterButtonText,
+                  filters.paymentTypeFilter === paymentType && styles.filterButtonTextActive,
+                ]}>
+                  {paymentType === 'flat_rate' ? 'Flat Rate' : paymentType.charAt(0).toUpperCase() + paymentType.slice(1)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
           <View style={styles.filterRow}>
             <Text style={[typography.body, { color: colors.text }]}>Sort by:</Text>
-            {['name', 'hours', 'overtime'].map((sortBy) => (
+            {['name', 'hours', 'overtime', 'pay'].map((sortBy) => (
               <TouchableOpacity
                 key={sortBy}
                 style={[
@@ -670,10 +952,10 @@ export default function PayrollScreen() {
           </View>
         </AnimatedCard>
 
-        {/* Summary Statistics */}
-        <AnimatedCard index={2}>
+        {/* Enhanced Summary Statistics */}
+        <AnimatedCard index={3}>
           <View style={styles.summaryCard}>
-            <Text style={styles.summaryTitle}>Summary</Text>
+            <Text style={styles.summaryTitle}>Payroll Summary</Text>
             
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Total Cleaners</Text>
@@ -686,11 +968,6 @@ export default function PayrollScreen() {
             </View>
             
             <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Completed Hours</Text>
-              <Text style={styles.summaryValue}>{summaryStats.totalCompletedHours.toFixed(1)}h</Text>
-            </View>
-            
-            <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Overtime Hours</Text>
               <Text style={[styles.summaryValue, { color: summaryStats.totalOvertimeHours > 0 ? colors.warning : colors.text }]}>
                 {summaryStats.totalOvertimeHours.toFixed(1)}h
@@ -698,15 +975,40 @@ export default function PayrollScreen() {
             </View>
             
             <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Average Hours/Cleaner</Text>
-              <Text style={styles.summaryValue}>{summaryStats.averageHours.toFixed(1)}h</Text>
+              <Text style={styles.summaryLabel}>Total Payroll</Text>
+              <Text style={styles.summaryPayValue}>${summaryStats.totalPay.toFixed(2)}</Text>
+            </View>
+            
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Hourly Pay</Text>
+              <Text style={styles.summaryValue}>${summaryStats.totalHourlyPay.toFixed(2)}</Text>
+            </View>
+            
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Flat Rate Pay</Text>
+              <Text style={styles.summaryValue}>${summaryStats.totalFlatRatePay.toFixed(2)}</Text>
+            </View>
+            
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Average Pay/Cleaner</Text>
+              <Text style={styles.summaryValue}>${summaryStats.averagePay.toFixed(2)}</Text>
+            </View>
+            
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Hourly Jobs</Text>
+              <Text style={styles.summaryValue}>{summaryStats.totalHourlyJobs}</Text>
+            </View>
+            
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Flat Rate Jobs</Text>
+              <Text style={styles.summaryValue}>{summaryStats.totalFlatRateJobs}</Text>
             </View>
           </View>
         </AnimatedCard>
 
-        {/* Cleaner Hours List */}
+        {/* Enhanced Cleaner Hours List with Payment Information */}
         {filteredAndSortedHours.length === 0 ? (
-          <AnimatedCard index={3}>
+          <AnimatedCard index={4}>
             <View style={{ alignItems: 'center', padding: spacing.xl }}>
               <Icon name="time" size={48} style={{ color: colors.textSecondary, marginBottom: spacing.md }} />
               <Text style={[typography.h3, { color: colors.text, textAlign: 'center', marginBottom: spacing.sm }]}>
@@ -719,13 +1021,16 @@ export default function PayrollScreen() {
           </AnimatedCard>
         ) : (
           filteredAndSortedHours.map((cleaner, index) => (
-            <AnimatedCard key={cleaner.cleanerId} index={index + 3}>
+            <AnimatedCard key={cleaner.cleanerId} index={index + 4}>
               <View style={styles.hoursCard}>
                 <TouchableOpacity
                   style={styles.hoursHeader}
                   onPress={() => toggleDailyBreakdown(cleaner.cleanerId)}
                 >
-                  <Text style={styles.cleanerName}>{cleaner.cleanerName}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.cleanerName}>{cleaner.cleanerName}</Text>
+                    <Text style={styles.totalPay}>${cleaner.totalPay.toFixed(2)}</Text>
+                  </View>
                   <View style={{ alignItems: 'flex-end' }}>
                     <Text style={styles.totalHours}>{cleaner.totalHours.toFixed(1)}h</Text>
                     {cleaner.overtimeHours > 0 && (
@@ -735,6 +1040,21 @@ export default function PayrollScreen() {
                         </Text>
                       </View>
                     )}
+                    <View style={styles.paymentTypeIndicator}>
+                      <Icon 
+                        name={cleaner.flatRateJobs.length > 0 ? 'cash' : 'time'} 
+                        size={12} 
+                        style={{ color: colors.primary }} 
+                      />
+                      <Text style={styles.paymentTypeText}>
+                        {cleaner.flatRateJobs.length > 0 && cleaner.hourlyJobs.length > 0 
+                          ? 'Mixed' 
+                          : cleaner.flatRateJobs.length > 0 
+                            ? 'Flat Rate' 
+                            : 'Hourly'
+                        }
+                      </Text>
+                    </View>
                   </View>
                   <Icon 
                     name={showDailyBreakdown.has(cleaner.cleanerId) ? 'chevron-up' : 'chevron-down'} 
@@ -753,9 +1073,9 @@ export default function PayrollScreen() {
                   
                   <View style={styles.hoursItem}>
                     <Text style={[styles.hoursValue, { color: colors.primary }]}>
-                      {cleaner.scheduledHours.toFixed(1)}h
+                      {cleaner.regularHours.toFixed(1)}h
                     </Text>
-                    <Text style={styles.hoursLabel}>Scheduled</Text>
+                    <Text style={styles.hoursLabel}>Regular</Text>
                   </View>
                   
                   <View style={styles.hoursItem}>
@@ -763,6 +1083,35 @@ export default function PayrollScreen() {
                       {cleaner.overtimeHours.toFixed(1)}h
                     </Text>
                     <Text style={styles.hoursLabel}>Overtime</Text>
+                  </View>
+                  
+                  <View style={styles.hoursItem}>
+                    <Text style={[styles.hoursValue, { color: colors.success }]}>
+                      ${cleaner.averageHourlyRate.toFixed(2)}
+                    </Text>
+                    <Text style={styles.hoursLabel}>Avg Rate</Text>
+                  </View>
+                </View>
+
+                {/* Payment Breakdown */}
+                <View style={styles.paymentBreakdown}>
+                  <Text style={styles.paymentBreakdownTitle}>Payment Breakdown</Text>
+                  
+                  <View style={styles.paymentRow}>
+                    <Text style={styles.paymentLabel}>Hourly Jobs ({cleaner.hourlyJobs.length})</Text>
+                    <Text style={styles.paymentValue}>${cleaner.totalHourlyPay.toFixed(2)}</Text>
+                  </View>
+                  
+                  <View style={styles.paymentRow}>
+                    <Text style={styles.paymentLabel}>Flat Rate Jobs ({cleaner.flatRateJobs.length})</Text>
+                    <Text style={styles.paymentValue}>${cleaner.totalFlatRatePay.toFixed(2)}</Text>
+                  </View>
+                  
+                  <View style={[styles.paymentRow, { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.xs }]}>
+                    <Text style={[styles.paymentLabel, { fontWeight: '600', color: colors.text }]}>Total Pay</Text>
+                    <Text style={[styles.paymentValue, { fontWeight: '600', color: colors.success }]}>
+                      ${cleaner.totalPay.toFixed(2)}
+                    </Text>
                   </View>
                 </View>
 
@@ -785,6 +1134,7 @@ export default function PayrollScreen() {
                             })}
                           </Text>
                           <Text style={styles.dayHours}>{dayData.hours.toFixed(1)}h</Text>
+                          <Text style={styles.dayPay}>${dayData.pay.toFixed(2)}</Text>
                           <View 
                             style={[
                               styles.statusIndicator, 
@@ -802,7 +1152,7 @@ export default function PayrollScreen() {
 
         {/* Export Button */}
         {filteredAndSortedHours.length > 0 && (
-          <AnimatedCard index={filteredAndSortedHours.length + 3}>
+          <AnimatedCard index={filteredAndSortedHours.length + 4}>
             <TouchableOpacity style={styles.exportButton} onPress={exportPayrollData}>
               <Icon name="download" size={20} style={{ color: colors.background }} />
               <Text style={styles.exportButtonText}>Export Payroll Data</Text>

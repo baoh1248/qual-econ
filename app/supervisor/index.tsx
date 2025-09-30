@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Text, View, ScrollView, TouchableOpacity, Dimensions, RefreshControl, Modal } from 'react-native';
+import { Text, View, ScrollView, TouchableOpacity, Dimensions, RefreshControl, Modal, StyleSheet } from 'react-native';
 import { Platform } from 'react-native';
 import { router } from 'expo-router';
 import Icon from '../../components/Icon';
@@ -137,6 +137,7 @@ const SupervisorDashboard = () => {
       await new Promise(resolve => setTimeout(resolve, 1000));
       showToast('Dashboard refreshed', 'success');
     } catch (error) {
+      console.log('Error refreshing dashboard:', error);
       showToast('Failed to refresh dashboard', 'error');
     } finally {
       setRefreshing(false);
