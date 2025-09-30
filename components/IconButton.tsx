@@ -5,11 +5,11 @@ import { colors, spacing } from '../styles/commonStyles';
 import Icon from './Icon';
 
 interface IconButtonProps {
-  icon: string;
+  icon?: string; // Made optional since we're using a single image now
   onPress: () => void;
   style?: ViewStyle;
   disabled?: boolean;
-  variant?: 'primary' | 'secondary' | 'white' | 'danger' | 'success' | 'warning' | 'transparent';
+  variant?: 'primary' | 'secondary' | 'white' | 'danger' | 'success' | 'warning';
   size?: 'small' | 'medium' | 'large';
   iconSize?: number;
   children?: React.ReactNode;
@@ -25,7 +25,7 @@ export default function IconButton({
   iconSize,
   children,
 }: IconButtonProps) {
-  console.log('IconButton rendered:', icon, 'variant:', variant);
+  console.log('IconButton rendered with variant:', variant);
 
   const getVariantStyles = () => {
     switch (variant) {
@@ -73,13 +73,6 @@ export default function IconButton({
           shadowOpacity: 0.3,
           shadowRadius: 4,
           elevation: 3,
-        };
-      case 'transparent':
-        return {
-          backgroundColor: 'transparent',
-          shadowColor: 'transparent',
-          shadowOpacity: 0,
-          elevation: 0,
         };
       default: // 'primary'
         return {
@@ -155,13 +148,15 @@ export default function IconButton({
       disabled={disabled}
       activeOpacity={0.8}
     >
-      <Icon 
-        name={icon as any} 
-        size={getIconSize()} 
-        style={{ 
-          color: getIconColor(),
-        }} 
-      />
+      {icon && (
+        <Icon 
+          name={icon} 
+          size={getIconSize()} 
+          style={{ 
+            color: getIconColor(),
+          }} 
+        />
+      )}
       {children}
     </TouchableOpacity>
   );

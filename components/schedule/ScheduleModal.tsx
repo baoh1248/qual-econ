@@ -1,6 +1,6 @@
 
 import React, { memo, useState } from 'react';
-import { View, Text, Modal, ScrollView, TouchableOpacity, TextInput, StyleSheet, Platform, Alert } from 'react-native';
+import { View, Text, Modal, ScrollView, TouchableOpacity, TextInput, StyleSheet, Platform, Alert, Switch } from 'react-native';
 import { colors, spacing, typography, commonStyles } from '../../styles/commonStyles';
 import Button from '../Button';
 import Icon from '../Icon';
@@ -54,7 +54,7 @@ interface ScheduleModalProps {
 
   // Actions
   onClose: () => void;
-  onSave: () => void;
+  onSave: () => Promise<void>; // Make this async to handle the save properly
   onDelete: () => void;
   onAddClient: () => void;
   onAddBuilding: () => void;
@@ -119,6 +119,35 @@ const ScheduleModal = memo(({
   
   // Local state for delete confirmation
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  
+  // Local state for save loading
+  const [isSaving, setIsSaving] = useState(false);
+
+  // NEW: Payment-related state
+  const [paymentType, setPaymentType] = useState<'hourly' | 'flat_rate'>(() => {
+    try {
+      return selectedEntry?.paymentType || 'hourly';
+    } catch (error) {
+      console.error('Error initializing payment type:', error);
+      return 'hourly';
+    }
+  });
+  const [flatRateAmount, setFlatRateAmount] = useState(() => {
+    try {
+      return selectedEntry?.flatRateAmount?.toString() || '100';
+    } catch (error) {
+      console.error('Error initializing flat rate amount:', error);
+      return '100';
+    }
+  });
+  const [hourlyRate, setHourlyRate] = useState(() => {
+    try {
+      return selectedEntry?.hourlyRate?.toString() || '15';
+    } catch (error) {
+      console.error('Error initializing hourly rate:', error);
+      return '15';
+    }
+  });
 
   if (!visible) return null;
 
@@ -188,8 +217,6 @@ const ScheduleModal = memo(({
     }
   };
 
-
-
   const getSecurityLevelColor = (level: string) => {
     switch (level) {
       case 'high': return colors.danger;
@@ -255,6 +282,58 @@ const ScheduleModal = memo(({
       console.error('Error during delete confirmation:', error);
       // Reset the confirmation state but don't close the modal so user can try again
       setShowDeleteConfirm(false);
+    }
+  };
+
+  // IMPROVED: Enhanced save handler with payment information
+  const handleSave = async () => {
+    if (isSaving) {
+      console.log('Save already in progress, ignoring duplicate call');
+      return;
+    }
+
+    try {
+      console.log('=== STARTING SAVE OPERATION WITH PAYMENT INFO ===');
+      console.log('ScheduleModal Save button pressed with data:', {
+        modalType,
+        selectedCleaners,
+        hours,
+        startTime,
+        paymentType,
+        flatRateAmount,
+        hourlyRate,
+        selectedEntry: selectedEntry?.id,
+        isSaving
+      });
+      
+      setIsSaving(true);
+      
+      // Call the parent's save function and wait for it to complete
+      console.log('Calling parent onSave function...');
+      await onSave();
+      console.log('Parent onSave completed successfully');
+      
+      // Add a small delay to ensure the UI has time to update
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      console.log('=== SAVE OPERATION COMPLETED ===');
+    } catch (error) {
+      console.error('=== SAVE OPERATION FAILED ===');
+      console.error('Error during save operation:', error);
+      // Don't close the modal on error so user can try again
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // NEW: Calculate estimated payment
+  const calculateEstimatedPayment = () => {
+    const hoursNum = parseFloat(hours) || 0;
+    if (paymentType === 'flat_rate') {
+      return parseFloat(flatRateAmount) || 0;
+    } else {
+      const rate = parseFloat(hourlyRate) || 15;
+      return hoursNum * rate;
     }
   };
 
@@ -326,6 +405,46 @@ const ScheduleModal = memo(({
                     {selectedEntry.startTime} - {selectedEntry.endTime}
                   </Text>
                 </View>
+                
+                {/* NEW: Payment Information */}
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Payment Type:</Text>
+                  <View style={[styles.paymentTypeBadge, { 
+                    backgroundColor: selectedEntry.paymentType === 'flat_rate' ? colors.success + '20' : colors.primary + '20' 
+                  }]}>
+                    <Icon 
+                      name={selectedEntry.paymentType === 'flat_rate' ? 'cash' : 'time'} 
+                      size={12} 
+                      style={{ 
+                        color: selectedEntry.paymentType === 'flat_rate' ? colors.success : colors.primary,
+                        marginRight: spacing.xs 
+                      }} 
+                    />
+                    <Text style={[styles.paymentTypeText, { 
+                      color: selectedEntry.paymentType === 'flat_rate' ? colors.success : colors.primary 
+                    }]}>
+                      {selectedEntry.paymentType === 'flat_rate' ? 'Flat Rate' : 'Hourly'}
+                    </Text>
+                  </View>
+                </View>
+                
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Payment Amount:</Text>
+                  <Text style={[styles.detailValue, { color: colors.success, fontWeight: 'bold' }]}>
+                    ${selectedEntry.paymentType === 'flat_rate' 
+                      ? (selectedEntry.flatRateAmount || 0).toFixed(2)
+                      : ((selectedEntry.hourlyRate || 15) * selectedEntry.hours).toFixed(2)
+                    }
+                  </Text>
+                </View>
+                
+                {selectedEntry.paymentType === 'hourly' && (
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Hourly Rate:</Text>
+                    <Text style={styles.detailValue}>${(selectedEntry.hourlyRate || 15).toFixed(2)}/hr</Text>
+                  </View>
+                )}
+                
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Status:</Text>
                   <View style={[styles.statusBadge, { backgroundColor: getStatusColor(selectedEntry.status) }]}>
@@ -539,6 +658,101 @@ const ScheduleModal = memo(({
                 value={startTime}
                 onChangeText={setStartTime}
               />
+
+              {/* NEW: Payment Configuration Section */}
+              <View style={styles.paymentSection}>
+                <Text style={styles.sectionTitle}>Payment Configuration</Text>
+                
+                <View style={styles.paymentTypeContainer}>
+                  <Text style={styles.inputLabel}>Payment Type *</Text>
+                  <View style={styles.paymentTypeToggle}>
+                    <TouchableOpacity
+                      style={[
+                        styles.paymentTypeButton,
+                        paymentType === 'hourly' && styles.paymentTypeButtonActive
+                      ]}
+                      onPress={() => setPaymentType('hourly')}
+                    >
+                      <Icon 
+                        name="time" 
+                        size={16} 
+                        style={{ 
+                          color: paymentType === 'hourly' ? colors.background : colors.primary,
+                          marginRight: spacing.xs 
+                        }} 
+                      />
+                      <Text style={[
+                        styles.paymentTypeButtonText,
+                        paymentType === 'hourly' && styles.paymentTypeButtonTextActive
+                      ]}>
+                        Hourly Rate
+                      </Text>
+                    </TouchableOpacity>
+                    
+                    <TouchableOpacity
+                      style={[
+                        styles.paymentTypeButton,
+                        paymentType === 'flat_rate' && styles.paymentTypeButtonActive
+                      ]}
+                      onPress={() => setPaymentType('flat_rate')}
+                    >
+                      <Icon 
+                        name="cash" 
+                        size={16} 
+                        style={{ 
+                          color: paymentType === 'flat_rate' ? colors.background : colors.success,
+                          marginRight: spacing.xs 
+                        }} 
+                      />
+                      <Text style={[
+                        styles.paymentTypeButtonText,
+                        paymentType === 'flat_rate' && styles.paymentTypeButtonTextActive
+                      ]}>
+                        Flat Rate
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {paymentType === 'hourly' ? (
+                  <View>
+                    <Text style={styles.inputLabel}>Hourly Rate ($)</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="15.00"
+                      value={hourlyRate}
+                      onChangeText={setHourlyRate}
+                      keyboardType="decimal-pad"
+                    />
+                  </View>
+                ) : (
+                  <View>
+                    <Text style={styles.inputLabel}>Flat Rate Amount ($)</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="100.00"
+                      value={flatRateAmount}
+                      onChangeText={setFlatRateAmount}
+                      keyboardType="decimal-pad"
+                    />
+                  </View>
+                )}
+
+                {/* Payment Estimate */}
+                <View style={styles.paymentEstimate}>
+                  <View style={styles.paymentEstimateRow}>
+                    <Text style={styles.paymentEstimateLabel}>Estimated Payment:</Text>
+                    <Text style={styles.paymentEstimateValue}>
+                      ${calculateEstimatedPayment().toFixed(2)}
+                    </Text>
+                  </View>
+                  {paymentType === 'hourly' && (
+                    <Text style={styles.paymentEstimateNote}>
+                      {hours || '0'} hours × ${hourlyRate || '15'}/hr
+                    </Text>
+                  )}
+                </View>
+              </View>
               
               <View style={styles.modalActions}>
                 <Button 
@@ -546,21 +760,14 @@ const ScheduleModal = memo(({
                   onPress={onClose} 
                   variant="secondary"
                   style={styles.actionButton}
+                  disabled={isSaving}
                 />
                 <Button 
-                  text="Save" 
-                  onPress={() => {
-                    console.log('ScheduleModal Save button pressed with data:', {
-                      modalType,
-                      selectedCleaners,
-                      hours,
-                      startTime,
-                      selectedEntry: selectedEntry?.id
-                    });
-                    onSave();
-                  }} 
+                  text={isSaving ? "Saving..." : "Save"}
+                  onPress={handleSave}
                   variant="primary"
                   style={styles.actionButton}
+                  disabled={isSaving}
                 />
               </View>
             </View>
@@ -960,11 +1167,11 @@ const styles = StyleSheet.create({
   },
   modalContainer: {
     width: '90%',
-    maxWidth: 400,
+    maxWidth: 500, // Increased for payment section
     backgroundColor: colors.background,
     borderRadius: 16,
     ...commonStyles.shadow,
-    maxHeight: '80%',
+    maxHeight: '85%', // Increased for payment section
     ...(Platform.OS === 'web' && {
       zIndex: 10000,
       position: 'relative' as any,
@@ -1319,6 +1526,94 @@ const styles = StyleSheet.create({
   },
   confirmButton: {
     flex: 1,
+  },
+
+  // NEW: Payment-related styles
+  paymentSection: {
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 12,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  sectionTitle: {
+    ...typography.h3,
+    color: colors.text,
+    fontWeight: '600',
+    marginBottom: spacing.md,
+  },
+  paymentTypeContainer: {
+    marginBottom: spacing.md,
+  },
+  paymentTypeToggle: {
+    flexDirection: 'row',
+    backgroundColor: colors.background,
+    borderRadius: 8,
+    padding: 2,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  paymentTypeButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: 6,
+  },
+  paymentTypeButtonActive: {
+    backgroundColor: colors.primary,
+  },
+  paymentTypeButtonText: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '500',
+  },
+  paymentTypeButtonTextActive: {
+    color: colors.background,
+    fontWeight: '600',
+  },
+  paymentEstimate: {
+    backgroundColor: colors.success + '10',
+    borderRadius: 8,
+    padding: spacing.md,
+    marginTop: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.success + '30',
+  },
+  paymentEstimateRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  paymentEstimateLabel: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '500',
+  },
+  paymentEstimateValue: {
+    ...typography.h3,
+    color: colors.success,
+    fontWeight: 'bold',
+  },
+  paymentEstimateNote: {
+    ...typography.small,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+    fontStyle: 'italic',
+  },
+  paymentTypeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: 16,
+  },
+  paymentTypeText: {
+    ...typography.small,
+    fontWeight: '600',
   },
 });
 

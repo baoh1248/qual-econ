@@ -1,560 +1,633 @@
 
+import React, { useState, useEffect, useCallback } from 'react';
 import { Text, View, ScrollView, TouchableOpacity, TextInput, Alert, Modal, StyleSheet, Platform } from 'react-native';
 import { router } from 'expo-router';
-import { useState, useEffect } from 'react';
-import { commonStyles, colors, spacing, typography, buttonStyles, getContrastColor } from '../../styles/commonStyles';
-import CompanyLogo from '../../components/CompanyLogo';
 import Icon from '../../components/Icon';
-import Button from '../../components/Button';
 import IconButton from '../../components/IconButton';
+import Button from '../../components/Button';
+import AnimatedCard from '../../components/AnimatedCard';
+import TransferHistoryModal from '../../components/inventory/TransferHistoryModal';
+import CompanyLogo from '../../components/CompanyLogo';
+import SendItemsModal from '../../components/inventory/SendItemsModal';
 import Toast from '../../components/Toast';
 import { useToast } from '../../hooks/useToast';
-import AnimatedCard from '../../components/AnimatedCard';
-import SendItemsModal from '../../components/inventory/SendItemsModal';
-import TransferHistoryModal from '../../components/inventory/TransferHistoryModal';
+import { useDatabase } from '../../hooks/useDatabase';
+import { TABLES } from '../../utils/supabase';
+import { commonStyles, colors, spacing, typography, buttonStyles, getContrastColor } from '../../styles/commonStyles';
 
 interface InventoryItem {
   id: string;
   name: string;
   category: 'cleaning-supplies' | 'equipment' | 'safety';
-  currentStock: number;
-  minStock: number;
-  maxStock: number;
+  current_stock: number;
+  min_stock: number;
+  max_stock: number;
   unit: string;
-  lastUpdated: Date;
   location: string;
   cost: number;
   supplier: string;
-  autoReorderEnabled: boolean;
-  reorderQuantity: number;
+  auto_reorder_enabled: boolean;
+  reorder_quantity: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 interface RestockRequest {
   id: string;
-  itemId: string;
-  itemName: string;
-  requestedBy: string;
-  requestedAt: Date;
+  item_id: string;
+  item_name: string;
+  requested_by: string;
+  requested_at: string;
   quantity: number;
   priority: 'low' | 'medium' | 'high';
   status: 'pending' | 'approved' | 'ordered' | 'delivered';
   notes: string;
+  approved_by?: string;
+  approved_at?: string;
 }
 
 interface NewItemForm {
   name: string;
   category: 'cleaning-supplies' | 'equipment' | 'safety';
-  currentStock: string;
-  minStock: string;
-  maxStock: string;
+  current_stock: string;
+  min_stock: string;
+  max_stock: string;
   unit: string;
   location: string;
   cost: string;
   supplier: string;
-  autoReorderEnabled: boolean;
-  reorderQuantity: string;
+  auto_reorder_enabled: boolean;
+  reorder_quantity: string;
 }
 
 interface EditItemForm {
   name: string;
   category: 'cleaning-supplies' | 'equipment' | 'safety';
-  currentStock: string;
-  minStock: string;
-  maxStock: string;
+  current_stock: string;
+  min_stock: string;
+  max_stock: string;
   unit: string;
   location: string;
   cost: string;
   supplier: string;
-  autoReorderEnabled: boolean;
-  reorderQuantity: string;
+  auto_reorder_enabled: boolean;
+  reorder_quantity: string;
 }
 
-export default function SupervisorInventoryScreen() {
-  console.log('SupervisorInventoryScreen rendered');
+const SupervisorInventoryScreen = () => {
+  const { showToast } = useToast();
+  const { executeQuery, config, syncStatus, error: dbError, syncToSupabase } = useDatabase();
 
-  const { toast, showToast, hideToast } = useToast();
+  // State management
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [restockRequests, setRestockRequests] = useState<RestockRequest[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [showRestockModal, setShowRestockModal] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
-  const [showRequestsModal, setShowRequestsModal] = useState(false);
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<'all' | 'cleaning-supplies' | 'equipment' | 'safety'>('all');
+  const [showLowStock, setShowLowStock] = useState(false);
+
+  // Modal states
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showTransferModal, setShowTransferModal] = useState(false);
   const [showSendItemsModal, setShowSendItemsModal] = useState(false);
-  const [showTransferHistoryModal, setShowTransferHistoryModal] = useState(false);
-  const [showAddItemModal, setShowAddItemModal] = useState(false);
-  const [showEditItemModal, setShowEditItemModal] = useState(false);
-  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
-  const [showEditCategoryDropdown, setShowEditCategoryDropdown] = useState(false);
-  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
-  const [showRejectConfirmModal, setShowRejectConfirmModal] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [itemToDelete, setItemToDelete] = useState<InventoryItem | null>(null);
-  const [itemToEdit, setItemToEdit] = useState<InventoryItem | null>(null);
   const [requestToReject, setRequestToReject] = useState<RestockRequest | null>(null);
-  
+
+  // Form states
   const [newItemForm, setNewItemForm] = useState<NewItemForm>({
     name: '',
     category: 'cleaning-supplies',
-    currentStock: '',
-    minStock: '',
-    maxStock: '',
+    current_stock: '',
+    min_stock: '',
+    max_stock: '',
     unit: '',
     location: '',
     cost: '',
     supplier: '',
-    autoReorderEnabled: true,
-    reorderQuantity: '',
+    auto_reorder_enabled: false,
+    reorder_quantity: '',
   });
 
   const [editItemForm, setEditItemForm] = useState<EditItemForm>({
     name: '',
     category: 'cleaning-supplies',
-    currentStock: '',
-    minStock: '',
-    maxStock: '',
+    current_stock: '',
+    min_stock: '',
+    max_stock: '',
     unit: '',
     location: '',
     cost: '',
     supplier: '',
-    autoReorderEnabled: true,
-    reorderQuantity: '',
+    auto_reorder_enabled: false,
+    reorder_quantity: '',
   });
-  
-  const [inventory, setInventory] = useState<InventoryItem[]>([
-    {
-      id: '1',
-      name: 'All-Purpose Cleaner',
-      category: 'cleaning-supplies',
-      currentStock: 8,
-      minStock: 15,
-      maxStock: 50,
-      unit: 'bottles',
-      lastUpdated: new Date(),
-      location: 'Storage Room A',
-      cost: 12.99,
-      supplier: 'CleanCorp Supplies',
-      autoReorderEnabled: true,
-      reorderQuantity: 25,
-    },
-    {
-      id: '2',
-      name: 'Vacuum Cleaner',
-      category: 'equipment',
-      currentStock: 3,
-      minStock: 2,
-      maxStock: 5,
-      unit: 'units',
-      lastUpdated: new Date(),
-      location: 'Equipment Room',
-      cost: 299.99,
-      supplier: 'Equipment Plus',
-      autoReorderEnabled: false,
-      reorderQuantity: 1,
-    },
-    {
-      id: '3',
-      name: 'Disinfectant Spray',
-      category: 'cleaning-supplies',
-      currentStock: 12,
-      minStock: 12,
-      maxStock: 40,
-      unit: 'bottles',
-      lastUpdated: new Date(),
-      location: 'Storage Room A',
-      cost: 8.99,
-      supplier: 'CleanCorp Supplies',
-      autoReorderEnabled: true,
-      reorderQuantity: 20,
-    },
-    {
-      id: '4',
-      name: 'Safety Gloves',
-      category: 'safety',
-      currentStock: 15,
-      minStock: 20,
-      maxStock: 100,
-      unit: 'pairs',
-      lastUpdated: new Date(),
-      location: 'Safety Cabinet',
-      cost: 2.50,
-      supplier: 'Safety First Co',
-      autoReorderEnabled: true,
-      reorderQuantity: 50,
-    },
-    {
-      id: '5',
-      name: 'Microfiber Cloths',
-      category: 'cleaning-supplies',
-      currentStock: 45,
-      minStock: 30,
-      maxStock: 200,
-      unit: 'pieces',
-      lastUpdated: new Date(),
-      location: 'Storage Room B',
-      cost: 1.25,
-      supplier: 'Textile Solutions',
-      autoReorderEnabled: true,
-      reorderQuantity: 100,
-    },
-    {
-      id: '6',
-      name: 'Toilet Paper',
-      category: 'cleaning-supplies',
-      currentStock: 24,
-      minStock: 20,
-      maxStock: 100,
-      unit: 'rolls',
-      lastUpdated: new Date(),
-      location: 'Storage Room A',
-      cost: 1.50,
-      supplier: 'Paper Products Inc',
-      autoReorderEnabled: true,
-      reorderQuantity: 50,
-    },
-  ]);
 
-  const [restockRequests, setRestockRequests] = useState<RestockRequest[]>([
-    {
-      id: '1',
-      itemId: '1',
-      itemName: 'All-Purpose Cleaner',
-      requestedBy: 'John Smith',
-      requestedAt: new Date(Date.now() - 3600000), // 1 hour ago
-      quantity: 25,
-      priority: 'high',
-      status: 'pending',
-      notes: 'Running critically low, needed for tomorrow&apos;s jobs',
-    },
-    {
-      id: '2',
-      itemId: '3',
-      itemName: 'Disinfectant Spray',
-      requestedBy: 'Sarah Johnson',
-      requestedAt: new Date(Date.now() - 7200000), // 2 hours ago
-      quantity: 20,
-      priority: 'medium',
-      status: 'approved',
-      notes: 'Regular restock needed',
-    },
-  ]);
+  // Load data from database
+  const loadInventoryData = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      console.log('Loading inventory data from database...');
 
-  const categories = [
-    { id: 'all', name: 'All Items', icon: 'apps' },
-    { id: 'cleaning-supplies', name: 'Cleaning Supplies', icon: 'flask' },
-    { id: 'equipment', name: 'Equipment', icon: 'construct' },
-    { id: 'safety', name: 'Safety', icon: 'shield-checkmark' },
-  ];
+      // Load inventory items
+      const inventoryData = await executeQuery<InventoryItem>('select', TABLES.INVENTORY_ITEMS);
+      console.log('Loaded inventory items:', inventoryData.length);
 
-  const categoryOptions = [
-    { id: 'cleaning-supplies', name: 'Cleaning Supplies', icon: 'flask' },
-    { id: 'equipment', name: 'Equipment', icon: 'construct' },
-    { id: 'safety', name: 'Safety', icon: 'shield-checkmark' },
-  ];
+      // Load restock requests
+      const requestsData = await executeQuery<RestockRequest>('select', TABLES.RESTOCK_REQUESTS);
+      console.log('Loaded restock requests:', requestsData.length);
 
-  // Check for low stock items and auto-reorder
-  useEffect(() => {
-    const checkLowStock = () => {
-      const lowStockItems = inventory.filter(item => 
-        item.currentStock <= item.minStock && item.autoReorderEnabled
-      );
-      
-      lowStockItems.forEach(item => {
-        console.log(`Auto-reorder triggered for ${item.name}`);
-        // In a real app, this would trigger an API call to place an order
+      // If no data exists, initialize with sample data
+      if (inventoryData.length === 0) {
+        console.log('No inventory data found, initializing with sample data...');
+        await initializeSampleData();
+        return; // initializeSampleData will call loadInventoryData again
+      }
+
+      setInventory(inventoryData);
+      setRestockRequests(requestsData);
+    } catch (error) {
+      console.error('Error loading inventory data:', error);
+      showToast('Failed to load inventory data', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [executeQuery, showToast]);
+
+  // Initialize sample data
+  const initializeSampleData = useCallback(async () => {
+    try {
+      console.log('Initializing sample inventory data...');
+
+      const sampleItems: Omit<InventoryItem, 'id' | 'created_at' | 'updated_at'>[] = [
+        {
+          name: 'All-Purpose Cleaner',
+          category: 'cleaning-supplies',
+          current_stock: 25,
+          min_stock: 10,
+          max_stock: 50,
+          unit: 'bottles',
+          location: 'Storage Room A',
+          cost: 8.99,
+          supplier: 'CleanCorp Supply',
+          auto_reorder_enabled: true,
+          reorder_quantity: 20,
+        },
+        {
+          name: 'Vacuum Cleaner',
+          category: 'equipment',
+          current_stock: 3,
+          min_stock: 2,
+          max_stock: 8,
+          unit: 'units',
+          location: 'Equipment Room',
+          cost: 299.99,
+          supplier: 'Equipment Plus',
+          auto_reorder_enabled: false,
+          reorder_quantity: 2,
+        },
+        {
+          name: 'Safety Gloves',
+          category: 'safety',
+          current_stock: 8,
+          min_stock: 15,
+          max_stock: 100,
+          unit: 'pairs',
+          location: 'Safety Cabinet',
+          cost: 2.50,
+          supplier: 'Safety First Inc',
+          auto_reorder_enabled: true,
+          reorder_quantity: 50,
+        },
+        {
+          name: 'Disinfectant Spray',
+          category: 'cleaning-supplies',
+          current_stock: 12,
+          min_stock: 8,
+          max_stock: 30,
+          unit: 'bottles',
+          location: 'Storage Room A',
+          cost: 12.99,
+          supplier: 'CleanCorp Supply',
+          auto_reorder_enabled: true,
+          reorder_quantity: 15,
+        },
+        {
+          name: 'Mop and Bucket Set',
+          category: 'equipment',
+          current_stock: 5,
+          min_stock: 3,
+          max_stock: 10,
+          unit: 'sets',
+          location: 'Equipment Room',
+          cost: 45.99,
+          supplier: 'Equipment Plus',
+          auto_reorder_enabled: false,
+          reorder_quantity: 3,
+        },
+      ];
+
+      // Add sample items to database
+      for (const item of sampleItems) {
+        const itemWithId = {
+          ...item,
+          id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        await executeQuery('insert', TABLES.INVENTORY_ITEMS, itemWithId);
+      }
+
+      // Add sample restock request for low stock item
+      const lowStockRequest: Omit<RestockRequest, 'id'>= {
+        item_id: 'item-safety-gloves',
+        item_name: 'Safety Gloves',
+        requested_by: 'System Auto-Reorder',
+        requested_at: new Date().toISOString(),
+        quantity: 50,
+        priority: 'high',
+        status: 'pending',
+        notes: 'Auto-generated restock request due to low stock levels',
+      };
+
+      await executeQuery('insert', TABLES.RESTOCK_REQUESTS, {
+        ...lowStockRequest,
+        id: `request-${Date.now()}`,
       });
 
-      if (lowStockItems.length > 0) {
-        showToast(`${lowStockItems.length} items need restocking`, 'warning');
-      }
-    };
+      console.log('Sample data initialized successfully');
+      showToast('Sample inventory data loaded', 'success');
 
-    checkLowStock();
-  }, [inventory, showToast]);
+      // Reload data
+      await loadInventoryData();
+    } catch (error) {
+      console.error('Error initializing sample data:', error);
+      showToast('Failed to initialize sample data', 'error');
+    }
+  }, [executeQuery, showToast, loadInventoryData]);
 
+  // Load data on component mount
+  useEffect(() => {
+    loadInventoryData();
+  }, [loadInventoryData]);
+
+  // Sync to database when online
+  useEffect(() => {
+    if (syncStatus.isOnline && config.useSupabase) {
+      console.log('Syncing inventory data to Supabase...');
+      syncToSupabase();
+    }
+  }, [syncStatus.isOnline, config.useSupabase, syncToSupabase]);
+
+  // Filter inventory based on search and category
   const filteredInventory = inventory.filter(item => {
-    const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         item.supplier.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         item.location.toLowerCase().includes(searchQuery.toLowerCase());
+    
     const matchesCategory = selectedCategory === 'all' || item.category === selectedCategory;
-    return matchesSearch && matchesCategory;
+    
+    const matchesLowStock = !showLowStock || item.current_stock <= item.min_stock;
+    
+    return matchesSearch && matchesCategory && matchesLowStock;
   });
 
-  const getStockStatus = (item: InventoryItem) => {
-    const percentage = (item.currentStock / item.maxStock) * 100;
-    if (item.currentStock <= item.minStock) {
-      return { status: 'critical', color: colors.danger, text: 'Critical', percentage };
-    } else if (item.currentStock <= item.minStock * 1.5) {
-      return { status: 'low', color: colors.warning, text: 'Low Stock', percentage };
-    } else if (percentage >= 80) {
-      return { status: 'full', color: colors.success, text: 'Well Stocked', percentage };
-    } else {
-      return { status: 'good', color: colors.success, text: 'Good Stock', percentage };
-    }
+  // Get stock status
+  const getStockStatus = (item: InventoryItem): 'low' | 'medium' | 'high' => {
+    if (item.current_stock <= item.min_stock) return 'low';
+    if (item.current_stock <= item.min_stock * 1.5) return 'medium';
+    return 'high';
   };
 
-  const approveRestockRequest = (requestId: string) => {
-    setRestockRequests(prev => prev.map(req => 
-      req.id === requestId 
-        ? { ...req, status: 'approved' as const }
-        : req
-    ));
-    showToast('Restock request approved', 'success');
-  };
-
-  const rejectRestockRequest = (requestId: string) => {
-    const request = restockRequests.find(req => req.id === requestId);
-    if (!request) return;
-
-    if (Platform.OS === 'web') {
-      // Use custom modal for web/computer platforms
-      setRequestToReject(request);
-      setShowRejectConfirmModal(true);
-    } else {
-      // Use native Alert for mobile platforms
-      Alert.alert(
-        'Reject Request',
-        'Are you sure you want to reject this restock request?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { 
-            text: 'Reject', 
-            style: 'destructive',
-            onPress: () => {
-              setRestockRequests(prev => prev.filter(req => req.id !== requestId));
-              showToast('Restock request rejected', 'info');
-            }
-          },
-        ]
-      );
-    }
-  };
-
-  const updateStock = (itemId: string, newStock: number) => {
-    setInventory(prev => prev.map(item => 
-      item.id === itemId 
-        ? { ...item, currentStock: Math.max(0, newStock), lastUpdated: new Date() }
-        : item
-    ));
-    console.log(`Stock updated for item ${itemId}: ${newStock}`);
-  };
-
-  const handleItemsSent = (itemIds: string[], quantities: number[]) => {
-    setInventory(prev => prev.map(item => {
-      const index = itemIds.indexOf(item.id);
-      if (index !== -1) {
-        const newStock = Math.max(0, item.currentStock - quantities[index]);
-        console.log(`Reducing stock for ${item.name}: ${item.currentStock} -> ${newStock}`);
-        return { ...item, currentStock: newStock, lastUpdated: new Date() };
+  // Add new item
+  const addNewItem = useCallback(async () => {
+    try {
+      if (!newItemForm.name.trim()) {
+        showToast('Please enter an item name', 'error');
+        return;
       }
-      return item;
-    }));
-    showToast('Items sent successfully', 'success');
-  };
 
-  const toggleAutoReorder = (itemId: string) => {
-    setInventory(prev => prev.map(item => 
-      item.id === itemId 
-        ? { ...item, autoReorderEnabled: !item.autoReorderEnabled }
-        : item
-    ));
-    showToast('Auto-reorder settings updated', 'success');
-  };
+      const newItem: Omit<InventoryItem, 'id' | 'created_at' | 'updated_at'> = {
+        name: newItemForm.name.trim(),
+        category: newItemForm.category,
+        current_stock: parseInt(newItemForm.current_stock) || 0,
+        min_stock: parseInt(newItemForm.min_stock) || 0,
+        max_stock: parseInt(newItemForm.max_stock) || 100,
+        unit: newItemForm.unit.trim(),
+        location: newItemForm.location.trim(),
+        cost: parseFloat(newItemForm.cost) || 0,
+        supplier: newItemForm.supplier.trim(),
+        auto_reorder_enabled: newItemForm.auto_reorder_enabled,
+        reorder_quantity: parseInt(newItemForm.reorder_quantity) || 0,
+      };
 
-  const confirmDeleteItem = () => {
-    if (!itemToDelete) return;
-    
-    setInventory(prev => prev.filter(i => i.id !== itemToDelete.id));
-    showToast('Item removed successfully', 'success');
-    console.log('Item removed:', itemToDelete.name);
-    setShowDeleteConfirmModal(false);
-    setItemToDelete(null);
-  };
+      const itemWithId = {
+        ...newItem,
+        id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
 
-  const confirmRejectRequest = () => {
-    if (!requestToReject) return;
-    
-    setRestockRequests(prev => prev.filter(req => req.id !== requestToReject.id));
-    showToast('Restock request rejected', 'info');
-    console.log('Request rejected:', requestToReject.id);
-    setShowRejectConfirmModal(false);
-    setRequestToReject(null);
-  };
+      await executeQuery('insert', TABLES.INVENTORY_ITEMS, itemWithId);
+      
+      setInventory(prev => [...prev, itemWithId]);
+      setShowAddModal(false);
+      
+      // Reset form
+      setNewItemForm({
+        name: '',
+        category: 'cleaning-supplies',
+        current_stock: '',
+        min_stock: '',
+        max_stock: '',
+        unit: '',
+        location: '',
+        cost: '',
+        supplier: '',
+        auto_reorder_enabled: false,
+        reorder_quantity: '',
+      });
 
+      showToast('Item added successfully', 'success');
+    } catch (error) {
+      console.error('Error adding item:', error);
+      showToast('Failed to add item', 'error');
+    }
+  }, [newItemForm, executeQuery, showToast]);
+
+  // Update stock
+  const updateStock = useCallback(async (itemId: string, newStock: number) => {
+    try {
+      const item = inventory.find(i => i.id === itemId);
+      if (!item) return;
+
+      const updatedItem = {
+        ...item,
+        current_stock: newStock,
+        updated_at: new Date().toISOString(),
+      };
+
+      await executeQuery('update', TABLES.INVENTORY_ITEMS, updatedItem, { id: itemId });
+      
+      setInventory(prev => prev.map(i => i.id === itemId ? updatedItem : i));
+      
+      // Create transaction record
+      const transaction = {
+        id: `trans-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        item_id: itemId,
+        item_name: item.name,
+        transaction_type: newStock > item.current_stock ? 'in' : 'out',
+        quantity: Math.abs(newStock - item.current_stock),
+        previous_stock: item.current_stock,
+        new_stock: newStock,
+        reason: 'Manual adjustment',
+        performed_by: 'Supervisor',
+        created_at: new Date().toISOString(),
+      };
+
+      await executeQuery('insert', TABLES.INVENTORY_TRANSACTIONS, transaction);
+      
+      showToast('Stock updated successfully', 'success');
+    } catch (error) {
+      console.error('Error updating stock:', error);
+      showToast('Failed to update stock', 'error');
+    }
+  }, [inventory, executeQuery, showToast]);
+
+  // Request restock
+  const requestRestock = useCallback(async (itemId: string) => {
+    try {
+      const item = inventory.find(i => i.id === itemId);
+      if (!item) return;
+
+      const request: Omit<RestockRequest, 'id'> = {
+        item_id: itemId,
+        item_name: item.name,
+        requested_by: 'Supervisor',
+        requested_at: new Date().toISOString(),
+        quantity: item.reorder_quantity || item.min_stock * 2,
+        priority: item.current_stock <= item.min_stock * 0.5 ? 'high' : 'medium',
+        status: 'pending',
+        notes: `Restock request for ${item.name}`,
+      };
+
+      const requestWithId = {
+        ...request,
+        id: `request-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      };
+
+      await executeQuery('insert', TABLES.RESTOCK_REQUESTS, requestWithId);
+      
+      setRestockRequests(prev => [...prev, requestWithId]);
+      showToast('Restock request submitted', 'success');
+    } catch (error) {
+      console.error('Error requesting restock:', error);
+      showToast('Failed to submit restock request', 'error');
+    }
+  }, [inventory, executeQuery, showToast]);
+
+  // Approve restock request
+  const approveRestockRequest = useCallback(async (requestId: string) => {
+    try {
+      const updatedRequest = {
+        status: 'approved',
+        approved_by: 'Supervisor',
+        approved_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      await executeQuery('update', TABLES.RESTOCK_REQUESTS, updatedRequest, { id: requestId });
+      
+      setRestockRequests(prev => prev.map(r => 
+        r.id === requestId ? { ...r, ...updatedRequest } : r
+      ));
+      
+      showToast('Restock request approved', 'success');
+    } catch (error) {
+      console.error('Error approving restock request:', error);
+      showToast('Failed to approve restock request', 'error');
+    }
+  }, [executeQuery, showToast]);
+
+  // Reject restock request
+  const rejectRestockRequest = useCallback(async (requestId: string) => {
+    try {
+      await executeQuery('delete', TABLES.RESTOCK_REQUESTS, null, { id: requestId });
+      
+      setRestockRequests(prev => prev.filter(r => r.id !== requestId));
+      setRequestToReject(null);
+      showToast('Restock request rejected', 'success');
+    } catch (error) {
+      console.error('Error rejecting restock request:', error);
+      showToast('Failed to reject restock request', 'error');
+    }
+  }, [executeQuery, showToast]);
+
+  // Toggle auto reorder
+  const toggleAutoReorder = useCallback(async (itemId: string) => {
+    try {
+      const item = inventory.find(i => i.id === itemId);
+      if (!item) return;
+
+      const updatedItem = {
+        ...item,
+        auto_reorder_enabled: !item.auto_reorder_enabled,
+        updated_at: new Date().toISOString(),
+      };
+
+      await executeQuery('update', TABLES.INVENTORY_ITEMS, updatedItem, { id: itemId });
+      
+      setInventory(prev => prev.map(i => i.id === itemId ? updatedItem : i));
+      
+      showToast(
+        `Auto-reorder ${updatedItem.auto_reorder_enabled ? 'enabled' : 'disabled'}`,
+        'success'
+      );
+    } catch (error) {
+      console.error('Error toggling auto reorder:', error);
+      showToast('Failed to update auto-reorder setting', 'error');
+    }
+  }, [inventory, executeQuery, showToast]);
+
+  // Delete item
+  const removeItem = useCallback(async (itemId: string) => {
+    try {
+      await executeQuery('delete', TABLES.INVENTORY_ITEMS, null, { id: itemId });
+      
+      setInventory(prev => prev.filter(i => i.id !== itemId));
+      setItemToDelete(null);
+      showToast('Item deleted successfully', 'success');
+    } catch (error) {
+      console.error('Error deleting item:', error);
+      showToast('Failed to delete item', 'error');
+    }
+  }, [executeQuery, showToast]);
+
+  // Open edit modal
   const openEditModal = (item: InventoryItem) => {
-    setItemToEdit(item);
+    setSelectedItem(item);
     setEditItemForm({
       name: item.name,
       category: item.category,
-      currentStock: item.currentStock.toString(),
-      minStock: item.minStock.toString(),
-      maxStock: item.maxStock.toString(),
+      current_stock: item.current_stock.toString(),
+      min_stock: item.min_stock.toString(),
+      max_stock: item.max_stock.toString(),
       unit: item.unit,
       location: item.location,
       cost: item.cost.toString(),
       supplier: item.supplier,
-      autoReorderEnabled: item.autoReorderEnabled,
-      reorderQuantity: item.reorderQuantity.toString(),
+      auto_reorder_enabled: item.auto_reorder_enabled,
+      reorder_quantity: item.reorder_quantity.toString(),
     });
-    setShowEditItemModal(true);
+    setShowEditModal(true);
   };
 
-  const saveEditedItem = () => {
-    if (!itemToEdit) return;
+  // Save edited item
+  const saveEditedItem = useCallback(async () => {
+    try {
+      if (!selectedItem || !editItemForm.name.trim()) {
+        showToast('Please enter an item name', 'error');
+        return;
+      }
 
-    // Validate form
-    if (!editItemForm.name.trim()) {
-      showToast('Please enter item name', 'error');
-      return;
+      const updatedItem: InventoryItem = {
+        ...selectedItem,
+        name: editItemForm.name.trim(),
+        category: editItemForm.category,
+        current_stock: parseInt(editItemForm.current_stock) || 0,
+        min_stock: parseInt(editItemForm.min_stock) || 0,
+        max_stock: parseInt(editItemForm.max_stock) || 100,
+        unit: editItemForm.unit.trim(),
+        location: editItemForm.location.trim(),
+        cost: parseFloat(editItemForm.cost) || 0,
+        supplier: editItemForm.supplier.trim(),
+        auto_reorder_enabled: editItemForm.auto_reorder_enabled,
+        reorder_quantity: parseInt(editItemForm.reorder_quantity) || 0,
+        updated_at: new Date().toISOString(),
+      };
+
+      await executeQuery('update', TABLES.INVENTORY_ITEMS, updatedItem, { id: selectedItem.id });
+      
+      setInventory(prev => prev.map(i => i.id === selectedItem.id ? updatedItem : i));
+      setShowEditModal(false);
+      setSelectedItem(null);
+      
+      showToast('Item updated successfully', 'success');
+    } catch (error) {
+      console.error('Error updating item:', error);
+      showToast('Failed to update item', 'error');
     }
-    if (!editItemForm.unit.trim()) {
-      showToast('Please enter unit', 'error');
-      return;
-    }
-    if (!editItemForm.location.trim()) {
-      showToast('Please enter location', 'error');
-      return;
-    }
-    if (!editItemForm.supplier.trim()) {
-      showToast('Please enter supplier', 'error');
-      return;
-    }
+  }, [selectedItem, editItemForm, executeQuery, showToast]);
 
-    const currentStock = parseInt(editItemForm.currentStock) || 0;
-    const minStock = parseInt(editItemForm.minStock) || 0;
-    const maxStock = parseInt(editItemForm.maxStock) || 0;
-    const cost = parseFloat(editItemForm.cost) || 0;
-    const reorderQuantity = parseInt(editItemForm.reorderQuantity) || 0;
-
-    if (maxStock <= minStock) {
-      showToast('Max stock must be greater than min stock', 'error');
-      return;
-    }
-
-    const updatedItem: InventoryItem = {
-      ...itemToEdit,
-      name: editItemForm.name.trim(),
-      category: editItemForm.category,
-      currentStock,
-      minStock,
-      maxStock,
-      unit: editItemForm.unit.trim(),
-      location: editItemForm.location.trim(),
-      cost,
-      supplier: editItemForm.supplier.trim(),
-      autoReorderEnabled: editItemForm.autoReorderEnabled,
-      reorderQuantity,
-      lastUpdated: new Date(),
-    };
-
-    setInventory(prev => prev.map(item => 
-      item.id === itemToEdit.id ? updatedItem : item
-    ));
-
-    setShowEditItemModal(false);
-    setItemToEdit(null);
-    showToast('Item updated successfully', 'success');
-    console.log('Item updated:', updatedItem);
-  };
-
-  const addNewItem = () => {
-    // Validate form
-    if (!newItemForm.name.trim()) {
-      showToast('Please enter item name', 'error');
-      return;
-    }
-    if (!newItemForm.unit.trim()) {
-      showToast('Please enter unit', 'error');
-      return;
-    }
-    if (!newItemForm.location.trim()) {
-      showToast('Please enter location', 'error');
-      return;
-    }
-    if (!newItemForm.supplier.trim()) {
-      showToast('Please enter supplier', 'error');
-      return;
-    }
-
-    const currentStock = parseInt(newItemForm.currentStock) || 0;
-    const minStock = parseInt(newItemForm.minStock) || 0;
-    const maxStock = parseInt(newItemForm.maxStock) || 0;
-    const cost = parseFloat(newItemForm.cost) || 0;
-    const reorderQuantity = parseInt(newItemForm.reorderQuantity) || 0;
-
-    if (maxStock <= minStock) {
-      showToast('Max stock must be greater than min stock', 'error');
-      return;
-    }
-
-    const newItem: InventoryItem = {
-      id: Date.now().toString(),
-      name: newItemForm.name.trim(),
-      category: newItemForm.category,
-      currentStock,
-      minStock,
-      maxStock,
-      unit: newItemForm.unit.trim(),
-      lastUpdated: new Date(),
-      location: newItemForm.location.trim(),
-      cost,
-      supplier: newItemForm.supplier.trim(),
-      autoReorderEnabled: newItemForm.autoReorderEnabled,
-      reorderQuantity,
-    };
-
-    setInventory(prev => [...prev, newItem]);
+  // Confirm delete item
+  const confirmDeleteItem = () => {
+    if (!itemToDelete) return;
     
-    // Reset form
-    setNewItemForm({
-      name: '',
-      category: 'cleaning-supplies',
-      currentStock: '',
-      minStock: '',
-      maxStock: '',
-      unit: '',
-      location: '',
-      cost: '',
-      supplier: '',
-      autoReorderEnabled: true,
-      reorderQuantity: '',
-    });
-
-    setShowAddItemModal(false);
-    showToast('Item added successfully', 'success');
-    console.log('New item added:', newItem);
+    Alert.alert(
+      'Delete Item',
+      `Are you sure you want to delete "${itemToDelete.name}"? This action cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete', 
+          style: 'destructive',
+          onPress: () => removeItem(itemToDelete.id)
+        }
+      ]
+    );
   };
 
-  const removeItem = (itemId: string) => {
-    const item = inventory.find(i => i.id === itemId);
-    if (!item) return;
+  // Confirm reject request
+  const confirmRejectRequest = () => {
+    if (!requestToReject) return;
+    
+    Alert.alert(
+      'Reject Request',
+      `Are you sure you want to reject the restock request for "${requestToReject.item_name}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Reject', 
+          style: 'destructive',
+          onPress: () => rejectRestockRequest(requestToReject.id)
+        }
+      ]
+    );
+  };
 
-    if (Platform.OS === 'web') {
-      // Use custom modal for web/computer platforms
-      setItemToDelete(item);
-      setShowDeleteConfirmModal(true);
-    } else {
-      // Use native Alert for mobile platforms
-      Alert.alert(
-        'Remove Item',
-        `Are you sure you want to remove "${item.name}" from inventory? This action cannot be undone.`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { 
-            text: 'Remove', 
-            style: 'destructive',
-            onPress: () => {
-              setInventory(prev => prev.filter(i => i.id !== itemId));
-              showToast('Item removed successfully', 'success');
-              console.log('Item removed:', item.name);
-            }
-          },
-        ]
-      );
+  // Handle items sent
+  const handleItemsSent = useCallback(async (itemIds: string[], quantities: number[]) => {
+    try {
+      for (let i = 0; i < itemIds.length; i++) {
+        const itemId = itemIds[i];
+        const quantity = quantities[i];
+        const item = inventory.find(item => item.id === itemId);
+        
+        if (item && quantity > 0) {
+          const newStock = Math.max(0, item.current_stock - quantity);
+          await updateStock(itemId, newStock);
+        }
+      }
+      
+      showToast('Items sent successfully', 'success');
+    } catch (error) {
+      console.error('Error sending items:', error);
+      showToast('Failed to send items', 'error');
+    }
+  }, [inventory, updateStock, showToast]);
+
+  // Get category icon
+  const getCategoryIcon = (category: string) => {
+    switch (category) {
+      case 'cleaning-supplies': return 'flask';
+      case 'equipment': return 'construct';
+      case 'safety': return 'shield-checkmark';
+      default: return 'cube';
     }
   };
 
-  const getCategoryIcon = (category: string) => {
-    const cat = categories.find(c => c.id === category);
-    return cat?.icon || 'cube';
-  };
-
+  // Get priority color
   const getPriorityColor = (priority: string) => {
     switch (priority) {
       case 'high': return colors.danger;
@@ -564,6 +637,7 @@ export default function SupervisorInventoryScreen() {
     }
   };
 
+  // Get status color
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'pending': return colors.warning;
@@ -574,1222 +648,592 @@ export default function SupervisorInventoryScreen() {
     }
   };
 
-  const lowStockCount = inventory.filter(item => item.currentStock <= item.minStock).length;
-  const pendingRequests = restockRequests.filter(req => req.status === 'pending').length;
-  const totalValue = inventory.reduce((sum, item) => sum + (item.currentStock * item.cost), 0);
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Text style={styles.loadingText}>Loading inventory...</Text>
+      </View>
+    );
+  }
 
   return (
-    <View style={commonStyles.container}>
-      <Toast {...toast} onHide={hideToast} />
-      
-      <View style={commonStyles.header}>
-        <IconButton 
-          icon="arrow-back" 
-          onPress={() => router.back()} 
-          variant="white"
-        />
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-          <CompanyLogo size="small" showText={false} variant="light" />
-          <Text style={commonStyles.headerTitle}>Inventory Management</Text>
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <CompanyLogo />
+        <Text style={styles.title}>Inventory Management</Text>
+        <View style={styles.headerActions}>
+          {/* Database status indicator */}
+          <View style={[styles.statusIndicator, { 
+            backgroundColor: config.useSupabase && syncStatus.isOnline ? colors.success : colors.warning 
+          }]}>
+            <Icon 
+              name={config.useSupabase && syncStatus.isOnline ? "cloud-done" : "cloud-offline"} 
+              size={16} 
+              style={{ color: colors.background }} 
+            />
+          </View>
+          <IconButton
+            icon="add"
+            onPress={() => setShowAddModal(true)}
+            size={24}
+            color={colors.text}
+          />
         </View>
-        <IconButton 
-          icon="notifications" 
-          onPress={() => setShowRequestsModal(true)} 
-          variant="primary"
-          style={{ position: 'relative' }}
-        >
-          {pendingRequests > 0 && (
-            <View style={{
-              position: 'absolute',
-              top: -4,
-              right: -4,
-              backgroundColor: colors.danger,
-              borderRadius: 8,
-              minWidth: 16,
-              height: 16,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}>
-              <Text style={[typography.small, { color: colors.background, fontSize: 10 }]}>
-                {pendingRequests}
-              </Text>
-            </View>
-          )}
-        </IconButton>
       </View>
 
-      <View style={commonStyles.content}>
-        {/* Overview Cards */}
-        <AnimatedCard index={0}>
-          <View style={[commonStyles.row, { justifyContent: 'space-around', marginBottom: spacing.md }]}>
-            <View style={{ alignItems: 'center' }}>
-              <Text style={[typography.h2, { color: colors.text }]}>{inventory.length}</Text>
-              <Text style={[typography.caption, { color: colors.textSecondary }]}>Total Items</Text>
-            </View>
-            <View style={{ alignItems: 'center' }}>
-              <Text style={[typography.h2, { color: lowStockCount > 0 ? colors.danger : colors.success }]}>
-                {lowStockCount}
-              </Text>
-              <Text style={[typography.caption, { color: colors.textSecondary }]}>Low Stock</Text>
-            </View>
-            <View style={{ alignItems: 'center' }}>
-              <Text style={[typography.h2, { color: colors.primary }]}>${totalValue.toFixed(0)}</Text>
-              <Text style={[typography.caption, { color: colors.textSecondary }]}>Total Value</Text>
-            </View>
-          </View>
-        </AnimatedCard>
-
-        {/* Action Buttons */}
-        <View style={[commonStyles.row, { gap: spacing.sm, marginBottom: spacing.md }]}>
-          <Button
-            text="Add Item"
-            onPress={() => setShowAddItemModal(true)}
-            style={{ flex: 1 }}
-            variant="primary"
-            icon="add"
-          />
-          <Button
-            text="Send Items"
-            onPress={() => setShowSendItemsModal(true)}
-            style={{ flex: 1 }}
-            variant="secondary"
-            icon="send"
+      {/* Search and Filters */}
+      <View style={styles.searchContainer}>
+        <View style={styles.searchInputContainer}>
+          <Icon name="search" size={20} style={{ color: colors.textSecondary }} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search items..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholderTextColor={colors.textSecondary}
           />
         </View>
-
-        <View style={[commonStyles.row, { gap: spacing.sm, marginBottom: spacing.md }]}>
-          <Button
-            text="Transfer History"
-            onPress={() => setShowTransferHistoryModal(true)}
-            style={{ flex: 1 }}
-            variant="secondary"
-            icon="time"
-          />
-        </View>
-
-        {/* Search and Filter */}
-        <View style={{ marginBottom: spacing.md }}>
-          <View style={[commonStyles.row, { position: 'relative', marginBottom: spacing.sm }]}>
-            <Icon 
-              name="search" 
-              size={20} 
-              style={{ 
-                position: 'absolute', 
-                left: spacing.md, 
-                top: spacing.sm + 2,
-                zIndex: 1,
-                color: colors.textSecondary 
-              }} 
-            />
-            <TextInput
-              style={[
-                commonStyles.textInput,
-                { paddingLeft: spacing.xl + spacing.md, flex: 1 }
-              ]}
-              placeholder="Search inventory..."
-              placeholderTextColor={colors.textSecondary}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
-            <IconButton
-              icon="settings"
-              onPress={() => setShowSettingsModal(true)}
-              variant="white"
-              style={{ marginLeft: spacing.sm }}
-            />
-          </View>
-
-          {/* Category Filter */}
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false}
+        
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtersContainer}>
+          <TouchableOpacity
+            style={[styles.filterButton, selectedCategory === 'all' && styles.filterButtonActive]}
+            onPress={() => setSelectedCategory('all')}
           >
-            <View style={[commonStyles.row, { gap: spacing.sm, paddingHorizontal: spacing.xs }]}>
-              {categories.map(category => (
-                <TouchableOpacity
-                  key={category.id}
-                  style={[
-                    selectedCategory === category.id ? buttonStyles.filterButtonActive : buttonStyles.filterButton
-                  ]}
-                  onPress={() => setSelectedCategory(category.id)}
-                >
-                  <View style={commonStyles.row}>
-                    <Icon 
-                      name={category.icon as any} 
-                      size={16} 
-                      style={{ 
-                        color: selectedCategory === category.id 
-                          ? colors.background 
-                          : colors.text,
-                        marginRight: spacing.xs 
-                      }} 
-                    />
-                    <Text style={[
-                      typography.caption,
-                      { 
-                        color: selectedCategory === category.id 
-                          ? colors.background 
-                          : colors.text,
-                        fontWeight: selectedCategory === category.id ? '700' : '600'
-                      }
-                    ]}>
-                      {category.name}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </ScrollView>
-        </View>
-
-        {/* Inventory List */}
-        <ScrollView showsVerticalScrollIndicator={false}>
-          {filteredInventory.map((item, index) => {
-            const stockStatus = getStockStatus(item);
-            return (
-              <AnimatedCard key={item.id} index={index + 1}>
-                <TouchableOpacity
-                  onPress={() => {
-                    setSelectedItem(item);
-                    setShowRestockModal(true);
-                  }}
-                >
-                  <View style={[commonStyles.row, commonStyles.spaceBetween, { marginBottom: spacing.sm }]}>
-                    <View style={[commonStyles.row, { flex: 1 }]}>
-                      <Icon 
-                        name={getCategoryIcon(item.category) as any} 
-                        size={24} 
-                        style={{ color: colors.primary, marginRight: spacing.md }} 
-                      />
-                      <View style={{ flex: 1 }}>
-                        <Text style={[typography.body, { color: colors.text, fontWeight: '600' }]}>
-                          {item.name}
-                        </Text>
-                        <Text style={[typography.caption, { color: colors.textSecondary }]}>
-                          {item.location} • {item.supplier}
-                        </Text>
-                      </View>
-                    </View>
-                    <View style={[commonStyles.row, { gap: spacing.xs }]}>
-                      <View style={[
-                        commonStyles.statusBadge,
-                        { backgroundColor: stockStatus.color + '20', borderColor: stockStatus.color }
-                      ]}>
-                        <Text style={[
-                          typography.small,
-                          { color: stockStatus.color, fontWeight: '600' }
-                        ]}>
-                          {stockStatus.text}
-                        </Text>
-                      </View>
-                      <IconButton
-                        icon="create"
-                        onPress={() => openEditModal(item)}
-                        variant="primary"
-                        size="small"
-                      />
-                      <IconButton
-                        icon="trash"
-                        onPress={() => removeItem(item.id)}
-                        variant="danger"
-                        size="small"
-                      />
-                    </View>
-                  </View>
-
-                  {/* Stock Progress Bar */}
-                  <View style={{ marginBottom: spacing.sm }}>
-                    <View style={{
-                      height: 6,
-                      backgroundColor: colors.backgroundAlt,
-                      borderRadius: 3,
-                      overflow: 'hidden',
-                    }}>
-                      <View style={{
-                        height: '100%',
-                        width: `${Math.min(stockStatus.percentage, 100)}%`,
-                        backgroundColor: stockStatus.color,
-                      }} />
-                    </View>
-                  </View>
-
-                  <View style={[commonStyles.row, commonStyles.spaceBetween, { marginBottom: spacing.md }]}>
-                    <View>
-                      <Text style={[typography.caption, { color: colors.textSecondary }]}>Current Stock</Text>
-                      <Text style={[typography.h3, { color: colors.text }]}>
-                        {item.currentStock} {item.unit}
-                      </Text>
-                    </View>
-                    <View>
-                      <Text style={[typography.caption, { color: colors.textSecondary }]}>Min Stock</Text>
-                      <Text style={[typography.body, { color: colors.textSecondary }]}>
-                        {item.minStock} {item.unit}
-                      </Text>
-                    </View>
-                    <View>
-                      <Text style={[typography.caption, { color: colors.textSecondary }]}>Value</Text>
-                      <Text style={[typography.body, { color: colors.text }]}>
-                        ${(item.currentStock * item.cost).toFixed(2)}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View style={[commonStyles.row, commonStyles.spaceBetween]}>
-                    <View style={[commonStyles.row, { gap: spacing.sm }]}>
-                      <IconButton
-                        icon="remove"
-                        onPress={() => updateStock(item.id, item.currentStock - 1)}
-                        variant="primary"
-                        size="small"
-                      />
-
-                      <IconButton
-                        icon="add"
-                        onPress={() => updateStock(item.id, item.currentStock + 1)}
-                        variant="primary"
-                        size="small"
-                      />
-                    </View>
-
-                    <View style={[commonStyles.row, { alignItems: 'center' }]}>
-                      <Text style={[typography.caption, { color: colors.textSecondary, marginRight: spacing.sm }]}>
-                        Auto-reorder
-                      </Text>
-                      <TouchableOpacity
-                        style={{
-                          width: 40,
-                          height: 24,
-                          borderRadius: 12,
-                          backgroundColor: item.autoReorderEnabled ? colors.success : colors.backgroundAlt,
-                          justifyContent: 'center',
-                          paddingHorizontal: 2,
-                          borderWidth: 2,
-                          borderColor: item.autoReorderEnabled ? colors.success : colors.border,
-                        }}
-                        onPress={() => toggleAutoReorder(item.id)}
-                      >
-                        <View style={{
-                          width: 20,
-                          height: 20,
-                          borderRadius: 10,
-                          backgroundColor: colors.background,
-                          alignSelf: item.autoReorderEnabled ? 'flex-end' : 'flex-start',
-                        }} />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-
-                  <Text style={[typography.small, { color: colors.textSecondary, marginTop: spacing.sm }]}>
-                    Last updated: {item.lastUpdated.toLocaleString()}
-                  </Text>
-                </TouchableOpacity>
-              </AnimatedCard>
-            );
-          })}
-
-          {filteredInventory.length === 0 && (
-            <View style={{ alignItems: 'center', paddingVertical: spacing.xxl }}>
-              <Icon name="cube" size={48} style={{ color: colors.textSecondary, marginBottom: spacing.md }} />
-              <Text style={[typography.body, { color: colors.textSecondary, textAlign: 'center' }]}>
-                No items found
-              </Text>
-              <Text style={[typography.caption, { color: colors.textSecondary, textAlign: 'center' }]}>
-                Try adjusting your search or filter
-              </Text>
-            </View>
-          )}
+            <Text style={[styles.filterButtonText, selectedCategory === 'all' && styles.filterButtonTextActive]}>
+              All
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.filterButton, selectedCategory === 'cleaning-supplies' && styles.filterButtonActive]}
+            onPress={() => setSelectedCategory('cleaning-supplies')}
+          >
+            <Text style={[styles.filterButtonText, selectedCategory === 'cleaning-supplies' && styles.filterButtonTextActive]}>
+              Supplies
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.filterButton, selectedCategory === 'equipment' && styles.filterButtonActive]}
+            onPress={() => setSelectedCategory('equipment')}
+          >
+            <Text style={[styles.filterButtonText, selectedCategory === 'equipment' && styles.filterButtonTextActive]}>
+              Equipment
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.filterButton, selectedCategory === 'safety' && styles.filterButtonActive]}
+            onPress={() => setSelectedCategory('safety')}
+          >
+            <Text style={[styles.filterButtonText, selectedCategory === 'safety' && styles.filterButtonTextActive]}>
+              Safety
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.filterButton, showLowStock && styles.filterButtonActive]}
+            onPress={() => setShowLowStock(!showLowStock)}
+          >
+            <Text style={[styles.filterButtonText, showLowStock && styles.filterButtonTextActive]}>
+              Low Stock
+            </Text>
+          </TouchableOpacity>
         </ScrollView>
       </View>
 
-      {/* Edit Item Modal */}
-      <Modal
-        visible={showEditItemModal}
-        animationType="slide"
-        presentationStyle={Platform.OS === 'ios' ? 'pageSheet' : 'overFullScreen'}
-        transparent={Platform.OS !== 'ios'}
-        onRequestClose={() => setShowEditItemModal(false)}
-      >
-        <View style={{
-          flex: 1,
-          backgroundColor: Platform.OS === 'ios' ? colors.background : 'rgba(0,0,0,0.5)',
-          justifyContent: Platform.OS === 'ios' ? 'flex-start' : 'center',
-          alignItems: Platform.OS === 'ios' ? 'stretch' : 'center',
-          ...(Platform.OS === 'web' && {
-            position: 'fixed' as any,
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            zIndex: 9999,
-          }),
-        }}>
-          {Platform.OS !== 'ios' && (
-            <TouchableOpacity 
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-              }} 
-              activeOpacity={1} 
-              onPress={() => setShowEditItemModal(false)}
-            />
-          )}
-          <View style={{
-            width: Platform.OS === 'ios' ? '100%' : '90%',
-            maxWidth: Platform.OS === 'ios' ? undefined : 600,
-            maxHeight: Platform.OS === 'ios' ? '100%' : '90%',
-            backgroundColor: colors.background,
-            borderRadius: Platform.OS === 'ios' ? 0 : 16,
-            overflow: 'hidden',
-            ...(Platform.OS === 'web' && {
-              zIndex: 10000,
-              position: 'relative' as any,
-            }),
-          }}>
-            <View style={commonStyles.header}>
-              <IconButton 
-                icon="close" 
-                onPress={() => setShowEditItemModal(false)} 
-                variant="white"
-              />
-              <Text style={commonStyles.headerTitle}>Edit Item</Text>
-              <View style={{ width: 44 }} />
-            </View>
-            
-            <ScrollView style={commonStyles.content}>
-              <View style={{ gap: spacing.md }}>
-                {/* Item Name */}
-                <View>
-                  <Text style={[typography.body, { color: colors.text, marginBottom: spacing.xs, fontWeight: '600' }]}>
-                    Item Name *
-                  </Text>
-                  <TextInput
-                    style={commonStyles.textInput}
-                    placeholder="Enter item name"
-                    placeholderTextColor={colors.textSecondary}
-                    value={editItemForm.name}
-                    onChangeText={(text) => setEditItemForm(prev => ({ ...prev, name: text }))}
-                  />
-                </View>
+      {/* Action Buttons */}
+      <View style={styles.actionButtons}>
+        <Button
+          title="Send Items"
+          onPress={() => setShowSendItemsModal(true)}
+          style={[buttonStyles.secondary, { flex: 1, marginRight: spacing.sm }]}
+        />
+        <Button
+          title="Transfer History"
+          onPress={() => setShowTransferModal(true)}
+          style={[buttonStyles.outline, { flex: 1 }]}
+        />
+      </View>
 
-                {/* Category */}
-                <View>
-                  <Text style={[typography.body, { color: colors.text, marginBottom: spacing.xs, fontWeight: '600' }]}>
-                    Category *
+      {/* Inventory List */}
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {filteredInventory.map((item) => {
+          const stockStatus = getStockStatus(item);
+          const pendingRequests = restockRequests.filter(r => r.item_id === item.id && r.status === 'pending');
+          
+          return (
+            <AnimatedCard key={item.id} style={styles.itemCard}>
+              <View style={styles.itemHeader}>
+                <View style={styles.itemTitleRow}>
+                  <Icon 
+                    name={getCategoryIcon(item.category)} 
+                    size={24} 
+                    style={{ color: colors.primary }} 
+                  />
+                  <View style={styles.itemTitleContainer}>
+                    <Text style={styles.itemName}>{item.name}</Text>
+                    <Text style={styles.itemSupplier}>{item.supplier}</Text>
+                  </View>
+                  <View style={styles.itemActions}>
+                    <IconButton
+                      icon="create"
+                      onPress={() => openEditModal(item)}
+                      size={20}
+                      color={colors.textSecondary}
+                    />
+                    <IconButton
+                      icon="trash"
+                      onPress={() => setItemToDelete(item)}
+                      size={20}
+                      color={colors.danger}
+                    />
+                  </View>
+                </View>
+                
+                <View style={styles.stockInfo}>
+                  <View style={[styles.stockBadge, { backgroundColor: 
+                    stockStatus === 'low' ? colors.danger : 
+                    stockStatus === 'medium' ? colors.warning : colors.success 
+                  }]}>
+                    <Text style={styles.stockBadgeText}>
+                      {item.current_stock} {item.unit}
+                    </Text>
+                  </View>
+                  <Text style={styles.stockRange}>
+                    Min: {item.min_stock} • Max: {item.max_stock}
                   </Text>
+                </View>
+              </View>
+
+              <View style={styles.itemDetails}>
+                <View style={styles.itemDetailRow}>
+                  <Text style={styles.itemDetailLabel}>Location:</Text>
+                  <Text style={styles.itemDetailValue}>{item.location}</Text>
+                </View>
+                <View style={styles.itemDetailRow}>
+                  <Text style={styles.itemDetailLabel}>Cost:</Text>
+                  <Text style={styles.itemDetailValue}>${item.cost.toFixed(2)}</Text>
+                </View>
+                <View style={styles.itemDetailRow}>
+                  <Text style={styles.itemDetailLabel}>Auto-reorder:</Text>
                   <TouchableOpacity
-                    style={[commonStyles.textInput, commonStyles.row, commonStyles.spaceBetween]}
-                    onPress={() => setShowEditCategoryDropdown(!showEditCategoryDropdown)}
+                    onPress={() => toggleAutoReorder(item.id)}
+                    style={styles.toggleButton}
                   >
-                    <View style={commonStyles.row}>
-                      <Icon 
-                        name={getCategoryIcon(editItemForm.category) as any} 
-                        size={20} 
-                        style={{ color: colors.primary, marginRight: spacing.sm }} 
-                      />
-                      <Text style={[typography.body, { color: colors.text }]}>
-                        {categoryOptions.find(c => c.id === editItemForm.category)?.name}
-                      </Text>
-                    </View>
-                    <Icon 
-                      name={showEditCategoryDropdown ? "chevron-up" : "chevron-down"} 
-                      size={20} 
-                      style={{ color: colors.textSecondary }} 
-                    />
-                  </TouchableOpacity>
-                  
-                  {showEditCategoryDropdown && (
-                    <View style={[commonStyles.card, { marginTop: spacing.xs, padding: 0 }]}>
-                      {categoryOptions.map(category => (
-                        <TouchableOpacity
-                          key={category.id}
-                          style={[
-                            commonStyles.row,
-                            { 
-                              padding: spacing.md,
-                              borderBottomWidth: 1,
-                              borderBottomColor: colors.border,
-                            }
-                          ]}
-                          onPress={() => {
-                            setEditItemForm(prev => ({ ...prev, category: category.id as any }));
-                            setShowEditCategoryDropdown(false);
-                          }}
-                        >
-                          <Icon 
-                            name={category.icon as any} 
-                            size={20} 
-                            style={{ color: colors.primary, marginRight: spacing.md }} 
-                          />
-                          <Text style={[typography.body, { color: colors.text }]}>
-                            {category.name}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  )}
-                </View>
-
-                {/* Stock Information */}
-                <View style={[commonStyles.row, { gap: spacing.sm }]}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[typography.body, { color: colors.text, marginBottom: spacing.xs, fontWeight: '600' }]}>
-                      Current Stock
+                    <Text style={[styles.toggleButtonText, { 
+                      color: item.auto_reorder_enabled ? colors.success : colors.textSecondary 
+                    }]}>
+                      {item.auto_reorder_enabled ? 'Enabled' : 'Disabled'}
                     </Text>
-                    <TextInput
-                      style={commonStyles.textInput}
-                      placeholder="0"
-                      placeholderTextColor={colors.textSecondary}
-                      value={editItemForm.currentStock}
-                      onChangeText={(text) => setEditItemForm(prev => ({ ...prev, currentStock: text }))}
-                      keyboardType="numeric"
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[typography.body, { color: colors.text, marginBottom: spacing.xs, fontWeight: '600' }]}>
-                      Min Stock
-                    </Text>
-                    <TextInput
-                      style={commonStyles.textInput}
-                      placeholder="0"
-                      placeholderTextColor={colors.textSecondary}
-                      value={editItemForm.minStock}
-                      onChangeText={(text) => setEditItemForm(prev => ({ ...prev, minStock: text }))}
-                      keyboardType="numeric"
-                    />
-                  </View>
-                </View>
-
-                <View style={[commonStyles.row, { gap: spacing.sm }]}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[typography.body, { color: colors.text, marginBottom: spacing.xs, fontWeight: '600' }]}>
-                      Max Stock
-                    </Text>
-                    <TextInput
-                      style={commonStyles.textInput}
-                      placeholder="0"
-                      placeholderTextColor={colors.textSecondary}
-                      value={editItemForm.maxStock}
-                      onChangeText={(text) => setEditItemForm(prev => ({ ...prev, maxStock: text }))}
-                      keyboardType="numeric"
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[typography.body, { color: colors.text, marginBottom: spacing.xs, fontWeight: '600' }]}>
-                      Unit *
-                    </Text>
-                    <TextInput
-                      style={commonStyles.textInput}
-                      placeholder="pieces, bottles, etc."
-                      placeholderTextColor={colors.textSecondary}
-                      value={editItemForm.unit}
-                      onChangeText={(text) => setEditItemForm(prev => ({ ...prev, unit: text }))}
-                    />
-                  </View>
-                </View>
-
-                {/* Location */}
-                <View>
-                  <Text style={[typography.body, { color: colors.text, marginBottom: spacing.xs, fontWeight: '600' }]}>
-                    Location *
-                  </Text>
-                  <TextInput
-                    style={commonStyles.textInput}
-                    placeholder="Storage room, cabinet, etc."
-                    placeholderTextColor={colors.textSecondary}
-                    value={editItemForm.location}
-                    onChangeText={(text) => setEditItemForm(prev => ({ ...prev, location: text }))}
-                  />
-                </View>
-
-                {/* Cost and Supplier */}
-                <View style={[commonStyles.row, { gap: spacing.sm }]}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[typography.body, { color: colors.text, marginBottom: spacing.xs, fontWeight: '600' }]}>
-                      Cost per Unit
-                    </Text>
-                    <TextInput
-                      style={commonStyles.textInput}
-                      placeholder="0.00"
-                      placeholderTextColor={colors.textSecondary}
-                      value={editItemForm.cost}
-                      onChangeText={(text) => setEditItemForm(prev => ({ ...prev, cost: text }))}
-                      keyboardType="decimal-pad"
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[typography.body, { color: colors.text, marginBottom: spacing.xs, fontWeight: '600' }]}>
-                      Reorder Quantity
-                    </Text>
-                    <TextInput
-                      style={commonStyles.textInput}
-                      placeholder="0"
-                      placeholderTextColor={colors.textSecondary}
-                      value={editItemForm.reorderQuantity}
-                      onChangeText={(text) => setEditItemForm(prev => ({ ...prev, reorderQuantity: text }))}
-                      keyboardType="numeric"
-                    />
-                  </View>
-                </View>
-
-                {/* Supplier */}
-                <View>
-                  <Text style={[typography.body, { color: colors.text, marginBottom: spacing.xs, fontWeight: '600' }]}>
-                    Supplier *
-                  </Text>
-                  <TextInput
-                    style={commonStyles.textInput}
-                    placeholder="Supplier name"
-                    placeholderTextColor={colors.textSecondary}
-                    value={editItemForm.supplier}
-                    onChangeText={(text) => setEditItemForm(prev => ({ ...prev, supplier: text }))}
-                  />
-                </View>
-
-                {/* Auto-reorder Toggle */}
-                <View style={[commonStyles.row, commonStyles.spaceBetween, { alignItems: 'center' }]}>
-                  <View>
-                    <Text style={[typography.body, { color: colors.text, fontWeight: '600' }]}>
-                      Enable Auto-reorder
-                    </Text>
-                    <Text style={[typography.caption, { color: colors.textSecondary }]}>
-                      Automatically reorder when stock is low
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    style={{
-                      width: 50,
-                      height: 30,
-                      borderRadius: 15,
-                      backgroundColor: editItemForm.autoReorderEnabled ? colors.success : colors.backgroundAlt,
-                      justifyContent: 'center',
-                      paddingHorizontal: 2,
-                      borderWidth: 2,
-                      borderColor: editItemForm.autoReorderEnabled ? colors.success : colors.border,
-                    }}
-                    onPress={() => setEditItemForm(prev => ({ ...prev, autoReorderEnabled: !prev.autoReorderEnabled }))}
-                  >
-                    <View style={{
-                      width: 26,
-                      height: 26,
-                      borderRadius: 13,
-                      backgroundColor: colors.background,
-                      alignSelf: editItemForm.autoReorderEnabled ? 'flex-end' : 'flex-start',
-                    }} />
                   </TouchableOpacity>
                 </View>
               </View>
-            </ScrollView>
 
-            <View style={[commonStyles.row, { gap: spacing.sm, padding: spacing.md, borderTopWidth: 1, borderTopColor: colors.border }]}>
-              <Button
-                text="Cancel"
-                onPress={() => setShowEditItemModal(false)}
-                style={{ flex: 1 }}
-                variant="secondary"
-              />
-              <Button
-                text="Save Changes"
-                onPress={saveEditedItem}
-                style={{ flex: 1 }}
-                variant="primary"
-              />
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Add Item Modal */}
-      <Modal
-        visible={showAddItemModal}
-        animationType="slide"
-        presentationStyle={Platform.OS === 'ios' ? 'pageSheet' : 'overFullScreen'}
-        transparent={Platform.OS !== 'ios'}
-        onRequestClose={() => setShowAddItemModal(false)}
-      >
-        <View style={{
-          flex: 1,
-          backgroundColor: Platform.OS === 'ios' ? colors.background : 'rgba(0,0,0,0.5)',
-          justifyContent: Platform.OS === 'ios' ? 'flex-start' : 'center',
-          alignItems: Platform.OS === 'ios' ? 'stretch' : 'center',
-          ...(Platform.OS === 'web' && {
-            position: 'fixed' as any,
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            zIndex: 9999,
-          }),
-        }}>
-          {Platform.OS !== 'ios' && (
-            <TouchableOpacity 
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-              }} 
-              activeOpacity={1} 
-              onPress={() => setShowAddItemModal(false)}
-            />
-          )}
-          <View style={{
-            width: Platform.OS === 'ios' ? '100%' : '90%',
-            maxWidth: Platform.OS === 'ios' ? undefined : 600,
-            maxHeight: Platform.OS === 'ios' ? '100%' : '90%',
-            backgroundColor: colors.background,
-            borderRadius: Platform.OS === 'ios' ? 0 : 16,
-            overflow: 'hidden',
-            ...(Platform.OS === 'web' && {
-              zIndex: 10000,
-              position: 'relative' as any,
-            }),
-          }}>
-            <View style={commonStyles.header}>
-              <IconButton 
-                icon="close" 
-                onPress={() => setShowAddItemModal(false)} 
-                variant="white"
-              />
-              <Text style={commonStyles.headerTitle}>Add New Item</Text>
-              <View style={{ width: 44 }} />
-            </View>
-            
-            <ScrollView style={commonStyles.content}>
-              <View style={{ gap: spacing.md }}>
-                {/* Item Name */}
-                <View>
-                  <Text style={[typography.body, { color: colors.text, marginBottom: spacing.xs, fontWeight: '600' }]}>
-                    Item Name *
-                  </Text>
-                  <TextInput
-                    style={commonStyles.textInput}
-                    placeholder="Enter item name"
-                    placeholderTextColor={colors.textSecondary}
-                    value={newItemForm.name}
-                    onChangeText={(text) => setNewItemForm(prev => ({ ...prev, name: text }))}
-                  />
-                </View>
-
-                {/* Category */}
-                <View>
-                  <Text style={[typography.body, { color: colors.text, marginBottom: spacing.xs, fontWeight: '600' }]}>
-                    Category *
-                  </Text>
-                  <TouchableOpacity
-                    style={[commonStyles.textInput, commonStyles.row, commonStyles.spaceBetween]}
-                    onPress={() => setShowCategoryDropdown(!showCategoryDropdown)}
-                  >
-                    <View style={commonStyles.row}>
-                      <Icon 
-                        name={getCategoryIcon(newItemForm.category) as any} 
-                        size={20} 
-                        style={{ color: colors.primary, marginRight: spacing.sm }} 
-                      />
-                      <Text style={[typography.body, { color: colors.text }]}>
-                        {categoryOptions.find(c => c.id === newItemForm.category)?.name}
-                      </Text>
+              {pendingRequests.length > 0 && (
+                <View style={styles.pendingRequests}>
+                  <Text style={styles.pendingRequestsTitle}>Pending Requests:</Text>
+                  {pendingRequests.map((request) => (
+                    <View key={request.id} style={styles.requestItem}>
+                      <View style={styles.requestInfo}>
+                        <Text style={styles.requestQuantity}>{request.quantity} {item.unit}</Text>
+                        <Text style={[styles.requestPriority, { color: getPriorityColor(request.priority) }]}>
+                          {request.priority.toUpperCase()}
+                        </Text>
+                      </View>
+                      <View style={styles.requestActions}>
+                        <IconButton
+                          icon="checkmark"
+                          onPress={() => approveRestockRequest(request.id)}
+                          size={20}
+                          color={colors.success}
+                        />
+                        <IconButton
+                          icon="close"
+                          onPress={() => setRequestToReject(request)}
+                          size={20}
+                          color={colors.danger}
+                        />
+                      </View>
                     </View>
-                    <Icon 
-                      name={showCategoryDropdown ? "chevron-up" : "chevron-down"} 
-                      size={20} 
-                      style={{ color: colors.textSecondary }} 
-                    />
-                  </TouchableOpacity>
-                  
-                  {showCategoryDropdown && (
-                    <View style={[commonStyles.card, { marginTop: spacing.xs, padding: 0 }]}>
-                      {categoryOptions.map(category => (
-                        <TouchableOpacity
-                          key={category.id}
-                          style={[
-                            commonStyles.row,
-                            { 
-                              padding: spacing.md,
-                              borderBottomWidth: 1,
-                              borderBottomColor: colors.border,
+                  ))}
+                </View>
+              )}
+
+              <View style={styles.itemActions}>
+                <Button
+                  title="Update Stock"
+                  onPress={() => {
+                    Alert.prompt(
+                      'Update Stock',
+                      `Current stock: ${item.current_stock} ${item.unit}`,
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        { 
+                          text: 'Update', 
+                          onPress: (value) => {
+                            const newStock = parseInt(value || '0');
+                            if (!isNaN(newStock) && newStock >= 0) {
+                              updateStock(item.id, newStock);
                             }
-                          ]}
-                          onPress={() => {
-                            setNewItemForm(prev => ({ ...prev, category: category.id as any }));
-                            setShowCategoryDropdown(false);
-                          }}
-                        >
-                          <Icon 
-                            name={category.icon as any} 
-                            size={20} 
-                            style={{ color: colors.primary, marginRight: spacing.md }} 
-                          />
-                          <Text style={[typography.body, { color: colors.text }]}>
-                            {category.name}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  )}
-                </View>
-
-                {/* Stock Information */}
-                <View style={[commonStyles.row, { gap: spacing.sm }]}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[typography.body, { color: colors.text, marginBottom: spacing.xs, fontWeight: '600' }]}>
-                      Current Stock
-                    </Text>
-                    <TextInput
-                      style={commonStyles.textInput}
-                      placeholder="0"
-                      placeholderTextColor={colors.textSecondary}
-                      value={newItemForm.currentStock}
-                      onChangeText={(text) => setNewItemForm(prev => ({ ...prev, currentStock: text }))}
-                      keyboardType="numeric"
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[typography.body, { color: colors.text, marginBottom: spacing.xs, fontWeight: '600' }]}>
-                      Min Stock
-                    </Text>
-                    <TextInput
-                      style={commonStyles.textInput}
-                      placeholder="0"
-                      placeholderTextColor={colors.textSecondary}
-                      value={newItemForm.minStock}
-                      onChangeText={(text) => setNewItemForm(prev => ({ ...prev, minStock: text }))}
-                      keyboardType="numeric"
-                    />
-                  </View>
-                </View>
-
-                <View style={[commonStyles.row, { gap: spacing.sm }]}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[typography.body, { color: colors.text, marginBottom: spacing.xs, fontWeight: '600' }]}>
-                      Max Stock
-                    </Text>
-                    <TextInput
-                      style={commonStyles.textInput}
-                      placeholder="0"
-                      placeholderTextColor={colors.textSecondary}
-                      value={newItemForm.maxStock}
-                      onChangeText={(text) => setNewItemForm(prev => ({ ...prev, maxStock: text }))}
-                      keyboardType="numeric"
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[typography.body, { color: colors.text, marginBottom: spacing.xs, fontWeight: '600' }]}>
-                      Unit *
-                    </Text>
-                    <TextInput
-                      style={commonStyles.textInput}
-                      placeholder="pieces, bottles, etc."
-                      placeholderTextColor={colors.textSecondary}
-                      value={newItemForm.unit}
-                      onChangeText={(text) => setNewItemForm(prev => ({ ...prev, unit: text }))}
-                    />
-                  </View>
-                </View>
-
-                {/* Location */}
-                <View>
-                  <Text style={[typography.body, { color: colors.text, marginBottom: spacing.xs, fontWeight: '600' }]}>
-                    Location *
-                  </Text>
-                  <TextInput
-                    style={commonStyles.textInput}
-                    placeholder="Storage room, cabinet, etc."
-                    placeholderTextColor={colors.textSecondary}
-                    value={newItemForm.location}
-                    onChangeText={(text) => setNewItemForm(prev => ({ ...prev, location: text }))}
+                          }
+                        }
+                      ],
+                      'plain-text',
+                      item.current_stock.toString()
+                    );
+                  }}
+                  style={[buttonStyles.secondary, { flex: 1, marginRight: spacing.sm }]}
+                />
+                
+                {stockStatus === 'low' && (
+                  <Button
+                    title="Request Restock"
+                    onPress={() => requestRestock(item.id)}
+                    style={[buttonStyles.primary, { flex: 1 }]}
                   />
-                </View>
-
-                {/* Cost and Supplier */}
-                <View style={[commonStyles.row, { gap: spacing.sm }]}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[typography.body, { color: colors.text, marginBottom: spacing.xs, fontWeight: '600' }]}>
-                      Cost per Unit
-                    </Text>
-                    <TextInput
-                      style={commonStyles.textInput}
-                      placeholder="0.00"
-                      placeholderTextColor={colors.textSecondary}
-                      value={newItemForm.cost}
-                      onChangeText={(text) => setNewItemForm(prev => ({ ...prev, cost: text }))}
-                      keyboardType="decimal-pad"
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[typography.body, { color: colors.text, marginBottom: spacing.xs, fontWeight: '600' }]}>
-                      Reorder Quantity
-                    </Text>
-                    <TextInput
-                      style={commonStyles.textInput}
-                      placeholder="0"
-                      placeholderTextColor={colors.textSecondary}
-                      value={newItemForm.reorderQuantity}
-                      onChangeText={(text) => setNewItemForm(prev => ({ ...prev, reorderQuantity: text }))}
-                      keyboardType="numeric"
-                    />
-                  </View>
-                </View>
-
-                {/* Supplier */}
-                <View>
-                  <Text style={[typography.body, { color: colors.text, marginBottom: spacing.xs, fontWeight: '600' }]}>
-                    Supplier *
-                  </Text>
-                  <TextInput
-                    style={commonStyles.textInput}
-                    placeholder="Supplier name"
-                    placeholderTextColor={colors.textSecondary}
-                    value={newItemForm.supplier}
-                    onChangeText={(text) => setNewItemForm(prev => ({ ...prev, supplier: text }))}
-                  />
-                </View>
-
-                {/* Auto-reorder Toggle */}
-                <View style={[commonStyles.row, commonStyles.spaceBetween, { alignItems: 'center' }]}>
-                  <View>
-                    <Text style={[typography.body, { color: colors.text, fontWeight: '600' }]}>
-                      Enable Auto-reorder
-                    </Text>
-                    <Text style={[typography.caption, { color: colors.textSecondary }]}>
-                      Automatically reorder when stock is low
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    style={{
-                      width: 50,
-                      height: 30,
-                      borderRadius: 15,
-                      backgroundColor: newItemForm.autoReorderEnabled ? colors.success : colors.backgroundAlt,
-                      justifyContent: 'center',
-                      paddingHorizontal: 2,
-                      borderWidth: 2,
-                      borderColor: newItemForm.autoReorderEnabled ? colors.success : colors.border,
-                    }}
-                    onPress={() => setNewItemForm(prev => ({ ...prev, autoReorderEnabled: !prev.autoReorderEnabled }))}
-                  >
-                    <View style={{
-                      width: 26,
-                      height: 26,
-                      borderRadius: 13,
-                      backgroundColor: colors.background,
-                      alignSelf: newItemForm.autoReorderEnabled ? 'flex-end' : 'flex-start',
-                    }} />
-                  </TouchableOpacity>
-                </View>
+                )}
               </View>
-            </ScrollView>
+            </AnimatedCard>
+          );
+        })}
 
-            <View style={[commonStyles.row, { gap: spacing.sm, padding: spacing.md, borderTopWidth: 1, borderTopColor: colors.border }]}>
-              <Button
-                text="Cancel"
-                onPress={() => setShowAddItemModal(false)}
-                style={{ flex: 1 }}
-                variant="secondary"
-              />
-              <Button
-                text="Add Item"
-                onPress={addNewItem}
-                style={{ flex: 1 }}
-                variant="primary"
-              />
-            </View>
+        {filteredInventory.length === 0 && (
+          <View style={styles.emptyState}>
+            <Icon name="cube-outline" size={64} style={{ color: colors.textSecondary }} />
+            <Text style={styles.emptyStateTitle}>No items found</Text>
+            <Text style={styles.emptyStateSubtitle}>
+              {searchQuery || selectedCategory !== 'all' || showLowStock
+                ? 'Try adjusting your search or filters'
+                : 'Add your first inventory item to get started'
+              }
+            </Text>
           </View>
-        </View>
-      </Modal>
+        )}
+      </ScrollView>
 
       {/* Send Items Modal */}
       <SendItemsModal
         visible={showSendItemsModal}
-        onClose={() => setShowSendItemsModal(false)}
         inventory={inventory}
-        onItemsSent={handleItemsSent}
-        onSuccess={() => {
-          // Refresh any data if needed
-          console.log('Items sent successfully');
-        }}
+        onClose={() => setShowSendItemsModal(false)}
+        onSend={handleItemsSent}
       />
 
       {/* Transfer History Modal */}
       <TransferHistoryModal
-        visible={showTransferHistoryModal}
-        onClose={() => setShowTransferHistoryModal(false)}
-        onRefresh={() => {
-          // Refresh inventory data if needed
-          console.log('Transfer history refreshed');
-        }}
+        visible={showTransferModal}
+        onClose={() => setShowTransferModal(false)}
       />
 
-      {/* Restock Requests Modal */}
-      <Modal
-        visible={showRequestsModal}
-        animationType="slide"
-        presentationStyle={Platform.OS === 'ios' ? 'pageSheet' : 'overFullScreen'}
-        transparent={Platform.OS !== 'ios'}
-        onRequestClose={() => setShowRequestsModal(false)}
-      >
-        <View style={{
-          flex: 1,
-          backgroundColor: Platform.OS === 'ios' ? colors.background : 'rgba(0,0,0,0.5)',
-          justifyContent: Platform.OS === 'ios' ? 'flex-start' : 'center',
-          alignItems: Platform.OS === 'ios' ? 'stretch' : 'center',
-          ...(Platform.OS === 'web' && {
-            position: 'fixed' as any,
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            zIndex: 9999,
-          }),
-        }}>
-          {Platform.OS !== 'ios' && (
-            <TouchableOpacity 
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-              }} 
-              activeOpacity={1} 
-              onPress={() => setShowRequestsModal(false)}
-            />
-          )}
-          <View style={{
-            width: Platform.OS === 'ios' ? '100%' : '90%',
-            maxWidth: Platform.OS === 'ios' ? undefined : 600,
-            maxHeight: Platform.OS === 'ios' ? '100%' : '80%',
-            backgroundColor: colors.background,
-            borderRadius: Platform.OS === 'ios' ? 0 : 16,
-            overflow: 'hidden',
-            ...(Platform.OS === 'web' && {
-              zIndex: 10000,
-              position: 'relative' as any,
-            }),
-          }}>
-            <View style={commonStyles.header}>
-              <IconButton 
-                icon="close" 
-                onPress={() => setShowRequestsModal(false)} 
-                variant="white"
-              />
-              <Text style={commonStyles.headerTitle}>Restock Requests</Text>
-              <View style={{ width: 44 }} />
-            </View>
-            <ScrollView style={commonStyles.content}>
-              {restockRequests.map(request => (
-                <View key={request.id} style={[commonStyles.card, { marginBottom: spacing.sm }]}>
-                  <View style={[commonStyles.row, commonStyles.spaceBetween, { marginBottom: spacing.sm }]}>
-                    <Text style={[typography.body, { color: colors.text, fontWeight: '600', flex: 1 }]}>
-                      {request.itemName}
-                    </Text>
-                    <View style={[
-                      commonStyles.statusBadge,
-                      { backgroundColor: getPriorityColor(request.priority) + '20', borderColor: getPriorityColor(request.priority) }
-                    ]}>
-                      <Text style={[
-                        typography.small,
-                        { color: getPriorityColor(request.priority), fontWeight: '600' }
-                      ]}>
-                        {request.priority.toUpperCase()}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <Text style={[typography.caption, { color: colors.textSecondary, marginBottom: spacing.sm }]}>
-                    Requested by {request.requestedBy} • {request.requestedAt.toLocaleString()}
-                  </Text>
-
-                  <Text style={[typography.body, { color: colors.text, marginBottom: spacing.sm }]}>
-                    Quantity: {request.quantity}
-                  </Text>
-
-                  {request.notes && (
-                    <Text style={[typography.caption, { color: colors.textSecondary, marginBottom: spacing.md }]}>
-                      Notes: {request.notes}
-                    </Text>
-                  )}
-
-                  <View style={[
-                    commonStyles.statusBadge,
-                    { backgroundColor: getStatusColor(request.status) + '20', marginBottom: spacing.md, borderColor: getStatusColor(request.status) }
-                  ]}>
-                    <Text style={[
-                      typography.small,
-                      { color: getStatusColor(request.status), fontWeight: '600' }
-                    ]}>
-                      {request.status.toUpperCase()}
-                    </Text>
-                  </View>
-
-                  {request.status === 'pending' && (
-                    <View style={[commonStyles.row, { gap: spacing.sm }]}>
-                      <Button
-                        text="Approve"
-                        onPress={() => approveRestockRequest(request.id)}
-                        style={{ flex: 1 }}
-                        variant="success"
-                      />
-                      <Button
-                        text="Reject"
-                        onPress={() => rejectRestockRequest(request.id)}
-                        style={{ flex: 1 }}
-                        variant="danger"
-                      />
-                    </View>
-                  )}
-                </View>
-              ))}
-
-              {restockRequests.length === 0 && (
-                <View style={{ alignItems: 'center', paddingVertical: spacing.xxl }}>
-                  <Icon name="checkmark-circle" size={48} style={{ color: colors.success, marginBottom: spacing.md }} />
-                  <Text style={[typography.body, { color: colors.textSecondary, textAlign: 'center' }]}>
-                    No pending restock requests
-                  </Text>
-                </View>
-              )}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Delete Item Confirmation Modal */}
-      <Modal
-        visible={showDeleteConfirmModal}
-        animationType="fade"
-        transparent={true}
-        onRequestClose={() => setShowDeleteConfirmModal(false)}
-      >
-        <View style={{
-          flex: 1,
-          backgroundColor: 'rgba(0,0,0,0.5)',
-          justifyContent: 'center',
-          alignItems: 'center',
-          padding: spacing.lg,
-        }}>
-          <View style={{
-            backgroundColor: colors.background,
-            borderRadius: 16,
-            padding: spacing.lg,
-            width: '100%',
-            maxWidth: 400,
-            shadowColor: colors.text,
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.3,
-            shadowRadius: 8,
-            elevation: 8,
-          }}>
-            <View style={{ alignItems: 'center', marginBottom: spacing.lg }}>
-              <View style={{
-                width: 64,
-                height: 64,
-                borderRadius: 32,
-                backgroundColor: colors.danger + '20',
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginBottom: spacing.md,
-              }}>
-                <Icon name="trash" size={32} style={{ color: colors.danger }} />
+      {/* Delete Confirmation */}
+      {itemToDelete && (
+        <Modal visible={true} transparent animationType="fade">
+          <View style={styles.overlayContainer}>
+            <View style={styles.confirmationModal}>
+              <Text style={styles.confirmationTitle}>Delete Item</Text>
+              <Text style={styles.confirmationMessage}>
+                Are you sure you want to delete "{itemToDelete.name}"? This action cannot be undone.
+              </Text>
+              <View style={styles.confirmationActions}>
+                <Button
+                  title="Cancel"
+                  onPress={() => setItemToDelete(null)}
+                  style={[buttonStyles.outline, { flex: 1, marginRight: spacing.sm }]}
+                />
+                <Button
+                  title="Delete"
+                  onPress={confirmDeleteItem}
+                  style={[buttonStyles.danger, { flex: 1 }]}
+                />
               </View>
-              <Text style={[typography.h3, { color: colors.text, textAlign: 'center', marginBottom: spacing.sm }]}>
-                Remove Item
-              </Text>
-              <Text style={[typography.body, { color: colors.textSecondary, textAlign: 'center' }]}>
-                Are you sure you want to remove "{itemToDelete?.name}" from inventory? This action cannot be undone.
-              </Text>
-            </View>
-            
-            <View style={[commonStyles.row, { gap: spacing.sm }]}>
-              <Button
-                text="Cancel"
-                onPress={() => {
-                  setShowDeleteConfirmModal(false);
-                  setItemToDelete(null);
-                }}
-                style={{ flex: 1 }}
-                variant="secondary"
-              />
-              <Button
-                text="Remove"
-                onPress={confirmDeleteItem}
-                style={{ flex: 1 }}
-                variant="danger"
-              />
             </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
 
-      {/* Reject Request Confirmation Modal */}
-      <Modal
-        visible={showRejectConfirmModal}
-        animationType="fade"
-        transparent={true}
-        onRequestClose={() => setShowRejectConfirmModal(false)}
-      >
-        <View style={{
-          flex: 1,
-          backgroundColor: 'rgba(0,0,0,0.5)',
-          justifyContent: 'center',
-          alignItems: 'center',
-          padding: spacing.lg,
-        }}>
-          <View style={{
-            backgroundColor: colors.background,
-            borderRadius: 16,
-            padding: spacing.lg,
-            width: '100%',
-            maxWidth: 400,
-            shadowColor: colors.text,
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.3,
-            shadowRadius: 8,
-            elevation: 8,
-          }}>
-            <View style={{ alignItems: 'center', marginBottom: spacing.lg }}>
-              <View style={{
-                width: 64,
-                height: 64,
-                borderRadius: 32,
-                backgroundColor: colors.warning + '20',
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginBottom: spacing.md,
-              }}>
-                <Icon name="close-circle" size={32} style={{ color: colors.warning }} />
+      {/* Reject Request Confirmation */}
+      {requestToReject && (
+        <Modal visible={true} transparent animationType="fade">
+          <View style={styles.overlayContainer}>
+            <View style={styles.confirmationModal}>
+              <Text style={styles.confirmationTitle}>Reject Request</Text>
+              <Text style={styles.confirmationMessage}>
+                Are you sure you want to reject the restock request for "{requestToReject.item_name}"?
+              </Text>
+              <View style={styles.confirmationActions}>
+                <Button
+                  title="Cancel"
+                  onPress={() => setRequestToReject(null)}
+                  style={[buttonStyles.outline, { flex: 1, marginRight: spacing.sm }]}
+                />
+                <Button
+                  title="Reject"
+                  onPress={confirmRejectRequest}
+                  style={[buttonStyles.danger, { flex: 1 }]}
+                />
               </View>
-              <Text style={[typography.h3, { color: colors.text, textAlign: 'center', marginBottom: spacing.sm }]}>
-                Reject Request
-              </Text>
-              <Text style={[typography.body, { color: colors.textSecondary, textAlign: 'center' }]}>
-                Are you sure you want to reject the restock request for "{requestToReject?.itemName}"?
-              </Text>
-            </View>
-            
-            <View style={[commonStyles.row, { gap: spacing.sm }]}>
-              <Button
-                text="Cancel"
-                onPress={() => {
-                  setShowRejectConfirmModal(false);
-                  setRequestToReject(null);
-                }}
-                style={{ flex: 1 }}
-                variant="secondary"
-              />
-              <Button
-                text="Reject"
-                onPress={confirmRejectRequest}
-                style={{ flex: 1 }}
-                variant="danger"
-              />
             </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
+
+      <Toast />
     </View>
   );
-}
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+  },
+  loadingText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginTop: spacing.md,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  title: {
+    ...typography.h2,
+    color: colors.text,
+    fontWeight: '600',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  statusIndicator: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchContainer: {
+    padding: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  searchInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 12,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  searchInput: {
+    flex: 1,
+    marginLeft: spacing.sm,
+    ...typography.body,
+    color: colors.text,
+  },
+  filtersContainer: {
+    flexDirection: 'row',
+  },
+  filterButton: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 20,
+    backgroundColor: colors.backgroundAlt,
+    marginRight: spacing.sm,
+  },
+  filterButtonActive: {
+    backgroundColor: colors.primary,
+  },
+  filterButtonText: {
+    ...typography.small,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  filterButtonTextActive: {
+    color: colors.background,
+    fontWeight: '600',
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  content: {
+    flex: 1,
+    padding: spacing.lg,
+  },
+  itemCard: {
+    marginBottom: spacing.md,
+    padding: spacing.lg,
+  },
+  itemHeader: {
+    marginBottom: spacing.md,
+  },
+  itemTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  itemTitleContainer: {
+    flex: 1,
+    marginLeft: spacing.md,
+  },
+  itemName: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  itemSupplier: {
+    ...typography.small,
+    color: colors.textSecondary,
+  },
+  itemActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  stockInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  stockBadge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: 12,
+  },
+  stockBadgeText: {
+    ...typography.small,
+    color: colors.background,
+    fontWeight: '600',
+  },
+  stockRange: {
+    ...typography.small,
+    color: colors.textSecondary,
+  },
+  itemDetails: {
+    marginBottom: spacing.md,
+  },
+  itemDetailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  itemDetailLabel: {
+    ...typography.small,
+    color: colors.textSecondary,
+  },
+  itemDetailValue: {
+    ...typography.small,
+    color: colors.text,
+    fontWeight: '500',
+  },
+  toggleButton: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  toggleButtonText: {
+    ...typography.small,
+    fontWeight: '500',
+  },
+  pendingRequests: {
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 8,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  pendingRequestsTitle: {
+    ...typography.small,
+    color: colors.text,
+    fontWeight: '600',
+    marginBottom: spacing.sm,
+  },
+  requestItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  requestInfo: {
+    flex: 1,
+  },
+  requestQuantity: {
+    ...typography.small,
+    color: colors.text,
+    fontWeight: '500',
+  },
+  requestPriority: {
+    ...typography.small,
+    fontWeight: '600',
+  },
+  requestActions: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xxl,
+  },
+  emptyStateTitle: {
+    ...typography.h3,
+    color: colors.textSecondary,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  emptyStateSubtitle: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  overlayContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  confirmationModal: {
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    padding: spacing.lg,
+    width: '100%',
+    maxWidth: 400,
+  },
+  confirmationTitle: {
+    ...typography.h3,
+    color: colors.text,
+    fontWeight: '600',
+    marginBottom: spacing.md,
+  },
+  confirmationMessage: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginBottom: spacing.lg,
+    lineHeight: 22,
+  },
+  confirmationActions: {
+    flexDirection: 'row',
+  },
+});
+
+export default SupervisorInventoryScreen;

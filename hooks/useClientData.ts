@@ -6,9 +6,17 @@ export interface Client {
   id: string;
   name: string;
   isActive: boolean;
-  color: string;
+  color?: string;
   security?: string;
   securityLevel: 'low' | 'medium' | 'high';
+  securityInfo?: string;
+  contactInfo?: {
+    email: string;
+    phone: string;
+    address: string;
+  };
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export interface ClientBuilding {
@@ -18,6 +26,14 @@ export interface ClientBuilding {
   address?: string;
   security?: string;
   securityLevel: 'low' | 'medium' | 'high';
+  securityInfo?: string;
+  isActive?: boolean;
+  contactInfo?: {
+    email: string;
+    phone: string;
+  };
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export interface Cleaner {
@@ -26,22 +42,24 @@ export interface Cleaner {
   isActive: boolean;
   avatar?: string;
   specialties: string[];
-  employeeId: string; // New field for ID number
-  securityLevel: 'low' | 'medium' | 'high'; // New field for security level
-  phoneNumber: string; // New field for phone number
-  email?: string; // Optional email field
-  hireDate?: string; // Optional hire date
+  employeeId: string;
+  securityLevel: 'low' | 'medium' | 'high';
+  phoneNumber: string;
+  email?: string;
+  hireDate?: string;
   emergencyContact?: {
     name: string;
     phone: string;
-    relationship: string; // Keep for backward compatibility but won't be used in new forms
-  }; // Optional emergency contact
+    relationship?: string;
+  };
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 const STORAGE_KEYS = {
-  CLIENTS: 'clients_v2',
-  BUILDINGS: 'client_buildings_v2',
-  CLEANERS: 'cleaners_v2',
+  CLIENTS: 'clients_v3',
+  BUILDINGS: 'client_buildings_v3',
+  CLEANERS: 'cleaners_v3',
 };
 
 // Cache for frequently accessed data
@@ -85,7 +103,15 @@ export const useClientData = () => {
         isActive: true, 
         color: '#3B82F6', 
         security: 'Badge required',
-        securityLevel: 'high'
+        securityLevel: 'high',
+        securityInfo: 'Badge required at main entrance',
+        contactInfo: {
+          email: 'contact@techcorp.com',
+          phone: '+1 (555) 123-4567',
+          address: '123 Tech Street'
+        },
+        createdAt: new Date(),
+        updatedAt: new Date()
       },
       { 
         id: '2', 
@@ -93,7 +119,15 @@ export const useClientData = () => {
         isActive: true, 
         color: '#10B981', 
         security: 'ID check required',
-        securityLevel: 'high'
+        securityLevel: 'high',
+        securityInfo: 'ID check and escort required',
+        contactInfo: {
+          email: 'admin@medcenter.com',
+          phone: '+1 (555) 234-5678',
+          address: '789 Health Blvd'
+        },
+        createdAt: new Date(),
+        updatedAt: new Date()
       },
       { 
         id: '3', 
@@ -101,7 +135,15 @@ export const useClientData = () => {
         isActive: true, 
         color: '#F59E0B', 
         security: 'Security desk check-in',
-        securityLevel: 'medium'
+        securityLevel: 'medium',
+        securityInfo: 'Security desk check-in required',
+        contactInfo: {
+          email: 'management@downtownmall.com',
+          phone: '+1 (555) 345-6789',
+          address: '321 Shopping St'
+        },
+        createdAt: new Date(),
+        updatedAt: new Date()
       },
     ];
     
@@ -118,7 +160,15 @@ export const useClientData = () => {
         buildingName: 'Main Office', 
         address: '123 Tech Street',
         security: 'Badge required at main entrance',
-        securityLevel: 'high'
+        securityLevel: 'high',
+        securityInfo: 'Badge required at main entrance',
+        isActive: true,
+        contactInfo: {
+          email: 'mainoffice@techcorp.com',
+          phone: '+1 (555) 123-4567'
+        },
+        createdAt: new Date(),
+        updatedAt: new Date()
       },
       { 
         id: '2', 
@@ -126,7 +176,15 @@ export const useClientData = () => {
         buildingName: 'Warehouse', 
         address: '456 Storage Ave',
         security: 'Key code: 1234',
-        securityLevel: 'medium'
+        securityLevel: 'medium',
+        securityInfo: 'Key code access required',
+        isActive: true,
+        contactInfo: {
+          email: 'warehouse@techcorp.com',
+          phone: '+1 (555) 123-4568'
+        },
+        createdAt: new Date(),
+        updatedAt: new Date()
       },
       { 
         id: '3', 
@@ -134,7 +192,15 @@ export const useClientData = () => {
         buildingName: 'Emergency Wing', 
         address: '789 Health Blvd',
         security: 'ID check and escort required',
-        securityLevel: 'high'
+        securityLevel: 'high',
+        securityInfo: 'ID check and escort required',
+        isActive: true,
+        contactInfo: {
+          email: 'emergency@medcenter.com',
+          phone: '+1 (555) 234-5678'
+        },
+        createdAt: new Date(),
+        updatedAt: new Date()
       },
       { 
         id: '4', 
@@ -142,7 +208,15 @@ export const useClientData = () => {
         buildingName: 'Food Court', 
         address: '321 Shopping St',
         security: 'Security desk check-in',
-        securityLevel: 'medium'
+        securityLevel: 'medium',
+        securityInfo: 'Security desk check-in required',
+        isActive: true,
+        contactInfo: {
+          email: 'foodcourt@downtownmall.com',
+          phone: '+1 (555) 345-6789'
+        },
+        createdAt: new Date(),
+        updatedAt: new Date()
       },
     ];
     
@@ -166,7 +240,9 @@ export const useClientData = () => {
           name: 'Jane Doe',
           phone: '+1 (555) 987-6543',
           relationship: 'Spouse'
-        }
+        },
+        createdAt: new Date(),
+        updatedAt: new Date()
       },
       { 
         id: '2', 
@@ -182,7 +258,9 @@ export const useClientData = () => {
           name: 'Bob Smith',
           phone: '+1 (555) 876-5432',
           relationship: 'Brother'
-        }
+        },
+        createdAt: new Date(),
+        updatedAt: new Date()
       },
       { 
         id: '3', 
@@ -193,7 +271,9 @@ export const useClientData = () => {
         securityLevel: 'low',
         phoneNumber: '+1 (555) 345-6789',
         email: 'johnson.smith@cleaningcompany.com',
-        hireDate: '2023-05-10'
+        hireDate: '2023-05-10',
+        createdAt: new Date(),
+        updatedAt: new Date()
       },
     ];
     
@@ -281,14 +361,15 @@ export const useClientData = () => {
   }, [debouncedSave]);
 
   // Optimized CRUD operations
-  const addClient = useCallback(async (client: Client) => {
-    const updatedClients = [...clients, client];
+  const addClient = useCallback(async (client: Omit<Client, 'id'> | Client) => {
+    const newClient = 'id' in client ? client : { ...client, id: `client-${Date.now()}` };
+    const updatedClients = [...clients, newClient];
     await saveClients(updatedClients);
   }, [clients, saveClients]);
 
   const updateClient = useCallback(async (clientId: string, updates: Partial<Client>) => {
     const updatedClients = clients.map(client =>
-      client.id === clientId ? { ...client, ...updates } : client
+      client.id === clientId ? { ...client, ...updates, updatedAt: new Date() } : client
     );
     await saveClients(updatedClients);
   }, [clients, saveClients]);
@@ -298,31 +379,33 @@ export const useClientData = () => {
     await saveClients(updatedClients);
   }, [clients, saveClients]);
 
-  const addBuilding = useCallback(async (building: ClientBuilding) => {
-    const updatedBuildings = [...clientBuildings, building];
+  const addClientBuilding = useCallback(async (building: Omit<ClientBuilding, 'id'> | ClientBuilding) => {
+    const newBuilding = 'id' in building ? building : { ...building, id: `building-${Date.now()}` };
+    const updatedBuildings = [...clientBuildings, newBuilding];
     await saveBuildings(updatedBuildings);
   }, [clientBuildings, saveBuildings]);
 
-  const updateBuilding = useCallback(async (buildingId: string, updates: Partial<ClientBuilding>) => {
+  const updateClientBuilding = useCallback(async (buildingId: string, updates: Partial<ClientBuilding>) => {
     const updatedBuildings = clientBuildings.map(building =>
-      building.id === buildingId ? { ...building, ...updates } : building
+      building.id === buildingId ? { ...building, ...updates, updatedAt: new Date() } : building
     );
     await saveBuildings(updatedBuildings);
   }, [clientBuildings, saveBuildings]);
 
-  const deleteBuilding = useCallback(async (buildingId: string) => {
+  const deleteClientBuilding = useCallback(async (buildingId: string) => {
     const updatedBuildings = clientBuildings.filter(building => building.id !== buildingId);
     await saveBuildings(updatedBuildings);
   }, [clientBuildings, saveBuildings]);
 
-  const addCleaner = useCallback(async (cleaner: Cleaner) => {
-    const updatedCleaners = [...cleaners, cleaner];
+  const addCleaner = useCallback(async (cleaner: Omit<Cleaner, 'id'> | Cleaner) => {
+    const newCleaner = 'id' in cleaner ? cleaner : { ...cleaner, id: `cleaner-${Date.now()}` };
+    const updatedCleaners = [...cleaners, newCleaner];
     await saveCleaners(updatedCleaners);
   }, [cleaners, saveCleaners]);
 
   const updateCleaner = useCallback(async (cleanerId: string, updates: Partial<Cleaner>) => {
     const updatedCleaners = cleaners.map(cleaner =>
-      cleaner.id === cleanerId ? { ...cleaner, ...updates } : cleaner
+      cleaner.id === cleanerId ? { ...cleaner, ...updates, updatedAt: new Date() } : cleaner
     );
     await saveCleaners(updatedCleaners);
   }, [cleaners, saveCleaners]);
@@ -359,9 +442,9 @@ export const useClientData = () => {
     addClient,
     updateClient,
     deleteClient,
-    addBuilding,
-    updateBuilding,
-    deleteBuilding,
+    addClientBuilding,
+    updateClientBuilding,
+    deleteClientBuilding,
     addCleaner,
     updateCleaner,
     deleteCleaner,

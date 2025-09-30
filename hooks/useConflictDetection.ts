@@ -101,12 +101,6 @@ export const useConflictDetection = (schedule: ScheduleEntry[], cleaners: Cleane
       console.log('Location conflicts detected:', locationConflicts.length);
 
       console.log('Total conflicts detected:', detectedConflicts.length);
-      console.log('Conflict details:', detectedConflicts.map(c => ({ 
-        id: c.id, 
-        type: c.type, 
-        severity: c.severity, 
-        description: c.description 
-      })));
       return detectedConflicts;
     } catch (error) {
       console.error('Error detecting conflicts:', error);
@@ -114,7 +108,7 @@ export const useConflictDetection = (schedule: ScheduleEntry[], cleaners: Cleane
     }
   }, [schedule, cleaners, clientBuildings]);
 
-  // Real-time conflict validation for new entries - FIXED VERSION
+  // IMPROVED: Real-time conflict validation for new entries - FIXED VERSION
   const validateScheduleChange = useCallback((
     newEntry: Partial<ScheduleEntry>,
     existingEntryId?: string
@@ -149,7 +143,7 @@ export const useConflictDetection = (schedule: ScheduleEntry[], cleaners: Cleane
       let entryToValidate: ScheduleEntry;
       
       if (existingEntryId) {
-        // For edits, replace the existing entry with the updated one
+        // FIXED: For edits, replace the existing entry with the updated one
         const originalEntry = schedule.find(entry => entry.id === existingEntryId);
         if (!originalEntry) {
           console.log('Original entry not found for validation, allowing to proceed');
@@ -178,16 +172,16 @@ export const useConflictDetection = (schedule: ScheduleEntry[], cleaners: Cleane
         console.log('Created temp schedule for new entry validation with', tempSchedule.length, 'entries');
       }
 
-      // Only check for conflicts that would actually be problematic
+      // IMPROVED: Only check for conflicts that would actually be problematic
       const validationConflicts: ConflictDetails[] = [];
       
       // 1. Check for cleaner double booking (only critical conflicts)
       const cleanerConflicts = detectCleanerDoubleBooking(tempSchedule, cleaners)
         .filter(conflict => {
-          // For edits, only flag as conflict if it involves other entries
+          // FIXED: For edits, only flag as conflict if it involves OTHER entries
           if (existingEntryId) {
-            const involvedEntries = conflict.affectedEntries.filter(entry => entry.id !== existingEntryId);
-            return involvedEntries.length > 1; // Need at least 2 entries for a real conflict
+            const otherEntries = conflict.affectedEntries.filter(entry => entry.id !== existingEntryId);
+            return otherEntries.length > 0; // Need at least 1 other entry for a real conflict
           }
           return true;
         });
@@ -196,16 +190,16 @@ export const useConflictDetection = (schedule: ScheduleEntry[], cleaners: Cleane
       // 2. Check for time overlaps (only critical conflicts)
       const timeConflicts = detectTimeOverlapConflicts(tempSchedule)
         .filter(conflict => {
-          // For edits, only flag as conflict if it involves other entries
+          // FIXED: For edits, only flag as conflict if it involves OTHER entries
           if (existingEntryId) {
-            const involvedEntries = conflict.affectedEntries.filter(entry => entry.id !== existingEntryId);
-            return involvedEntries.length > 0;
+            const otherEntries = conflict.affectedEntries.filter(entry => entry.id !== existingEntryId);
+            return otherEntries.length > 0;
           }
           return true;
         });
       validationConflicts.push(...timeConflicts);
       
-      // 3. Check for security access conflicts - IMPROVED LOGIC FOR EDITS
+      // 3. IMPROVED: Check for security access conflicts with better edit handling
       if (existingEntryId) {
         // For edits, do a direct security check on the entry being validated
         console.log('Performing direct security validation for edit...');
@@ -308,7 +302,7 @@ export const useConflictDetection = (schedule: ScheduleEntry[], cleaners: Cleane
         validationConflicts.push(...securityConflicts);
       }
       
-      // Filter out low-severity conflicts for validation
+      // IMPROVED: Filter out low-severity conflicts for validation
       const criticalConflicts = validationConflicts.filter(c => 
         c.severity === 'critical' || c.severity === 'high'
       );
@@ -406,7 +400,7 @@ export const useConflictDetection = (schedule: ScheduleEntry[], cleaners: Cleane
 
     console.log('Cleaner-day mappings created:', cleanerDayMap.size);
 
-    // Check for conflicts - only flag if there are actually multiple DIFFERENT entries
+    // IMPROVED: Check for conflicts - only flag if there are actually multiple DIFFERENT entries
     for (const [key, entries] of cleanerDayMap) {
       if (entries.length > 1) {
         // Filter out duplicate entries (same ID) that might occur during validation

@@ -16,21 +16,46 @@ export default function Icon({ name, size = 24, color = colors.text, style }: Ic
   const isBuildingIcon = name === 'building' || name === 'business' || name === 'business-outline';
   
   if (isBuildingIcon) {
-    return (
-      <View style={[styles.iconContainer, style]}>
-        <Image 
-          source={require('../assets/images/qelogo.png')}
-          style={[
-            styles.iconImage,
-            {
-              width: size,
-              height: size,
-            }
-          ]}
-          resizeMode="contain"
+    try {
+      // Temporarily disable custom image to avoid ENOENT errors
+      // return (
+      //   <View style={[styles.iconContainer, style]}>
+      //     <Image 
+      //       source={require('../assets/images/1e1d80a2-df70-4b95-a919-628776aa6760.png')}
+      //       style={[
+      //         styles.iconImage,
+      //         {
+      //           width: size,
+      //           height: size,
+      //           tintColor: color,
+      //         }
+      //       ]}
+      //       resizeMode="contain"
+      //     />
+      //   </View>
+      // );
+      
+      // Use Ionicons for now to avoid file loading issues
+      return (
+        <Ionicons 
+          name="business" 
+          size={size} 
+          color={color} 
+          style={style}
         />
-      </View>
-    );
+      );
+    } catch (error) {
+      console.error('Error loading building icon image:', error);
+      // Fallback to Ionicons if image fails to load
+      return (
+        <Ionicons 
+          name="business" 
+          size={size} 
+          color={color} 
+          style={style}
+        />
+      );
+    }
   }
 
   // For all other icons, use Ionicons as normal

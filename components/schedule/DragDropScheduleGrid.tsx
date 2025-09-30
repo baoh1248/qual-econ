@@ -45,7 +45,96 @@ const DragDropScheduleGrid = memo(({
   bulkMode = false,
   selectedEntries = [],
 }: DragDropScheduleGridProps) => {
-  console.log('DragDropScheduleGrid rendered with enhanced conflict detection');
+  console.log('DragDropScheduleGrid rendered with enhanced error handling');
+
+  // FIXED: Ensure all arrays are properly initialized and validated
+  const safeClientBuildings = useMemo(() => {
+    try {
+      if (!Array.isArray(clientBuildings)) {
+        console.error('clientBuildings is not an array:', typeof clientBuildings, clientBuildings);
+        return [];
+      }
+      return clientBuildings.filter(building => 
+        building && 
+        typeof building === 'object' && 
+        building.id && 
+        building.clientName && 
+        building.buildingName
+      );
+    } catch (error) {
+      console.error('Error processing clientBuildings:', error);
+      return [];
+    }
+  }, [clientBuildings]);
+
+  const safeClients = useMemo(() => {
+    try {
+      if (!Array.isArray(clients)) {
+        console.error('clients is not an array:', typeof clients, clients);
+        return [];
+      }
+      return clients.filter(client => 
+        client && 
+        typeof client === 'object' && 
+        client.id && 
+        client.name
+      );
+    } catch (error) {
+      console.error('Error processing clients:', error);
+      return [];
+    }
+  }, [clients]);
+
+  const safeCleaners = useMemo(() => {
+    try {
+      if (!Array.isArray(cleaners)) {
+        console.error('cleaners is not an array:', typeof cleaners, cleaners);
+        return [];
+      }
+      return cleaners.filter(cleaner => 
+        cleaner && 
+        typeof cleaner === 'object' && 
+        cleaner.id && 
+        cleaner.name
+      );
+    } catch (error) {
+      console.error('Error processing cleaners:', error);
+      return [];
+    }
+  }, [cleaners]);
+
+  const safeSchedule = useMemo(() => {
+    try {
+      if (!Array.isArray(schedule)) {
+        console.error('schedule is not an array:', typeof schedule, schedule);
+        return [];
+      }
+      return schedule.filter(entry => 
+        entry && 
+        typeof entry === 'object' && 
+        entry.id && 
+        entry.clientName && 
+        entry.buildingName && 
+        entry.day
+      );
+    } catch (error) {
+      console.error('Error processing schedule:', error);
+      return [];
+    }
+  }, [schedule]);
+
+  const safeSelectedEntries = useMemo(() => {
+    try {
+      if (!Array.isArray(selectedEntries)) {
+        console.error('selectedEntries is not an array:', typeof selectedEntries, selectedEntries);
+        return [];
+      }
+      return selectedEntries.filter(id => typeof id === 'string' && id.length > 0);
+    } catch (error) {
+      console.error('Error processing selectedEntries:', error);
+      return [];
+    }
+  }, [selectedEntries]);
 
   const days = useMemo(() => ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'], []);
   const screenWidth = Dimensions.get('window').width;
@@ -58,14 +147,14 @@ const DragDropScheduleGrid = memo(({
   const [isDragging, setIsDragging] = useState(false);
   const [previewConflicts, setPreviewConflicts] = useState<string[]>([]);
 
-  // Enhanced conflict detection
+  // Enhanced conflict detection with safe arrays
   const { 
-    conflicts, 
+    conflicts = [], 
     getEntryConflicts, 
     validateScheduleChange,
-    hasConflicts,
-    conflictSummary 
-  } = useConflictDetection(schedule, cleaners, clientBuildings);
+    hasConflicts = false,
+    conflictSummary = { total: 0, critical: 0, high: 0, medium: 0, low: 0 }
+  } = useConflictDetection(safeSchedule, safeCleaners, safeClientBuildings);
 
   // Animation values for drag and drop
   const translateX = useSharedValue(0);
@@ -73,19 +162,19 @@ const DragDropScheduleGrid = memo(({
   const scale = useSharedValue(1);
   const opacity = useSharedValue(1);
 
-  // Optimized grouping with memoization and Map for O(1) lookups
+  // FIXED: Safe grouping with better error handling
   const buildingsByClient = useMemo(() => {
     try {
       const grouped = new Map<string, ClientBuilding[]>();
       
-      if (!Array.isArray(clientBuildings)) {
-        console.error('clientBuildings is not an array:', clientBuildings);
+      if (safeClientBuildings.length === 0) {
+        console.log('No client buildings to group');
         return grouped;
       }
 
-      for (const building of clientBuildings) {
+      for (const building of safeClientBuildings) {
         if (!building || !building.clientName) {
-          console.warn('Invalid building:', building);
+          console.warn('Invalid building skipped:', building);
           continue;
         }
 
@@ -95,30 +184,30 @@ const DragDropScheduleGrid = memo(({
         grouped.get(building.clientName)!.push(building);
       }
       
+      console.log('Buildings grouped by client:', grouped.size, 'clients');
       return grouped;
     } catch (error) {
       console.error('Error grouping buildings by client:', error);
       return new Map<string, ClientBuilding[]>();
     }
-  }, [clientBuildings]);
+  }, [safeClientBuildings]);
 
-  // Optimized schedule map with better key generation and error handling
+  // FIXED: Safe schedule map with better error handling
   const scheduleMap = useMemo(() => {
     try {
       const map = new Map<string, ScheduleEntry>();
       
-      if (!Array.isArray(schedule)) {
-        console.error('schedule is not an array:', schedule);
+      if (safeSchedule.length === 0) {
+        console.log('No schedule entries to map');
         return map;
       }
 
-      for (const entry of schedule) {
+      for (const entry of safeSchedule) {
         if (!entry || !entry.clientName || !entry.buildingName || !entry.day) {
-          console.warn('Invalid schedule entry:', entry);
+          console.warn('Invalid schedule entry skipped:', entry);
           continue;
         }
 
-        // Include clientName in the key to ensure uniqueness across different clients
         const key = `${entry.clientName}|${entry.buildingName}|${entry.day.toLowerCase()}`;
         map.set(key, entry);
       }
@@ -129,15 +218,30 @@ const DragDropScheduleGrid = memo(({
       console.error('Error creating schedule map:', error);
       return new Map<string, ScheduleEntry>();
     }
-  }, [schedule]);
+  }, [safeSchedule]);
 
-  // Enhanced conflict map with entry-specific conflicts
+  // FIXED: Safe conflict map with better error handling
   const entryConflictMap = useMemo(() => {
     try {
       const map = new Map<string, string[]>();
       
+      if (!Array.isArray(conflicts) || conflicts.length === 0) {
+        console.log('No conflicts to map');
+        return map;
+      }
+      
       for (const conflict of conflicts) {
+        if (!conflict || !Array.isArray(conflict.affectedEntries)) {
+          console.warn('Invalid conflict skipped:', conflict);
+          continue;
+        }
+
         for (const entry of conflict.affectedEntries) {
+          if (!entry || !entry.id) {
+            console.warn('Invalid entry in conflict skipped:', entry);
+            continue;
+          }
+
           if (!map.has(entry.id)) {
             map.set(entry.id, []);
           }
@@ -145,6 +249,7 @@ const DragDropScheduleGrid = memo(({
         }
       }
       
+      console.log('Entry conflict map created with', map.size, 'entries');
       return map;
     } catch (error) {
       console.error('Error creating entry conflict map:', error);
@@ -152,14 +257,18 @@ const DragDropScheduleGrid = memo(({
     }
   }, [conflicts]);
 
-  // Optimized lookup function with error handling
+  // FIXED: Safe lookup function with comprehensive error handling
   const getScheduleEntry = useCallback((clientName: string, buildingName: string, day: string): ScheduleEntry | null => {
     try {
       if (!clientName || !buildingName || !day) {
         return null;
       }
 
-      // Include clientName in the key to ensure uniqueness across different clients
+      if (typeof clientName !== 'string' || typeof buildingName !== 'string' || typeof day !== 'string') {
+        console.error('Invalid parameter types for getScheduleEntry:', { clientName, buildingName, day });
+        return null;
+      }
+
       const key = `${clientName}|${buildingName}|${day.toLowerCase()}`;
       return scheduleMap.get(key) || null;
     } catch (error) {
@@ -168,10 +277,32 @@ const DragDropScheduleGrid = memo(({
     }
   }, [scheduleMap]);
 
-  // Enhanced color functions with conflict awareness
+  // Helper function to safely get cleaners from an entry
+  const getEntryCleaners = useCallback((entry: ScheduleEntry): string[] => {
+    try {
+      if (!entry) return [];
+      
+      if (Array.isArray(entry.cleanerNames) && entry.cleanerNames.length > 0) {
+        return entry.cleanerNames.filter(name => typeof name === 'string' && name.length > 0);
+      }
+      
+      if (typeof entry.cleanerName === 'string' && entry.cleanerName.length > 0) {
+        return [entry.cleanerName];
+      }
+      
+      return [];
+    } catch (error) {
+      console.error('Error getting entry cleaners:', error);
+      return [];
+    }
+  }, []);
+
+  // Enhanced color functions with safe defaults
   const getStatusColor = useCallback((status: string) => {
     try {
-      switch (status) {
+      if (typeof status !== 'string') return colors.border;
+      
+      switch (status.toLowerCase()) {
         case 'scheduled': return colors.primary;
         case 'in-progress': return colors.warning;
         case 'completed': return colors.success;
@@ -185,20 +316,27 @@ const DragDropScheduleGrid = memo(({
   }, []);
 
   const getConflictSeverityColor = useCallback((severity: string) => {
-    switch (severity) {
-      case 'critical': return colors.danger;
-      case 'high': return '#FF6B35';
-      case 'medium': return colors.warning;
-      case 'low': return '#4ECDC4';
-      default: return colors.textSecondary;
+    try {
+      if (typeof severity !== 'string') return colors.textSecondary;
+      
+      switch (severity.toLowerCase()) {
+        case 'critical': return colors.danger;
+        case 'high': return '#FF6B35';
+        case 'medium': return colors.warning;
+        case 'low': return '#4ECDC4';
+        default: return colors.textSecondary;
+      }
+    } catch (error) {
+      console.error('Error getting conflict severity color:', error);
+      return colors.textSecondary;
     }
   }, []);
 
-
-
   const getSecurityLevelColor = useCallback((level: string) => {
     try {
-      switch (level) {
+      if (typeof level !== 'string') return colors.text;
+      
+      switch (level.toLowerCase()) {
         case 'high': return colors.danger;
         case 'medium': return colors.warning;
         case 'low': return colors.success;
@@ -210,10 +348,13 @@ const DragDropScheduleGrid = memo(({
     }
   }, []);
 
-  // Enhanced conflict checking
+  // FIXED: Safe conflict checking with proper validation
   const hasEntryConflict = useCallback((entry: ScheduleEntry): boolean => {
     try {
-      return entry?.id ? entryConflictMap.has(entry.id) : false;
+      if (!entry || !entry.id || typeof entry.id !== 'string') {
+        return false;
+      }
+      return entryConflictMap.has(entry.id);
     } catch (error) {
       console.error('Error checking entry conflict:', error);
       return false;
@@ -222,15 +363,25 @@ const DragDropScheduleGrid = memo(({
 
   const getEntryConflictSeverity = useCallback((entry: ScheduleEntry): string => {
     try {
-      if (!entry?.id || !entryConflictMap.has(entry.id)) {
+      if (!entry || !entry.id || !entryConflictMap.has(entry.id)) {
+        return 'none';
+      }
+
+      if (typeof getEntryConflicts !== 'function') {
+        console.error('getEntryConflicts is not a function');
         return 'none';
       }
 
       const entryConflicts = getEntryConflicts(entry.id);
-      if (entryConflicts.length === 0) return 'none';
+      if (!Array.isArray(entryConflicts) || entryConflicts.length === 0) {
+        return 'none';
+      }
 
       // Return the highest severity
-      const severities = entryConflicts.map(c => c.severity);
+      const severities = entryConflicts
+        .map(c => c && c.severity ? c.severity : 'none')
+        .filter(s => s !== 'none');
+      
       if (severities.includes('critical')) return 'critical';
       if (severities.includes('high')) return 'high';
       if (severities.includes('medium')) return 'medium';
@@ -242,9 +393,13 @@ const DragDropScheduleGrid = memo(({
     }
   }, [entryConflictMap, getEntryConflicts]);
 
-  // Enhanced drop target detection with conflict preview
+  // FIXED: Safe drop target detection
   const findDropTarget = useCallback((x: number, y: number) => {
     try {
+      if (typeof x !== 'number' || typeof y !== 'number' || isNaN(x) || isNaN(y)) {
+        return null;
+      }
+
       // Calculate which day column we're over
       const dayIndex = Math.floor((x - buildingColumnWidth) / cellWidth);
       if (dayIndex < 0 || dayIndex >= days.length) {
@@ -252,8 +407,8 @@ const DragDropScheduleGrid = memo(({
       }
 
       // Calculate which building row we're over (approximate)
-      const headerHeight = 60; // Approximate header height
-      const rowHeight = 60; // Approximate row height
+      const headerHeight = 60;
+      const rowHeight = 60;
       const buildingIndex = Math.floor((y - headerHeight) / rowHeight);
       
       const allBuildings = Array.from(buildingsByClient.values()).flat();
@@ -264,7 +419,7 @@ const DragDropScheduleGrid = memo(({
       const targetBuilding = allBuildings[buildingIndex];
       const targetDay = days[dayIndex];
 
-      if (targetBuilding && targetDay) {
+      if (targetBuilding && targetDay && targetBuilding.id && targetBuilding.clientName && targetBuilding.buildingName) {
         return {
           building: targetBuilding,
           day: targetDay.toLowerCase()
@@ -278,10 +433,17 @@ const DragDropScheduleGrid = memo(({
     }
   }, [buildingColumnWidth, cellWidth, days, buildingsByClient]);
 
-  // Enhanced drop validation with conflict checking
+  // FIXED: Safe drop validation
   const validateDrop = useCallback((entry: ScheduleEntry, target: { building: ClientBuilding; day: string }) => {
     try {
-      if (!entry || !target) return { canDrop: false, conflicts: [], warnings: [] };
+      if (!entry || !target || !target.building || !target.day) {
+        return { canDrop: false, conflicts: [], warnings: [] };
+      }
+
+      if (typeof validateScheduleChange !== 'function') {
+        console.error('validateScheduleChange is not a function');
+        return { canDrop: true, conflicts: [], warnings: [] };
+      }
 
       // Create a temporary entry for validation
       const tempEntry = {
@@ -295,8 +457,8 @@ const DragDropScheduleGrid = memo(({
       
       return {
         canDrop: validation.canProceed,
-        conflicts: validation.conflicts,
-        warnings: validation.warnings
+        conflicts: validation.conflicts || [],
+        warnings: validation.warnings || []
       };
     } catch (error) {
       console.error('Error validating drop:', error);
@@ -308,55 +470,60 @@ const DragDropScheduleGrid = memo(({
     try {
       console.log('Handling enhanced drop:', { draggedEntry: draggedEntry?.id, dropTarget });
       
-      if (draggedEntry && dropTarget && onMoveEntry) {
-        // Check if we're dropping on a different location
-        const isSameLocation = 
-          draggedEntry.buildingName === dropTarget.building.buildingName &&
-          draggedEntry.day.toLowerCase() === dropTarget.day.toLowerCase();
+      if (!draggedEntry || !dropTarget || !onMoveEntry) {
+        console.log('Missing required data for drop operation');
+        return;
+      }
+
+      // Check if we're dropping on a different location
+      const isSameLocation = 
+        draggedEntry.buildingName === dropTarget.building.buildingName &&
+        draggedEntry.day.toLowerCase() === dropTarget.day.toLowerCase();
           
-        if (!isSameLocation) {
-          // Validate the drop
-          const validation = validateDrop(draggedEntry, dropTarget);
-          
-          if (!validation.canDrop && validation.conflicts.length > 0) {
-            // Show conflict warning
-            const conflictMessages = validation.conflicts.map(c => c.description).join('\n');
-            Alert.alert(
-              'Scheduling Conflict Detected',
-              `Moving this entry will create conflicts:\n\n${conflictMessages}\n\nDo you want to proceed anyway?`,
-              [
-                { text: 'Cancel', style: 'cancel' },
-                { 
-                  text: 'Proceed Anyway', 
-                  style: 'destructive',
-                  onPress: () => {
-                    console.log('User chose to proceed despite conflicts');
-                    onMoveEntry(draggedEntry.id, dropTarget.building, dropTarget.day);
-                  }
+      if (!isSameLocation) {
+        // Validate the drop
+        const validation = validateDrop(draggedEntry, dropTarget);
+        
+        if (!validation.canDrop && Array.isArray(validation.conflicts) && validation.conflicts.length > 0) {
+          // Show conflict warning
+          const conflictMessages = validation.conflicts
+            .map(c => c && c.description ? c.description : 'Unknown conflict')
+            .join('\n');
+          Alert.alert(
+            'Scheduling Conflict Detected',
+            `Moving this entry will create conflicts:\n\n${conflictMessages}\n\nDo you want to proceed anyway?`,
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { 
+                text: 'Proceed Anyway', 
+                style: 'destructive',
+                onPress: () => {
+                  console.log('User chose to proceed despite conflicts');
+                  onMoveEntry(draggedEntry.id, dropTarget.building, dropTarget.day);
                 }
-              ]
-            );
-          } else if (validation.warnings.length > 0) {
-            // Show warnings but allow the move
-            Alert.alert(
-              'Schedule Warning',
-              validation.warnings.join('\n') + '\n\nDo you want to continue?',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                { 
-                  text: 'Continue', 
-                  onPress: () => onMoveEntry(draggedEntry.id, dropTarget.building, dropTarget.day)
-                }
-              ]
-            );
-          } else {
-            // No conflicts, proceed with move
-            console.log('Moving entry to new location');
-            onMoveEntry(draggedEntry.id, dropTarget.building, dropTarget.day);
-          }
+              }
+            ]
+          );
+        } else if (Array.isArray(validation.warnings) && validation.warnings.length > 0) {
+          // Show warnings but allow the move
+          Alert.alert(
+            'Schedule Warning',
+            validation.warnings.join('\n') + '\n\nDo you want to continue?',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { 
+                text: 'Continue', 
+                onPress: () => onMoveEntry(draggedEntry.id, dropTarget.building, dropTarget.day)
+              }
+            ]
+          );
         } else {
-          console.log('Dropped on same location, no move needed');
+          // No conflicts, proceed with move
+          console.log('Moving entry to new location');
+          onMoveEntry(draggedEntry.id, dropTarget.building, dropTarget.day);
         }
+      } else {
+        console.log('Dropped on same location, no move needed');
       }
       
       // Reset drag state
@@ -396,8 +563,8 @@ const DragDropScheduleGrid = memo(({
           // Preview conflicts for this drop
           if (draggedEntry) {
             const validation = runOnJS(validateDrop)(draggedEntry, target);
-            if (validation && validation.conflicts) {
-              runOnJS(setPreviewConflicts)(validation.conflicts.map(c => c.id));
+            if (validation && Array.isArray(validation.conflicts)) {
+              runOnJS(setPreviewConflicts)(validation.conflicts.map(c => c && c.id ? c.id : '').filter(Boolean));
             }
           }
         }
@@ -429,15 +596,15 @@ const DragDropScheduleGrid = memo(({
     zIndex: isDragging ? 1000 : 1,
   }));
 
-  // Optimized event handlers with Set for O(1) lookups and error handling
+  // FIXED: Safe event handlers with comprehensive validation
   const selectedEntriesSet = useMemo(() => {
     try {
-      return new Set(Array.isArray(selectedEntries) ? selectedEntries : []);
+      return new Set(safeSelectedEntries);
     } catch (error) {
       console.error('Error creating selected entries set:', error);
       return new Set<string>();
     }
-  }, [selectedEntries]);
+  }, [safeSelectedEntries]);
 
   const handleEntryPress = useCallback((entry: ScheduleEntry, building: ClientBuilding, day: string) => {
     try {
@@ -449,10 +616,10 @@ const DragDropScheduleGrid = memo(({
       if (bulkMode && onBulkSelect) {
         const isSelected = selectedEntriesSet.has(entry.id);
         const newSelection = isSelected 
-          ? selectedEntries.filter(id => id !== entry.id)
-          : [...selectedEntries, entry.id];
+          ? safeSelectedEntries.filter(id => id !== entry.id)
+          : [...safeSelectedEntries, entry.id];
         
-        const selectedScheduleEntries = schedule.filter(e => e && newSelection.includes(e.id));
+        const selectedScheduleEntries = safeSchedule.filter(e => e && newSelection.includes(e.id));
         onBulkSelect(selectedScheduleEntries);
       } else if (onCellPress) {
         onCellPress(building, day);
@@ -460,7 +627,7 @@ const DragDropScheduleGrid = memo(({
     } catch (error) {
       console.error('Error handling entry press:', error);
     }
-  }, [bulkMode, selectedEntriesSet, selectedEntries, schedule, onBulkSelect, onCellPress]);
+  }, [bulkMode, selectedEntriesSet, safeSelectedEntries, safeSchedule, onBulkSelect, onCellPress]);
 
   const handleEntryLongPress = useCallback((entry: ScheduleEntry, building: ClientBuilding, day: string) => {
     try {
@@ -474,11 +641,13 @@ const DragDropScheduleGrid = memo(({
         setDraggedEntry(entry);
         
         // Show conflict info if entry has conflicts
-        const entryConflicts = getEntryConflicts(entry.id);
-        let message = `Drag ${entry.cleanerName || 'this'}'s shift to move it to a different time slot`;
+        let message = `Drag ${getEntryCleaners(entry)[0] || 'this'}'s shift to move it to a different time slot`;
         
-        if (entryConflicts.length > 0) {
-          message += `\n\nNote: This entry currently has ${entryConflicts.length} conflict(s). Moving it may help resolve them.`;
+        if (typeof getEntryConflicts === 'function') {
+          const entryConflicts = getEntryConflicts(entry.id);
+          if (Array.isArray(entryConflicts) && entryConflicts.length > 0) {
+            message += `\n\nNote: This entry currently has ${entryConflicts.length} conflict(s). Moving it may help resolve them.`;
+          }
         }
         
         Alert.alert('Move Entry', message, [{ text: 'OK' }]);
@@ -488,13 +657,18 @@ const DragDropScheduleGrid = memo(({
     } catch (error) {
       console.error('Error handling entry long press:', error);
     }
-  }, [bulkMode, onCellLongPress, getEntryConflicts]);
+  }, [bulkMode, onCellLongPress, getEntryConflicts, getEntryCleaners]);
 
-  // Enhanced cell renderer with conflict indicators
+  // FIXED: Safe cell renderer with comprehensive error handling
   const renderCell = useCallback((building: ClientBuilding, day: string) => {
     try {
-      if (!building || !day) {
-        return null;
+      if (!building || !day || !building.clientName || !building.buildingName) {
+        console.warn('Invalid building or day for cell render:', { building, day });
+        return (
+          <View key={`error-${building?.id || 'unknown'}-${day}`} style={[styles.cell, { width: cellWidth }]}>
+            <Text style={styles.errorText}>Error</Text>
+          </View>
+        );
       }
 
       const dayKey = day.toLowerCase() as 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
@@ -504,7 +678,7 @@ const DragDropScheduleGrid = memo(({
       const isDraggedEntry = draggedEntry?.id === entry?.id;
       const hasConflict = entry && hasEntryConflict(entry);
       const conflictSeverity = entry ? getEntryConflictSeverity(entry) : 'none';
-      const isPreviewConflict = entry && previewConflicts.includes(entry.id);
+      const isPreviewConflict = entry && Array.isArray(previewConflicts) && previewConflicts.includes(entry.id);
       
       // Determine cell background color based on conflicts and status
       let backgroundColor = colors.backgroundAlt;
@@ -525,7 +699,7 @@ const DragDropScheduleGrid = memo(({
       
       if (isDropTarget) {
         borderWidth = 3;
-        if (previewConflicts.length > 0) {
+        if (Array.isArray(previewConflicts) && previewConflicts.length > 0) {
           borderColor = colors.danger;
           backgroundColor = colors.danger + '20';
         } else {
@@ -582,11 +756,15 @@ const DragDropScheduleGrid = memo(({
                 
                 <View style={styles.cleanerNamesContainer}>
                   {(() => {
-                    const entryCleaners = entry.cleanerNames && entry.cleanerNames.length > 0 
-                      ? entry.cleanerNames 
-                      : (entry.cleanerName ? [entry.cleanerName] : ['Unknown']);
+                    const entryCleaners = getEntryCleaners(entry);
                     
-                    if (entryCleaners.length === 1) {
+                    if (entryCleaners.length === 0) {
+                      return (
+                        <Text style={[styles.cleanerName, { color: colors.textSecondary }]} numberOfLines={1}>
+                          No cleaner assigned
+                        </Text>
+                      );
+                    } else if (entryCleaners.length === 1) {
                       return (
                         <Text style={[styles.cleanerName, { color: getStatusColor(entry.status) }]} numberOfLines={1}>
                           {entryCleaners[0]}
@@ -672,18 +850,22 @@ const DragDropScheduleGrid = memo(({
     onCellPress, 
     onCellLongPress, 
     gestureHandler, 
-    animatedStyle
+    animatedStyle,
+    getEntryCleaners
   ]);
 
-  // Enhanced building row renderer with conflict indicators
+  // FIXED: Safe building row renderer
   const renderBuildingRow = useCallback((building: ClientBuilding) => {
     try {
-      if (!building) {
+      if (!building || !building.id || !building.buildingName) {
+        console.warn('Invalid building for row render:', building);
         return null;
       }
 
       // Check if this building has any conflicts
-      const buildingEntries = schedule.filter(entry => entry.buildingName === building.buildingName);
+      const buildingEntries = safeSchedule.filter(entry => 
+        entry && entry.buildingName === building.buildingName
+      );
       const buildingHasConflicts = buildingEntries.some(entry => hasEntryConflict(entry));
 
       return (
@@ -725,28 +907,29 @@ const DragDropScheduleGrid = memo(({
     buildingColumnWidth, 
     bulkMode, 
     days, 
-    schedule,
+    safeSchedule,
     hasEntryConflict,
     renderCell, 
     onBuildingLongPress, 
     getSecurityLevelColor
   ]);
 
-  // Enhanced client section renderer with conflict summary
+  // FIXED: Safe client section renderer
   const renderClientSection = useCallback((clientName: string, buildings: ClientBuilding[]) => {
     try {
       if (!clientName || !Array.isArray(buildings) || buildings.length === 0) {
+        console.warn('Invalid client section data:', { clientName, buildings });
         return null;
       }
 
-      const client = clients.find(c => c?.name === clientName);
+      const client = safeClients.find(c => c?.name === clientName);
       if (!client) {
         console.warn('Client not found:', clientName);
         return null;
       }
 
       // Check for client-level conflicts
-      const clientEntries = schedule.filter(entry => entry.clientName === clientName);
+      const clientEntries = safeSchedule.filter(entry => entry && entry.clientName === clientName);
       const clientConflicts = clientEntries.filter(entry => hasEntryConflict(entry));
 
       return (
@@ -787,16 +970,16 @@ const DragDropScheduleGrid = memo(({
       return null;
     }
   }, [
-    clients, 
-    schedule,
+    safeClients, 
+    safeSchedule,
     hasEntryConflict,
     onClientLongPress, 
     getSecurityLevelColor, 
     renderBuildingRow
   ]);
 
-  // Early return for empty state with error handling
-  if (!Array.isArray(clientBuildings) || clientBuildings.length === 0) {
+  // FIXED: Early return for empty state with safe checks
+  if (!Array.isArray(safeClientBuildings) || safeClientBuildings.length === 0) {
     return (
       <View style={styles.emptyState}>
         <Icon name="business" size={48} style={{ color: colors.textSecondary }} />
@@ -814,18 +997,18 @@ const DragDropScheduleGrid = memo(({
           {isDragging && (
             <View style={[
               styles.dragOverlay,
-              { backgroundColor: previewConflicts.length > 0 ? colors.danger + '20' : colors.primary + '20' }
+              { backgroundColor: (Array.isArray(previewConflicts) && previewConflicts.length > 0) ? colors.danger + '20' : colors.primary + '20' }
             ]}>
               <Icon 
-                name={previewConflicts.length > 0 ? "warning" : "move"} 
+                name={(Array.isArray(previewConflicts) && previewConflicts.length > 0) ? "warning" : "move"} 
                 size={20} 
-                style={{ color: previewConflicts.length > 0 ? colors.danger : colors.primary }} 
+                style={{ color: (Array.isArray(previewConflicts) && previewConflicts.length > 0) ? colors.danger : colors.primary }} 
               />
               <Text style={[
                 styles.dragOverlayText,
-                { color: previewConflicts.length > 0 ? colors.danger : colors.primary }
+                { color: (Array.isArray(previewConflicts) && previewConflicts.length > 0) ? colors.danger : colors.primary }
               ]}>
-                {previewConflicts.length > 0 
+                {(Array.isArray(previewConflicts) && previewConflicts.length > 0)
                   ? `⚠️ Will create ${previewConflicts.length} conflict(s)` 
                   : "Drop on a cell to move the entry"
                 }
@@ -834,11 +1017,11 @@ const DragDropScheduleGrid = memo(({
           )}
 
           {/* Conflict summary header */}
-          {hasConflicts && (
+          {hasConflicts && conflictSummary && (
             <View style={styles.conflictSummaryHeader}>
               <Icon name="warning" size={20} style={{ color: colors.danger }} />
               <Text style={styles.conflictSummaryText}>
-                {conflictSummary.total} conflicts detected • {conflictSummary.critical + conflictSummary.high} high priority
+                {conflictSummary.total || 0} conflicts detected • {(conflictSummary.critical || 0) + (conflictSummary.high || 0)} high priority
               </Text>
             </View>
           )}
@@ -864,10 +1047,10 @@ const DragDropScheduleGrid = memo(({
                     {bulkMode && (
                       <Text style={styles.bulkModeIndicator}>Bulk Mode</Text>
                     )}
-                    {hasConflicts && (
+                    {hasConflicts && conflictSummary && (
                       <Text style={styles.conflictIndicatorText}>
-                        {conflictSummary.critical > 0 && `${conflictSummary.critical} Critical`}
-                        {conflictSummary.high > 0 && ` ${conflictSummary.high} High`}
+                        {(conflictSummary.critical || 0) > 0 && `${conflictSummary.critical} Critical`}
+                        {(conflictSummary.high || 0) > 0 && ` ${conflictSummary.high} High`}
                       </Text>
                     )}
                   </View>
@@ -1092,7 +1275,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.xs,
   },
-
   securityBadge: {
     width: 20,
     height: 20,

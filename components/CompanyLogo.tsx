@@ -19,58 +19,69 @@ export default function CompanyLogo({
 }: CompanyLogoProps) {
   console.log('CompanyLogo rendered:', size, variant);
 
-  const getSizeStyles = () => {
-    switch (size) {
-      case 'small':
-        return {
-          iconSize: 24,
-          fontSize: typography.caption.fontSize,
-          containerPadding: spacing.sm,
-        };
-      case 'large':
-        return {
-          iconSize: 48,
-          fontSize: typography.h2.fontSize,
-          containerPadding: spacing.lg,
-        };
-      default: // medium
-        return {
-          iconSize: 32,
-          fontSize: typography.body.fontSize,
-          containerPadding: spacing.md,
-        };
-    }
-  };
+  try {
+    const getSizeStyles = () => {
+      switch (size) {
+        case 'small':
+          return {
+            iconSize: 24,
+            fontSize: typography.caption.fontSize,
+            containerPadding: spacing.sm,
+          };
+        case 'large':
+          return {
+            iconSize: 48,
+            fontSize: typography.h2.fontSize,
+            containerPadding: spacing.lg,
+          };
+        default: // medium
+          return {
+            iconSize: 32,
+            fontSize: typography.body.fontSize,
+            containerPadding: spacing.md,
+          };
+      }
+    };
 
-  const sizeStyles = getSizeStyles();
-  const textColor = variant === 'light' ? colors.background : colors.text;
-  const iconColor = variant === 'light' ? colors.background : colors.primary;
+    const sizeStyles = getSizeStyles();
+    const textColor = variant === 'light' ? colors.background : colors.text;
 
-  return (
-    <View style={[styles.container, { padding: sizeStyles.containerPadding }, style]}>
-      <View style={styles.logoContainer}>
-        <View style={[styles.iconContainer, { backgroundColor: colors.primary }]}>
-          <Icon 
-            name="business" 
-            size={sizeStyles.iconSize} 
-            style={{ color: colors.background }} 
-          />
+    return (
+      <View style={[styles.container, { padding: sizeStyles.containerPadding }, style]}>
+        <View style={styles.logoContainer}>
+          <View style={[styles.iconContainer, { backgroundColor: colors.primary }]}>
+            <Icon 
+              name="business" 
+              size={sizeStyles.iconSize} 
+              style={{ color: colors.background }} 
+            />
+          </View>
+          {showText && (
+            <Text style={[
+              styles.companyText, 
+              { 
+                color: textColor,
+                fontSize: sizeStyles.fontSize,
+                fontWeight: '700'
+              }
+            ]}>
+              CleanPro
+            </Text>
+          )}
         </View>
-        {showText && (
-          <Text style={[
-            styles.companyText, 
-            { 
-              color: textColor,
-              fontSize: sizeStyles.fontSize,
-              fontWeight: '700'
-            }
-          ]}>
-            CleanPro
-          </Text>
-        )}
       </View>
-    </View>
-  );
+    );
+  } catch (error) {
+    console.error('Error rendering CompanyLogo:', error);
+    // Fallback to simple text
+    return (
+      <View style={[styles.container, style]}>
+        <Text style={[styles.companyText, { color: colors.text }]}>
+          CleanPro
+        </Text>
+      </View>
+    );
+  }
 }
 
 const styles = StyleSheet.create({

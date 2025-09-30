@@ -60,7 +60,7 @@ export default function BottomNavigation({ role }: BottomNavigationProps) {
               name={item.icon} 
               size={24} 
               style={{ 
-                color: isActive ? colors.background : colors.background,
+                tintColor: isActive ? colors.background : colors.background,
                 marginBottom: spacing.xs 
               }} 
             />

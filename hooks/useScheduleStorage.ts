@@ -23,6 +23,10 @@ export interface ScheduleEntry {
   estimatedDuration?: number;
   actualDuration?: number;
   tags?: string[];
+  // Payment structure
+  paymentType?: 'hourly' | 'flat_rate';
+  flatRateAmount?: number; // Amount for flat rate jobs
+  hourlyRate?: number; // Hourly rate for hourly jobs
 }
 
 export interface WeeklySchedule {
@@ -44,18 +48,24 @@ export interface ScheduleStats {
   conflictCount: number;
   utilizationRate: number;
   averageHoursPerCleaner: number;
+  // Payment stats
+  totalHourlyJobs: number;
+  totalFlatRateJobs: number;
+  totalHourlyAmount: number;
+  totalFlatRateAmount: number;
 }
 
 const STORAGE_KEYS = {
-  WEEKLY_SCHEDULES: 'weekly_schedules_v4',
-  SCHEDULE_CACHE: 'schedule_cache_v4',
+  WEEKLY_SCHEDULES: 'weekly_schedules_v6', // Increment version for fixes
+  SCHEDULE_CACHE: 'schedule_cache_v6',
   LAST_CLEANUP_DATE: 'last_cleanup_date',
 };
 
-// Cache for frequently accessed data
+// FIXED: Better cache management with immediate invalidation
 const scheduleCache = new Map<string, ScheduleEntry[]>();
 const statsCache = new Map<string, ScheduleStats>();
 const conflictsCache = new Map<string, ScheduleConflict[]>();
+let cacheVersion = 0; // Global cache version for invalidation
 
 export const useScheduleStorage = () => {
   const [weeklySchedules, setWeeklySchedules] = useState<WeeklySchedule>({});
@@ -66,6 +76,16 @@ export const useScheduleStorage = () => {
   const loadingRef = useRef(false);
   const saveQueueRef = useRef<Map<string, ScheduleEntry[]>>(new Map());
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // FIXED: Force cache invalidation with better logging
+  const invalidateAllCaches = useCallback(() => {
+    console.log('=== INVALIDATING ALL CACHES ===');
+    cacheVersion++;
+    scheduleCache.clear();
+    statsCache.clear();
+    conflictsCache.clear();
+    console.log('✅ All caches cleared, version:', cacheVersion);
+  }, []);
 
   // Optimized week ID generation with caching and error handling
   const getCurrentWeekId = useCallback((): string => {
@@ -112,57 +132,7 @@ export const useScheduleStorage = () => {
     }
   }, [getCurrentWeekId]);
 
-  // Optimized conflict detection with caching and error handling
-  const detectConflicts = useCallback((schedule: ScheduleEntry[]): ScheduleConflict[] => {
-    try {
-      if (!Array.isArray(schedule)) {
-        console.error('Invalid schedule provided to detectConflicts');
-        return [];
-      }
-
-      const scheduleKey = schedule.map(e => e?.id || '').filter(Boolean).sort().join(',');
-      
-      if (conflictsCache.has(scheduleKey)) {
-        return conflictsCache.get(scheduleKey)!;
-      }
-
-      const conflicts: ScheduleConflict[] = [];
-      const cleanerDayMap = new Map<string, ScheduleEntry[]>();
-      
-      // Use Map for O(1) lookups instead of array operations
-      for (const entry of schedule) {
-        if (!entry || entry.status === 'cancelled') continue;
-        
-        const key = `${entry.cleanerName || ''}-${entry.day || ''}`;
-        if (!cleanerDayMap.has(key)) {
-          cleanerDayMap.set(key, []);
-        }
-        cleanerDayMap.get(key)!.push(entry);
-      }
-
-      // Check for conflicts
-      for (const [key, entries] of cleanerDayMap) {
-        if (entries.length > 1) {
-          const [cleanerName, day] = key.split('-');
-          conflicts.push({
-            type: 'cleaner_double_booking',
-            entries,
-            severity: 'high',
-            description: `${cleanerName} is scheduled for ${entries.length} jobs on ${day}`,
-          });
-        }
-      }
-
-      // Cache the result
-      conflictsCache.set(scheduleKey, conflicts);
-      return conflicts;
-    } catch (error) {
-      console.error('Error detecting conflicts:', error);
-      return [];
-    }
-  }, []);
-
-  // Optimized stats calculation with caching and error handling
+  // FIXED: Enhanced stats calculation with payment information
   const calculateScheduleStats = useCallback((schedule: ScheduleEntry[]): ScheduleStats => {
     try {
       if (!Array.isArray(schedule)) {
@@ -175,10 +145,14 @@ export const useScheduleStorage = () => {
           conflictCount: 0,
           utilizationRate: 0,
           averageHoursPerCleaner: 0,
+          totalHourlyJobs: 0,
+          totalFlatRateJobs: 0,
+          totalHourlyAmount: 0,
+          totalFlatRateAmount: 0,
         };
       }
 
-      const scheduleKey = schedule.map(e => `${e?.id || ''}-${e?.status || ''}-${e?.hours || 0}`).filter(Boolean).sort().join(',');
+      const scheduleKey = schedule.map(e => `${e?.id || ''}-${e?.status || ''}-${e?.hours || 0}-${e?.paymentType || 'hourly'}-${e?.flatRateAmount || 0}`).filter(Boolean).sort().join(',');
       
       if (statsCache.has(scheduleKey)) {
         return statsCache.get(scheduleKey)!;
@@ -188,6 +162,10 @@ export const useScheduleStorage = () => {
       let totalHours = 0;
       let completedEntries = 0;
       let pendingEntries = 0;
+      let totalHourlyJobs = 0;
+      let totalFlatRateJobs = 0;
+      let totalHourlyAmount = 0;
+      let totalFlatRateAmount = 0;
       
       const cleanerHours = new Map<string, number>();
       
@@ -204,9 +182,19 @@ export const useScheduleStorage = () => {
         const cleanerName = entry.cleanerName || 'Unknown';
         const current = cleanerHours.get(cleanerName) || 0;
         cleanerHours.set(cleanerName, current + hours);
+
+        // Calculate payment statistics
+        const paymentType = entry.paymentType || 'hourly';
+        if (paymentType === 'flat_rate') {
+          totalFlatRateJobs++;
+          totalFlatRateAmount += entry.flatRateAmount || 0;
+        } else {
+          totalHourlyJobs++;
+          const hourlyRate = entry.hourlyRate || 15; // Default $15/hour
+          totalHourlyAmount += hours * hourlyRate;
+        }
       }
       
-      const conflicts = detectConflicts(schedule);
       const averageHoursPerCleaner = cleanerHours.size > 0 
         ? Array.from(cleanerHours.values()).reduce((sum, hours) => sum + hours, 0) / cleanerHours.size
         : 0;
@@ -217,9 +205,13 @@ export const useScheduleStorage = () => {
         totalEntries,
         completedEntries,
         pendingEntries,
-        conflictCount: conflicts.length,
+        conflictCount: 0, // Will be calculated separately
         utilizationRate,
         averageHoursPerCleaner,
+        totalHourlyJobs,
+        totalFlatRateJobs,
+        totalHourlyAmount,
+        totalFlatRateAmount,
       };
 
       // Cache the result
@@ -235,11 +227,40 @@ export const useScheduleStorage = () => {
         conflictCount: 0,
         utilizationRate: 0,
         averageHoursPerCleaner: 0,
+        totalHourlyJobs: 0,
+        totalFlatRateJobs: 0,
+        totalHourlyAmount: 0,
+        totalFlatRateAmount: 0,
       };
     }
-  }, [detectConflicts]);
+  }, []);
 
-  // Debounced save to prevent excessive storage writes
+  // FIXED: Immediate save without debouncing for critical operations
+  const saveSchedulesImmediately = useCallback(async (schedules: WeeklySchedule) => {
+    try {
+      console.log('=== IMMEDIATE SAVE OPERATION ===');
+      console.log('Saving schedules to storage immediately', Object.keys(schedules).length, 'weeks');
+      const serializedData = JSON.stringify(schedules);
+      console.log('Serialized data size:', serializedData.length, 'characters');
+      await AsyncStorage.setItem(STORAGE_KEYS.WEEKLY_SCHEDULES, serializedData);
+      console.log('✅ Schedules saved successfully to AsyncStorage');
+      
+      // Verify the save by reading it back
+      const verifyData = await AsyncStorage.getItem(STORAGE_KEYS.WEEKLY_SCHEDULES);
+      if (verifyData) {
+        const parsedData = JSON.parse(verifyData);
+        console.log('✅ Verification: Data successfully saved and retrieved');
+        console.log('Verification: Total weeks in storage:', Object.keys(parsedData).length);
+      } else {
+        console.error('❌ Verification failed: No data found after save');
+      }
+    } catch (err) {
+      console.error('❌ Error in immediate save:', err);
+      throw err;
+    }
+  }, []);
+
+  // Debounced save to prevent excessive storage writes (for non-critical operations)
   const debouncedSave = useCallback(async (schedules: WeeklySchedule) => {
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
@@ -247,17 +268,13 @@ export const useScheduleStorage = () => {
 
     saveTimeoutRef.current = setTimeout(async () => {
       try {
-        console.log('Saving schedules to storage (debounced)', Object.keys(schedules).length, 'weeks');
-        const serializedData = JSON.stringify(schedules);
-        console.log('Serialized data size:', serializedData.length, 'characters');
-        await AsyncStorage.setItem(STORAGE_KEYS.WEEKLY_SCHEDULES, serializedData);
-        console.log('Schedules saved successfully to AsyncStorage');
+        await saveSchedulesImmediately(schedules);
       } catch (err) {
-        console.error('Error saving schedules:', err);
+        console.error('Error in debounced save:', err);
         setError('Failed to save schedule data');
       }
-    }, 300); // Reduced debounce time for better responsiveness
-  }, []);
+    }, 300);
+  }, [saveSchedulesImmediately]);
 
   // Optimized data loading with caching and error handling
   const loadData = useCallback(async () => {
@@ -286,7 +303,13 @@ export const useScheduleStorage = () => {
                 entry.id && 
                 entry.clientName && 
                 entry.buildingName
-              );
+              ).map(entry => ({
+                ...entry,
+                // Ensure payment fields have defaults
+                paymentType: entry.paymentType || 'hourly',
+                hourlyRate: entry.hourlyRate || 15,
+                flatRateAmount: entry.flatRateAmount || 0
+              }));
               if (validEntries.length > 0) {
                 cleanedSchedules[weekId] = validEntries as ScheduleEntry[];
               }
@@ -319,7 +342,7 @@ export const useScheduleStorage = () => {
     }
   }, []);
 
-  // Optimized schedule retrieval with caching and error handling
+  // FIXED: Enhanced schedule retrieval with better cache management
   const getWeekSchedule = useCallback((weekId: string, forceRefresh: boolean = false): ScheduleEntry[] => {
     try {
       if (!weekId || typeof weekId !== 'string') {
@@ -330,19 +353,12 @@ export const useScheduleStorage = () => {
       // Check cache first (unless force refresh is requested)
       if (!forceRefresh && scheduleCache.has(weekId)) {
         const cachedSchedule = scheduleCache.get(weekId)!;
-        console.log('Returning cached schedule for week:', weekId, 'entries:', cachedSchedule.length);
+        console.log('✅ Returning cached schedule for week:', weekId, 'entries:', cachedSchedule.length);
         return cachedSchedule;
       }
       
-      console.log('Getting fresh schedule data for week:', weekId, 'forceRefresh:', forceRefresh);
+      console.log('🔄 Getting fresh schedule data for week:', weekId, 'forceRefresh:', forceRefresh);
       const schedule = weeklySchedules[weekId] || [];
-      console.log('Raw schedule from storage:', schedule.map(e => ({
-        id: e?.id,
-        cleanerName: e?.cleanerName,
-        cleanerNames: e?.cleanerNames,
-        hours: e?.hours,
-        buildingName: e?.buildingName
-      })));
       
       // Validate and sort once and cache
       const validSchedule = schedule.filter(entry => 
@@ -351,7 +367,13 @@ export const useScheduleStorage = () => {
         entry.id && 
         entry.clientName && 
         entry.buildingName
-      );
+      ).map(entry => ({
+        ...entry,
+        // Ensure payment fields have defaults
+        paymentType: entry.paymentType || 'hourly',
+        hourlyRate: entry.hourlyRate || 15,
+        flatRateAmount: entry.flatRateAmount || 0
+      }));
 
       const sortedSchedule = validSchedule.sort((a, b) => {
         const dayOrder = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
@@ -364,14 +386,7 @@ export const useScheduleStorage = () => {
         return 0;
       });
       
-      console.log('Processed schedule for week:', weekId, 'entries:', sortedSchedule.length);
-      console.log('Processed schedule details:', sortedSchedule.map(e => ({
-        id: e.id,
-        cleanerName: e.cleanerName,
-        cleanerNames: e.cleanerNames,
-        hours: e.hours,
-        buildingName: e.buildingName
-      })));
+      console.log('✅ Processed schedule for week:', weekId, 'entries:', sortedSchedule.length);
       
       // Cache the result
       scheduleCache.set(weekId, sortedSchedule);
@@ -382,20 +397,12 @@ export const useScheduleStorage = () => {
     }
   }, [weeklySchedules]);
 
-  // Optimized update with batching and error handling
+  // FIXED: Enhanced update with immediate cache invalidation and save
   const updateWeekSchedule = useCallback(async (weekId: string, entries: ScheduleEntry[]) => {
     try {
       console.log('=== UPDATING WEEK SCHEDULE ===');
       console.log('Week ID:', weekId);
       console.log('Entries count:', entries.length);
-      console.log('Entries being saved:', entries.map(e => ({
-        id: e.id,
-        cleanerName: e.cleanerName,
-        cleanerNames: e.cleanerNames,
-        hours: e.hours,
-        buildingName: e.buildingName,
-        day: e.day
-      })));
       
       if (!weekId || typeof weekId !== 'string') {
         throw new Error('Invalid weekId provided');
@@ -425,72 +432,40 @@ export const useScheduleStorage = () => {
           id: entry.id || String(Date.now() + Math.random()),
           hours: typeof entry.hours === 'number' ? entry.hours : parseFloat(entry.hours as any) || 0,
           status: entry.status || 'scheduled',
-          day: entry.day || 'monday'
+          day: entry.day || 'monday',
+          // Ensure payment fields have defaults
+          paymentType: entry.paymentType || 'hourly',
+          hourlyRate: entry.hourlyRate || 15,
+          flatRateAmount: entry.flatRateAmount || 0
         }));
-
-      console.log('Validated entries for save:', validatedEntries.map(e => ({
-        id: e.id,
-        cleanerName: e.cleanerName,
-        cleanerNames: e.cleanerNames,
-        hours: e.hours,
-        buildingName: e.buildingName,
-        day: e.day
-      })));
 
       const updatedSchedules = {
         ...weeklySchedules,
         [weekId]: validatedEntries,
       };
       
-      console.log('Setting updated schedules for week:', weekId);
+      console.log('🔄 Setting updated schedules for week:', weekId);
+      
+      // CRITICAL: Update state first
       setWeeklySchedules(updatedSchedules);
       
-      // Update cache immediately
+      // CRITICAL: Immediately invalidate all caches
+      invalidateAllCaches();
+      
+      // Update cache immediately with new data
       scheduleCache.set(weekId, validatedEntries);
       
-      // Clear related caches to force refresh
-      statsCache.clear();
-      conflictsCache.clear();
+      // CRITICAL: Force immediate save for all schedule updates
+      await saveSchedulesImmediately(updatedSchedules);
       
-      // Force immediate save instead of debounced save for critical updates
-      try {
-        console.log('Force saving schedules to storage immediately');
-        const serializedData = JSON.stringify(updatedSchedules);
-        await AsyncStorage.setItem(STORAGE_KEYS.WEEKLY_SCHEDULES, serializedData);
-        console.log('Schedules force saved successfully to AsyncStorage');
-        
-        // Verify the save by reading it back
-        const verifyData = await AsyncStorage.getItem(STORAGE_KEYS.WEEKLY_SCHEDULES);
-        if (verifyData) {
-          const parsedData = JSON.parse(verifyData);
-          const savedWeekData = parsedData[weekId];
-          console.log('Verification: Data successfully saved and retrieved for week:', weekId);
-          console.log('Verification: Saved entries count:', savedWeekData?.length || 0);
-          if (savedWeekData && savedWeekData.length > 0) {
-            console.log('Verification: Sample saved entry:', {
-              id: savedWeekData[0].id,
-              cleanerName: savedWeekData[0].cleanerName,
-              cleanerNames: savedWeekData[0].cleanerNames,
-              hours: savedWeekData[0].hours
-            });
-          }
-        } else {
-          console.error('Verification failed: No data found after save');
-        }
-      } catch (saveError) {
-        console.error('Error force saving schedules:', saveError);
-        // Fall back to debounced save
-        debouncedSave(updatedSchedules);
-      }
-      
-      console.log('=== WEEK SCHEDULE UPDATE COMPLETED ===');
+      console.log('✅ WEEK SCHEDULE UPDATE COMPLETED ===');
     } catch (err) {
-      console.error('=== WEEK SCHEDULE UPDATE FAILED ===');
+      console.error('❌ WEEK SCHEDULE UPDATE FAILED ===');
       console.error('Error updating week schedule:', err);
       setError('Failed to update schedule');
       throw err;
     }
-  }, [weeklySchedules, debouncedSave]);
+  }, [weeklySchedules, saveSchedulesImmediately, invalidateAllCaches]);
 
   // Optimized stats retrieval with error handling
   const getWeekStats = useCallback((weekId: string): ScheduleStats => {
@@ -507,20 +482,13 @@ export const useScheduleStorage = () => {
         conflictCount: 0,
         utilizationRate: 0,
         averageHoursPerCleaner: 0,
+        totalHourlyJobs: 0,
+        totalFlatRateJobs: 0,
+        totalHourlyAmount: 0,
+        totalFlatRateAmount: 0,
       };
     }
   }, [getWeekSchedule, calculateScheduleStats]);
-
-  // Optimized conflicts retrieval with error handling
-  const getWeekConflicts = useCallback((weekId: string): ScheduleConflict[] => {
-    try {
-      const schedule = getWeekSchedule(weekId);
-      return detectConflicts(schedule);
-    } catch (error) {
-      console.error('Error getting week conflicts:', error);
-      return [];
-    }
-  }, [getWeekSchedule, detectConflicts]);
 
   // Batch operations for better performance with error handling
   const addScheduleEntry = useCallback(async (weekId: string, entry: ScheduleEntry) => {
@@ -533,7 +501,9 @@ export const useScheduleStorage = () => {
         cleanerNames: entry.cleanerNames,
         hours: entry.hours,
         buildingName: entry.buildingName,
-        day: entry.day
+        day: entry.day,
+        paymentType: entry.paymentType,
+        flatRateAmount: entry.flatRateAmount
       });
       
       if (!weekId || !entry) {
@@ -550,26 +520,21 @@ export const useScheduleStorage = () => {
         date: entry.date || weekId,
         hours: typeof entry.hours === 'number' ? entry.hours : parseFloat(entry.hours as any) || 0,
         status: entry.status || 'scheduled',
-        day: entry.day || 'monday'
+        day: entry.day || 'monday',
+        // Ensure payment fields have defaults
+        paymentType: entry.paymentType || 'hourly',
+        hourlyRate: entry.hourlyRate || 15,
+        flatRateAmount: entry.flatRateAmount || 0
       };
-
-      console.log('Validated entry:', {
-        id: validatedEntry.id,
-        cleanerName: validatedEntry.cleanerName,
-        cleanerNames: validatedEntry.cleanerNames,
-        hours: validatedEntry.hours,
-        buildingName: validatedEntry.buildingName,
-        day: validatedEntry.day
-      });
 
       const updatedSchedule = [...currentWeekSchedule, validatedEntry];
       console.log('Updated schedule will have', updatedSchedule.length, 'entries');
       
       await updateWeekSchedule(weekId, updatedSchedule);
       
-      console.log('=== SCHEDULE ENTRY ADDED SUCCESSFULLY ===');
+      console.log('✅ SCHEDULE ENTRY ADDED SUCCESSFULLY ===');
     } catch (error) {
-      console.error('=== ADD SCHEDULE ENTRY FAILED ===');
+      console.error('❌ ADD SCHEDULE ENTRY FAILED ===');
       console.error('Error adding schedule entry:', error);
       throw error;
     }
@@ -602,48 +567,30 @@ export const useScheduleStorage = () => {
       }
 
       const originalEntry = currentWeekSchedule[entryIndex];
-      console.log('Original entry before update:', JSON.stringify({
-        id: originalEntry.id,
-        cleanerName: originalEntry.cleanerName,
-        cleanerNames: originalEntry.cleanerNames,
-        cleanerIds: originalEntry.cleanerIds,
-        hours: originalEntry.hours,
-        startTime: originalEntry.startTime
-      }));
-
+      
       const updatedEntry = { 
         ...originalEntry, 
         ...updates,
         weekId,
         hours: updates.hours !== undefined ? 
           (typeof updates.hours === 'number' ? updates.hours : parseFloat(updates.hours as any) || 0) :
-          originalEntry.hours
+          originalEntry.hours,
+        // Preserve payment fields if not being updated
+        paymentType: updates.paymentType || originalEntry.paymentType || 'hourly',
+        hourlyRate: updates.hourlyRate || originalEntry.hourlyRate || 15,
+        flatRateAmount: updates.flatRateAmount !== undefined ? updates.flatRateAmount : (originalEntry.flatRateAmount || 0)
       };
-      
-      console.log('Updated entry after merge:', JSON.stringify({
-        id: updatedEntry.id,
-        cleanerName: updatedEntry.cleanerName,
-        cleanerNames: updatedEntry.cleanerNames,
-        cleanerIds: updatedEntry.cleanerIds,
-        hours: updatedEntry.hours,
-        startTime: updatedEntry.startTime
-      }));
       
       const updatedSchedule = [...currentWeekSchedule];
       updatedSchedule[entryIndex] = updatedEntry;
       
       console.log('Updated schedule will have', updatedSchedule.length, 'entries');
       
-      // Force clear cache to ensure fresh data
-      scheduleCache.delete(weekId);
-      statsCache.clear();
-      conflictsCache.clear();
-      
       await updateWeekSchedule(weekId, updatedSchedule);
       
-      console.log('=== SCHEDULE ENTRY UPDATED SUCCESSFULLY ===');
+      console.log('✅ SCHEDULE ENTRY UPDATED SUCCESSFULLY ===');
     } catch (error) {
-      console.error('=== UPDATE SCHEDULE ENTRY FAILED ===');
+      console.error('❌ UPDATE SCHEDULE ENTRY FAILED ===');
       console.error('Error updating schedule entry:', error);
       throw error;
     }
@@ -676,20 +623,75 @@ export const useScheduleStorage = () => {
       const updatedSchedule = currentWeekSchedule.filter(entry => entry?.id !== entryId);
       console.log('Updated schedule will have', updatedSchedule.length, 'entries');
       
-      // Force clear cache to ensure fresh data
-      scheduleCache.delete(weekId);
-      statsCache.clear();
-      conflictsCache.clear();
-      
       await updateWeekSchedule(weekId, updatedSchedule);
       
-      console.log('=== SCHEDULE ENTRY DELETED SUCCESSFULLY ===');
+      console.log('✅ SCHEDULE ENTRY DELETED SUCCESSFULLY ===');
     } catch (error) {
-      console.error('=== DELETE SCHEDULE ENTRY FAILED ===');
+      console.error('❌ DELETE SCHEDULE ENTRY FAILED ===');
       console.error('Error deleting schedule entry:', error);
       throw error;
     }
   }, [getWeekSchedule, updateWeekSchedule]);
+
+  // Payment-related functions
+  const updateEntryPayment = useCallback(async (
+    weekId: string, 
+    entryId: string, 
+    paymentType: 'hourly' | 'flat_rate',
+    amount: number
+  ) => {
+    try {
+      console.log('=== UPDATING ENTRY PAYMENT ===');
+      console.log('Entry ID:', entryId, 'Payment Type:', paymentType, 'Amount:', amount);
+      
+      const updates: Partial<ScheduleEntry> = {
+        paymentType,
+      };
+      
+      if (paymentType === 'flat_rate') {
+        updates.flatRateAmount = amount;
+      } else {
+        updates.hourlyRate = amount;
+      }
+      
+      await updateScheduleEntry(weekId, entryId, updates);
+      console.log('✅ ENTRY PAYMENT UPDATED SUCCESSFULLY ===');
+    } catch (error) {
+      console.error('❌ UPDATE ENTRY PAYMENT FAILED ===');
+      console.error('Error updating entry payment:', error);
+      throw error;
+    }
+  }, [updateScheduleEntry]);
+
+  const getPaymentSummary = useCallback((weekId: string) => {
+    try {
+      const schedule = getWeekSchedule(weekId);
+      const stats = calculateScheduleStats(schedule);
+      
+      return {
+        totalJobs: stats.totalEntries,
+        hourlyJobs: stats.totalHourlyJobs,
+        flatRateJobs: stats.totalFlatRateJobs,
+        totalHourlyAmount: stats.totalHourlyAmount,
+        totalFlatRateAmount: stats.totalFlatRateAmount,
+        totalAmount: stats.totalHourlyAmount + stats.totalFlatRateAmount,
+        completedJobs: stats.completedEntries,
+        pendingJobs: stats.pendingEntries
+      };
+    } catch (error) {
+      console.error('Error getting payment summary:', error);
+      return {
+        totalJobs: 0,
+        hourlyJobs: 0,
+        flatRateJobs: 0,
+        totalHourlyAmount: 0,
+        totalFlatRateAmount: 0,
+        totalAmount: 0,
+        completedJobs: 0,
+        pendingJobs: 0
+      };
+    }
+  }, [getWeekSchedule, calculateScheduleStats]);
 
   // Bulk operations with optimized performance and error handling
   const bulkUpdateEntries = useCallback(async (weekId: string, entryIds: string[], updates: Partial<ScheduleEntry>) => {
@@ -729,16 +731,16 @@ export const useScheduleStorage = () => {
     }
   }, [getWeekSchedule, updateWeekSchedule]);
 
-  // Clear caches when needed
+  // FIXED: Clear caches with version tracking
   const clearCaches = useCallback(() => {
     try {
-      scheduleCache.clear();
-      statsCache.clear();
-      conflictsCache.clear();
+      console.log('=== CLEARING CACHES ===');
+      invalidateAllCaches();
+      console.log('✅ All caches cleared');
     } catch (error) {
       console.error('Error clearing caches:', error);
     }
-  }, []);
+  }, [invalidateAllCaches]);
 
   const clearWeekSchedule = useCallback(async (weekId: string) => {
     try {
@@ -749,13 +751,16 @@ export const useScheduleStorage = () => {
       const updatedSchedules = { ...weeklySchedules };
       delete updatedSchedules[weekId];
       setWeeklySchedules(updatedSchedules);
-      scheduleCache.delete(weekId);
-      debouncedSave(updatedSchedules);
+      
+      // Invalidate caches
+      invalidateAllCaches();
+      
+      await saveSchedulesImmediately(updatedSchedules);
     } catch (error) {
       console.error('Error clearing week schedule:', error);
       setError('Failed to clear week schedule');
     }
-  }, [weeklySchedules, debouncedSave]);
+  }, [weeklySchedules, saveSchedulesImmediately, invalidateAllCaches]);
 
   const resetAllSchedules = useCallback(async () => {
     try {
@@ -765,12 +770,12 @@ export const useScheduleStorage = () => {
         STORAGE_KEYS.LAST_CLEANUP_DATE,
       ]);
       setWeeklySchedules({});
-      clearCaches();
+      invalidateAllCaches();
     } catch (err) {
       console.error('Error resetting schedules:', err);
       setError('Failed to reset schedules');
     }
-  }, [clearCaches]);
+  }, [invalidateAllCaches]);
 
   // Helper functions for multiple cleaners
   const getEntryCleaners = useCallback((entry: ScheduleEntry): string[] => {
@@ -949,8 +954,6 @@ export const useScheduleStorage = () => {
     
     // Enhanced features
     getWeekStats,
-    getWeekConflicts,
-    detectConflicts,
     calculateScheduleStats,
     bulkUpdateEntries,
     bulkDeleteEntries,
@@ -960,6 +963,10 @@ export const useScheduleStorage = () => {
     addCleanerToEntry,
     removeCleanerFromEntry,
     updateEntryCleaners,
+    
+    // Payment operations
+    updateEntryPayment,
+    getPaymentSummary,
     
     // Utilities
     clearError,

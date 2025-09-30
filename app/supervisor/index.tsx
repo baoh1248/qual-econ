@@ -1,17 +1,19 @@
 
-import { Text, View, ScrollView, TouchableOpacity, Dimensions, RefreshControl } from 'react-native';
-import { router } from 'expo-router';
-import { useState, useEffect } from 'react';
-import { commonStyles, colors, spacing, typography, statusColors } from '../../styles/commonStyles';
-import Icon from '../../components/Icon';
+import React, { useState, useEffect } from 'react';
+import { Text, View, ScrollView, TouchableOpacity, Dimensions, RefreshControl, Modal } from 'react-native';
 import { Platform } from 'react-native';
+import { router } from 'expo-router';
+import Icon from '../../components/Icon';
+import InventoryAlertBadge from '../../components/InventoryAlertBadge';
 import AnimatedCard from '../../components/AnimatedCard';
 import ProgressRing from '../../components/ProgressRing';
+import CompanyLogo from '../../components/CompanyLogo';
 import Toast from '../../components/Toast';
+import DatabaseSetup from '../../components/DatabaseSetup';
+import { commonStyles, colors, spacing, typography, statusColors } from '../../styles/commonStyles';
 import { useToast } from '../../hooks/useToast';
 import { useInventoryAlerts } from '../../hooks/useInventoryAlerts';
-import InventoryAlertBadge from '../../components/InventoryAlertBadge';
-import CompanyLogo from '../../components/CompanyLogo';
+import { useDatabase } from '../../hooks/useDatabase';
 
 interface TeamMember {
   id: string;
@@ -41,613 +43,621 @@ interface Client {
   satisfaction: number;
 }
 
-export default function SupervisorDashboard() {
-  console.log('SupervisorDashboard rendered');
-  
-  const { toast, showToast, hideToast } = useToast();
-  const { 
-    unacknowledgedAlerts, 
-    highPriorityAlerts, 
-    mediumPriorityAlerts, 
-    lowPriorityAlerts,
-    acknowledgeAllAlerts 
-  } = useInventoryAlerts();
+const SupervisorDashboard = () => {
+  const { showToast } = useToast();
+  const { config, syncStatus } = useDatabase();
+  const { lowStockCount, criticalStockCount } = useInventoryAlerts();
   
   const [refreshing, setRefreshing] = useState(false);
-  const [loading, setLoading] = useState(true);
-  
-  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([
+  const [showDatabaseSetup, setShowDatabaseSetup] = useState(false);
+
+  // Mock data - in a real app, this would come from your database
+  const [teamMembers] = useState<TeamMember[]>([
     {
       id: '1',
-      name: 'John Smith',
+      name: 'John Doe',
       status: 'on-duty',
-      currentTask: 'Office Building A - Floor 3',
-      location: '123 Business St',
+      currentTask: 'TechCorp Main Office',
+      location: 'Downtown',
       todayHours: 6.5,
-      tasksCompleted: 8,
-      efficiency: 95,
+      tasksCompleted: 3,
+      efficiency: 92,
     },
     {
       id: '2',
-      name: 'Sarah Johnson',
+      name: 'Jane Smith',
       status: 'on-duty',
-      currentTask: 'Retail Store - Main Floor',
-      location: '456 Shopping Ave',
+      currentTask: 'MedCenter Hospital',
+      location: 'Medical District',
       todayHours: 7.2,
-      tasksCompleted: 10,
-      efficiency: 98,
+      tasksCompleted: 4,
+      efficiency: 88,
     },
     {
       id: '3',
-      name: 'Mike Davis',
+      name: 'Johnson Smith',
       status: 'break',
-      currentTask: 'Break - 15 min remaining',
-      location: 'Office Building B',
+      currentTask: 'Lunch Break',
+      location: 'Downtown Mall',
       todayHours: 4.0,
-      tasksCompleted: 5,
-      efficiency: 87,
-    },
-    {
-      id: '4',
-      name: 'Lisa Wilson',
-      status: 'off-duty',
-      currentTask: 'Shift ended',
-      location: 'N/A',
-      todayHours: 8.0,
-      tasksCompleted: 12,
-      efficiency: 92,
+      tasksCompleted: 2,
+      efficiency: 85,
     },
   ]);
 
-  const [taskSummary, setTaskSummary] = useState<TaskSummary>({
-    total: 45,
-    completed: 28,
-    inProgress: 12,
-    pending: 3,
-    overdue: 2,
+  const [taskSummary] = useState<TaskSummary>({
+    total: 24,
+    completed: 18,
+    inProgress: 4,
+    pending: 2,
+    overdue: 0,
   });
 
-  const [clients, setClients] = useState<Client[]>([
+  const [clients] = useState<Client[]>([
     {
       id: '1',
-      name: 'TechCorp Office',
-      location: '123 Business St',
+      name: 'TechCorp Inc.',
+      location: 'Downtown',
       status: 'active',
       tasksToday: 8,
       satisfaction: 4.8,
     },
     {
       id: '2',
-      name: 'Retail Plaza',
-      location: '456 Shopping Ave',
+      name: 'MedCenter Hospital',
+      location: 'Medical District',
       status: 'active',
-      tasksToday: 6,
-      satisfaction: 4.6,
+      tasksToday: 12,
+      satisfaction: 4.9,
     },
     {
       id: '3',
-      name: 'Medical Center',
-      location: '789 Health Blvd',
+      name: 'Downtown Mall',
+      location: 'Shopping District',
       status: 'completed',
       tasksToday: 4,
-      satisfaction: 4.9,
+      satisfaction: 4.6,
     },
   ]);
 
   useEffect(() => {
-    // Simulate loading
-    const timer = setTimeout(() => {
-      setLoading(false);
-    }, 1000);
+    // Auto-refresh data every 30 seconds
+    const interval = setInterval(() => {
+      // In a real app, you'd refresh data from your database here
+      console.log('Auto-refreshing dashboard data...');
+    }, 30000);
 
-    return () => clearTimeout(timer);
+    return () => clearInterval(interval);
   }, []);
 
   const onRefresh = async () => {
-    console.log('Refreshing supervisor dashboard');
     setRefreshing(true);
-    
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    setRefreshing(false);
-    showToast('Dashboard updated', 'success');
+    try {
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      showToast('Dashboard refreshed', 'success');
+    } catch (error) {
+      showToast('Failed to refresh dashboard', 'error');
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'on-duty': return colors.success;
-      case 'break': return colors.warning;
-      case 'off-duty': return colors.textSecondary;
-      default: return colors.textSecondary;
+      case 'on-duty':
+      case 'active':
+        return colors.success;
+      case 'break':
+      case 'pending':
+        return colors.warning;
+      case 'off-duty':
+      case 'completed':
+        return colors.textSecondary;
+      default:
+        return colors.textSecondary;
     }
   };
 
   const getEfficiencyColor = (efficiency: number) => {
-    if (efficiency >= 95) return colors.success;
-    if (efficiency >= 85) return colors.warning;
+    if (efficiency >= 90) return colors.success;
+    if (efficiency >= 75) return colors.warning;
     return colors.danger;
   };
 
-  const screenWidth = Dimensions.get('window').width;
-  const isWeb = Platform.OS === 'web';
-  const isLargeScreen = screenWidth > 768;
-
-  const completionRate = taskSummary.total > 0 ? (taskSummary.completed / taskSummary.total) * 100 : 0;
-  const teamEfficiency = teamMembers.reduce((sum, member) => sum + member.efficiency, 0) / teamMembers.length;
-  const activeTeamMembers = teamMembers.filter(member => member.status === 'on-duty').length;
-
-  if (loading) {
-    return (
-      <View style={[commonStyles.container, commonStyles.centerContent]}>
-        <ProgressRing progress={100} showText={false} />
-        <Text style={[typography.body, { color: colors.textSecondary, marginTop: spacing.md }]}>
-          Loading dashboard...
-        </Text>
-      </View>
-    );
-  }
-
   return (
-    <View style={commonStyles.container}>
-      <Toast {...toast} onHide={hideToast} />
-      
-      <View style={commonStyles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Icon name="arrow-back" size={24} style={{ color: colors.background }} />
-        </TouchableOpacity>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-          <CompanyLogo size="small" showText={false} variant="light" />
-          <Text style={commonStyles.headerTitle}>Supervisor Dashboard</Text>
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <CompanyLogo />
+        <Text style={styles.title}>Supervisor Dashboard</Text>
+        <View style={styles.headerActions}>
+          {/* Database status indicator */}
+          <TouchableOpacity
+            onPress={() => setShowDatabaseSetup(true)}
+            style={[styles.databaseStatus, { 
+              backgroundColor: config.useSupabase && syncStatus.isOnline ? colors.success : colors.warning 
+            }]}
+          >
+            <Icon 
+              name={config.useSupabase && syncStatus.isOnline ? "cloud-done" : "cloud-offline"} 
+              size={16} 
+              style={{ color: colors.background }} 
+            />
+          </TouchableOpacity>
+          <InventoryAlertBadge 
+            lowStockCount={lowStockCount} 
+            criticalStockCount={criticalStockCount}
+            onPress={() => router.push('/supervisor/inventory')}
+          />
         </View>
-        <TouchableOpacity onPress={() => showToast('Settings coming soon', 'info')}>
-          <Icon name="settings" size={24} style={{ color: colors.background }} />
-        </TouchableOpacity>
       </View>
 
-      <ScrollView 
-        style={commonStyles.content} 
+      <ScrollView
+        style={styles.content}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        {/* Inventory Alerts */}
-        {unacknowledgedAlerts.length > 0 && (
-          <AnimatedCard index={0}>
-            <View style={[commonStyles.row, commonStyles.spaceBetween, { marginBottom: spacing.md }]}>
-              <Text style={[typography.h3, { color: colors.text }]}>
-                Inventory Alerts
-              </Text>
-              <TouchableOpacity onPress={acknowledgeAllAlerts}>
-                <Text style={[typography.caption, { color: colors.primary }]}>
-                  Clear All
-                </Text>
-              </TouchableOpacity>
-            </View>
-            
-            <View style={{ gap: spacing.sm }}>
-              <InventoryAlertBadge
-                count={highPriorityAlerts.length}
-                priority="high"
-                onPress={() => router.push('/supervisor/inventory')}
-              />
-              <InventoryAlertBadge
-                count={mediumPriorityAlerts.length}
-                priority="medium"
-                onPress={() => router.push('/supervisor/inventory')}
-              />
-              <InventoryAlertBadge
-                count={lowPriorityAlerts.length}
-                priority="low"
-                onPress={() => router.push('/supervisor/inventory')}
-              />
+        {/* Quick Stats */}
+        <View style={styles.statsContainer}>
+          <AnimatedCard style={styles.statCard}>
+            <View style={styles.statContent}>
+              <Icon name="people" size={24} style={{ color: colors.primary }} />
+              <View style={styles.statText}>
+                <Text style={styles.statValue}>{teamMembers.length}</Text>
+                <Text style={styles.statLabel}>Team Members</Text>
+              </View>
             </View>
           </AnimatedCard>
-        )}
 
-        {/* Performance Overview */}
-        <AnimatedCard index={unacknowledgedAlerts.length > 0 ? 1 : 0}>
-          <Text style={[typography.h3, { color: colors.text, marginBottom: spacing.md }]}>
-            Performance Overview
-          </Text>
-          
-          <View style={[commonStyles.row, { justifyContent: 'space-around', marginBottom: spacing.md }]}>
-            <View style={{ alignItems: 'center' }}>
-              <ProgressRing 
-                progress={completionRate} 
-                size={70} 
-                color={colors.success}
-                text={`${Math.round(completionRate)}%`}
-              />
-              <Text style={[typography.caption, { color: colors.textSecondary, marginTop: spacing.xs }]}>
-                Task Completion
-              </Text>
-            </View>
-            
-            <View style={{ alignItems: 'center' }}>
-              <ProgressRing 
-                progress={teamEfficiency} 
-                size={70} 
-                color={colors.primary}
-                text={`${Math.round(teamEfficiency)}%`}
-              />
-              <Text style={[typography.caption, { color: colors.textSecondary, marginTop: spacing.xs }]}>
-                Team Efficiency
-              </Text>
-            </View>
-            
-            <View style={{ alignItems: 'center' }}>
-              <ProgressRing 
-                progress={(activeTeamMembers / teamMembers.length) * 100} 
-                size={70} 
-                color={colors.warning}
-                text={`${activeTeamMembers}/${teamMembers.length}`}
-              />
-              <Text style={[typography.caption, { color: colors.textSecondary, marginTop: spacing.xs }]}>
-                Active Team
-              </Text>
-            </View>
-          </View>
-        </AnimatedCard>
-
-        {/* Quick Stats */}
-        <AnimatedCard index={unacknowledgedAlerts.length > 0 ? 2 : 1}>
-          <Text style={[typography.h3, { color: colors.text, marginBottom: spacing.md }]}>
-            Today&apos;s Overview
-          </Text>
-          
-          <View style={[
-            isLargeScreen ? { flexDirection: 'row', gap: spacing.md } : { gap: spacing.sm }
-          ]}>
-            <View style={[
-              { 
-                backgroundColor: colors.backgroundAlt, 
-                padding: spacing.md, 
-                borderRadius: 8,
-                flex: isLargeScreen ? 1 : undefined,
-              }
-            ]}>
-              <Text style={[typography.caption, { color: colors.textSecondary }]}>Total Tasks</Text>
-              <Text style={[typography.h2, { color: colors.text }]}>{taskSummary.total}</Text>
-            </View>
-            
-            <View style={[
-              { 
-                backgroundColor: colors.backgroundAlt, 
-                padding: spacing.md, 
-                borderRadius: 8,
-                flex: isLargeScreen ? 1 : undefined,
-              }
-            ]}>
-              <Text style={[typography.caption, { color: colors.textSecondary }]}>Completed</Text>
-              <Text style={[typography.h2, { color: colors.success }]}>{taskSummary.completed}</Text>
-            </View>
-            
-            <View style={[
-              { 
-                backgroundColor: colors.backgroundAlt, 
-                padding: spacing.md, 
-                borderRadius: 8,
-                flex: isLargeScreen ? 1 : undefined,
-              }
-            ]}>
-              <Text style={[typography.caption, { color: colors.textSecondary }]}>In Progress</Text>
-              <Text style={[typography.h2, { color: colors.primary }]}>{taskSummary.inProgress}</Text>
-            </View>
-            
-            <View style={[
-              { 
-                backgroundColor: colors.backgroundAlt, 
-                padding: spacing.md, 
-                borderRadius: 8,
-                flex: isLargeScreen ? 1 : undefined,
-              }
-            ]}>
-              <Text style={[typography.caption, { color: colors.textSecondary }]}>Overdue</Text>
-              <Text style={[typography.h2, { color: colors.danger }]}>{taskSummary.overdue}</Text>
-            </View>
-          </View>
-        </AnimatedCard>
-
-        {/* Quick Actions */}
-        <AnimatedCard index={unacknowledgedAlerts.length > 0 ? 3 : 2}>
-          <Text style={[typography.h3, { color: colors.text, marginBottom: spacing.md }]}>
-            Quick Actions
-          </Text>
-          
-          <View style={[
-            isLargeScreen 
-              ? { flexDirection: 'row', gap: spacing.md }
-              : { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }
-          ]}>
-            <TouchableOpacity
-              style={[
-                { 
-                  flex: isLargeScreen ? 1 : 0,
-                  minWidth: isLargeScreen ? 0 : '48%',
-                  alignItems: 'center', 
-                  padding: spacing.md, 
-                  backgroundColor: colors.primary, 
-                  borderRadius: 8 
-                }
-              ]}
-              onPress={() => router.push('/supervisor/schedule')}
-            >
-              <Icon name="calendar" size={24} style={{ color: colors.background, marginBottom: spacing.xs }} />
-              <Text style={[typography.caption, { color: colors.background, textAlign: 'center' }]}>Schedule</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[
-                { 
-                  flex: isLargeScreen ? 1 : 0,
-                  minWidth: isLargeScreen ? 0 : '48%',
-                  alignItems: 'center', 
-                  padding: spacing.md, 
-                  backgroundColor: colors.primary, 
-                  borderRadius: 8 
-                }
-              ]}
-              onPress={() => router.push('/supervisor/payroll')}
-            >
-              <Icon name="time" size={24} style={{ color: colors.background, marginBottom: spacing.xs }} />
-              <Text style={[typography.caption, { color: colors.background, textAlign: 'center' }]}>Payroll Hours</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[
-                { 
-                  flex: isLargeScreen ? 1 : 0,
-                  minWidth: isLargeScreen ? 0 : '48%',
-                  alignItems: 'center', 
-                  padding: spacing.md, 
-                  backgroundColor: colors.primary, 
-                  borderRadius: 8 
-                }
-              ]}
-              onPress={() => router.push('/supervisor/inventory')}
-            >
-              <View style={{ position: 'relative' }}>
-                <Icon name="cube" size={24} style={{ color: colors.background, marginBottom: spacing.xs }} />
-                {unacknowledgedAlerts.length > 0 && (
-                  <View style={{
-                    position: 'absolute',
-                    top: -4,
-                    right: -4,
-                    backgroundColor: colors.danger,
-                    borderRadius: 8,
-                    minWidth: 16,
-                    height: 16,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}>
-                    <Text style={[typography.small, { color: colors.background, fontSize: 10 }]}>
-                      {unacknowledgedAlerts.length}
-                    </Text>
-                  </View>
-                )}
+          <AnimatedCard style={styles.statCard}>
+            <View style={styles.statContent}>
+              <Icon name="checkmark-circle" size={24} style={{ color: colors.success }} />
+              <View style={styles.statText}>
+                <Text style={styles.statValue}>{taskSummary.completed}</Text>
+                <Text style={styles.statLabel}>Completed</Text>
               </View>
-              <Text style={[typography.caption, { color: colors.background, textAlign: 'center' }]}>Inventory</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[
-                { 
-                  flex: isLargeScreen ? 1 : 0,
-                  minWidth: isLargeScreen ? 0 : '48%',
-                  alignItems: 'center', 
-                  padding: spacing.md, 
-                  backgroundColor: colors.primary, 
-                  borderRadius: 8 
-                }
-              ]}
-              onPress={() => showToast('Analytics coming soon', 'info')}
-            >
-              <Icon name="analytics" size={24} style={{ color: colors.background, marginBottom: spacing.xs }} />
-              <Text style={[typography.caption, { color: colors.background, textAlign: 'center' }]}>Analytics</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[
-                { 
-                  flex: isLargeScreen ? 1 : 0,
-                  minWidth: isLargeScreen ? 0 : '48%',
-                  alignItems: 'center', 
-                  padding: spacing.md, 
-                  backgroundColor: colors.primary, 
-                  borderRadius: 8 
-                }
-              ]}
-              onPress={() => router.push('/supervisor/photos')}
-            >
-              <Icon name="camera" size={24} style={{ color: colors.background, marginBottom: spacing.xs }} />
-              <Text style={[typography.caption, { color: colors.background, textAlign: 'center' }]}>Photos</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[
-                { 
-                  flex: isLargeScreen ? 1 : 0,
-                  minWidth: isLargeScreen ? 0 : '48%',
-                  alignItems: 'center', 
-                  padding: spacing.md, 
-                  backgroundColor: colors.primary, 
-                  borderRadius: 8 
-                }
-              ]}
-              onPress={() => router.push('/supervisor/cleaners')}
-            >
-              <Icon name="people" size={24} style={{ color: colors.background, marginBottom: spacing.xs }} />
-              <Text style={[typography.caption, { color: colors.background, textAlign: 'center' }]}>Cleaners</Text>
-            </TouchableOpacity>
+            </View>
+          </AnimatedCard>
+
+          <AnimatedCard style={styles.statCard}>
+            <View style={styles.statContent}>
+              <Icon name="time" size={24} style={{ color: colors.warning }} />
+              <View style={styles.statText}>
+                <Text style={styles.statValue}>{taskSummary.inProgress}</Text>
+                <Text style={styles.statLabel}>In Progress</Text>
+              </View>
+            </View>
+          </AnimatedCard>
+
+          <AnimatedCard style={styles.statCard}>
+            <View style={styles.statContent}>
+              <Icon name="alert-circle" size={24} style={{ color: colors.danger }} />
+              <View style={styles.statText}>
+                <Text style={styles.statValue}>{taskSummary.overdue}</Text>
+                <Text style={styles.statLabel}>Overdue</Text>
+              </View>
+            </View>
+          </AnimatedCard>
+        </View>
+
+        {/* Task Progress */}
+        <AnimatedCard style={styles.progressCard}>
+          <View style={styles.progressHeader}>
+            <Text style={styles.cardTitle}>Today's Progress</Text>
+            <Text style={styles.progressPercentage}>
+              {Math.round((taskSummary.completed / taskSummary.total) * 100)}%
+            </Text>
+          </View>
+          <View style={styles.progressContent}>
+            <ProgressRing
+              progress={(taskSummary.completed / taskSummary.total) * 100}
+              size={80}
+              strokeWidth={8}
+              color={colors.primary}
+            />
+            <View style={styles.progressStats}>
+              <View style={styles.progressStat}>
+                <View style={[styles.progressDot, { backgroundColor: colors.success }]} />
+                <Text style={styles.progressStatText}>Completed: {taskSummary.completed}</Text>
+              </View>
+              <View style={styles.progressStat}>
+                <View style={[styles.progressDot, { backgroundColor: colors.warning }]} />
+                <Text style={styles.progressStatText}>In Progress: {taskSummary.inProgress}</Text>
+              </View>
+              <View style={styles.progressStat}>
+                <View style={[styles.progressDot, { backgroundColor: colors.textSecondary }]} />
+                <Text style={styles.progressStatText}>Pending: {taskSummary.pending}</Text>
+              </View>
+            </View>
           </View>
         </AnimatedCard>
 
         {/* Team Status */}
-        <AnimatedCard index={unacknowledgedAlerts.length > 0 ? 4 : 3}>
-          <View style={[commonStyles.row, commonStyles.spaceBetween, { marginBottom: spacing.md }]}>
-            <Text style={[typography.h3, { color: colors.text }]}>Team Status</Text>
-            <TouchableOpacity onPress={() => showToast('Team details coming soon', 'info')}>
-              <Text style={[typography.caption, { color: colors.primary }]}>View All</Text>
+        <AnimatedCard style={styles.teamCard}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardTitle}>Team Status</Text>
+            <TouchableOpacity onPress={() => router.push('/supervisor/cleaners')}>
+              <Text style={styles.viewAllText}>View All</Text>
             </TouchableOpacity>
           </View>
-
-          {teamMembers.slice(0, 4).map((member, index) => (
-            <TouchableOpacity
-              key={member.id}
-              style={[
-                commonStyles.card,
-                { 
-                  marginBottom: spacing.sm,
-                  backgroundColor: colors.backgroundAlt,
-                }
-              ]}
-              onPress={() => showToast(`${member.name} details coming soon`, 'info')}
-            >
-              <View style={[commonStyles.row, commonStyles.spaceBetween, { marginBottom: spacing.sm }]}>
-                <Text style={[typography.body, { color: colors.text, fontWeight: '600' }]}>
-                  {member.name}
-                </Text>
-                <View style={[
-                  commonStyles.statusBadge,
-                  { backgroundColor: getStatusColor(member.status) + '20' }
-                ]}>
-                  <Text style={[
-                    typography.small,
-                    { color: getStatusColor(member.status), fontWeight: '600' }
-                  ]}>
-                    {member.status.toUpperCase()}
+          {teamMembers.map((member) => (
+            <View key={member.id} style={styles.teamMember}>
+              <View style={styles.memberInfo}>
+                <View style={styles.memberHeader}>
+                  <Text style={styles.memberName}>{member.name}</Text>
+                  <View style={[styles.statusBadge, { backgroundColor: getStatusColor(member.status) }]}>
+                    <Text style={styles.statusText}>{member.status.replace('-', ' ')}</Text>
+                  </View>
+                </View>
+                <Text style={styles.memberTask}>{member.currentTask}</Text>
+                <Text style={styles.memberLocation}>{member.location}</Text>
+              </View>
+              <View style={styles.memberStats}>
+                <View style={styles.memberStat}>
+                  <Text style={styles.memberStatValue}>{member.todayHours}h</Text>
+                  <Text style={styles.memberStatLabel}>Hours</Text>
+                </View>
+                <View style={styles.memberStat}>
+                  <Text style={styles.memberStatValue}>{member.tasksCompleted}</Text>
+                  <Text style={styles.memberStatLabel}>Tasks</Text>
+                </View>
+                <View style={styles.memberStat}>
+                  <Text style={[styles.memberStatValue, { color: getEfficiencyColor(member.efficiency) }]}>
+                    {member.efficiency}%
                   </Text>
+                  <Text style={styles.memberStatLabel}>Efficiency</Text>
                 </View>
               </View>
-              
-              <View style={[commonStyles.row, { marginBottom: spacing.xs }]}>
-                <Icon name="briefcase" size={14} style={{ color: colors.textSecondary, marginRight: spacing.xs }} />
-                <Text style={[typography.caption, { color: colors.textSecondary, flex: 1 }]}>
-                  {member.currentTask}
-                </Text>
-              </View>
-              
-              <View style={[commonStyles.row, { marginBottom: spacing.xs }]}>
-                <Icon name="location" size={14} style={{ color: colors.textSecondary, marginRight: spacing.xs }} />
-                <Text style={[typography.caption, { color: colors.textSecondary, flex: 1 }]}>
-                  {member.location}
-                </Text>
-              </View>
-              
-              <View style={[commonStyles.row, commonStyles.spaceBetween]}>
-                <View style={commonStyles.row}>
-                  <Text style={[typography.caption, { color: colors.textSecondary }]}>
-                    {member.todayHours}h • {member.tasksCompleted} tasks
-                  </Text>
-                </View>
-                <View style={[commonStyles.row]}>
-                  <Text style={[
-                    typography.caption,
-                    { color: getEfficiencyColor(member.efficiency), fontWeight: '600' }
-                  ]}>
-                    {member.efficiency}% efficiency
-                  </Text>
-                </View>
-              </View>
-            </TouchableOpacity>
+            </View>
           ))}
-        </AnimatedCard>
-
-        {/* Real-time Monitoring */}
-        <AnimatedCard index={unacknowledgedAlerts.length > 0 ? 5 : 4}>
-          <View style={[commonStyles.row, commonStyles.spaceBetween, { marginBottom: spacing.md }]}>
-            <Text style={[typography.h3, { color: colors.text }]}>Real-time Monitoring</Text>
-            <TouchableOpacity onPress={() => showToast('Live monitoring coming soon', 'info')}>
-              <Icon name="map" size={24} style={{ color: colors.primary }} />
-            </TouchableOpacity>
-          </View>
-
-          <View style={{ 
-            backgroundColor: colors.backgroundAlt, 
-            padding: spacing.lg, 
-            borderRadius: 8,
-            alignItems: 'center',
-            justifyContent: 'center',
-            minHeight: 200,
-          }}>
-            <Icon name="map" size={48} style={{ color: colors.textSecondary, marginBottom: spacing.md }} />
-            <Text style={[typography.body, { color: colors.text, textAlign: 'center', marginBottom: spacing.sm }]}>
-              Live Team Location Map
-            </Text>
-            <Text style={[typography.caption, { color: colors.textSecondary, textAlign: 'center' }]}>
-              {isWeb 
-                ? 'Maps are in testing phase.'
-                : 'Will be available soon.'
-              }
-            </Text>
-          </View>
         </AnimatedCard>
 
         {/* Client Status */}
-        <AnimatedCard index={unacknowledgedAlerts.length > 0 ? 6 : 5}>
-          <View style={[commonStyles.row, commonStyles.spaceBetween, { marginBottom: spacing.md }]}>
-            <Text style={[typography.h3, { color: colors.text }]}>Client Status</Text>
-            <TouchableOpacity onPress={() => showToast('Client management coming soon', 'info')}>
-              <Text style={[typography.caption, { color: colors.primary }]}>View All</Text>
+        <AnimatedCard style={styles.clientCard}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardTitle}>Client Status</Text>
+            <TouchableOpacity onPress={() => router.push('/supervisor/schedule')}>
+              <Text style={styles.viewAllText}>View Schedule</Text>
             </TouchableOpacity>
           </View>
-
-          {clients.map((client, index) => (
-            <TouchableOpacity
-              key={client.id}
-              style={[
-                commonStyles.card,
-                { 
-                  marginBottom: spacing.sm,
-                  backgroundColor: colors.backgroundAlt,
-                }
-              ]}
-              onPress={() => showToast(`${client.name} details coming soon`, 'info')}
-            >
-              <View style={[commonStyles.row, commonStyles.spaceBetween, { marginBottom: spacing.sm }]}>
-                <Text style={[typography.body, { color: colors.text, fontWeight: '600', flex: 1 }]}>
-                  {client.name}
-                </Text>
-                <View style={[
-                  commonStyles.statusBadge,
-                  { backgroundColor: client.status === 'active' ? colors.success + '20' : colors.textSecondary + '20' }
-                ]}>
-                  <Text style={[
-                    typography.small,
-                    { 
-                      color: client.status === 'active' ? colors.success : colors.textSecondary,
-                      fontWeight: '600'
-                    }
-                  ]}>
-                    {client.status.toUpperCase()}
-                  </Text>
+          {clients.map((client) => (
+            <View key={client.id} style={styles.clientItem}>
+              <View style={styles.clientInfo}>
+                <Text style={styles.clientName}>{client.name}</Text>
+                <Text style={styles.clientLocation}>{client.location}</Text>
+              </View>
+              <View style={styles.clientStats}>
+                <View style={styles.clientStat}>
+                  <Text style={styles.clientStatValue}>{client.tasksToday}</Text>
+                  <Text style={styles.clientStatLabel}>Tasks Today</Text>
+                </View>
+                <View style={styles.clientStat}>
+                  <View style={styles.satisfactionRow}>
+                    <Icon name="star" size={16} style={{ color: colors.warning }} />
+                    <Text style={styles.satisfactionValue}>{client.satisfaction}</Text>
+                  </View>
+                  <Text style={styles.clientStatLabel}>Satisfaction</Text>
+                </View>
+                <View style={[styles.statusBadge, { backgroundColor: getStatusColor(client.status) }]}>
+                  <Text style={styles.statusText}>{client.status}</Text>
                 </View>
               </View>
-              
-              <View style={[commonStyles.row, { marginBottom: spacing.xs }]}>
-                <Icon name="location" size={14} style={{ color: colors.textSecondary, marginRight: spacing.xs }} />
-                <Text style={[typography.caption, { color: colors.textSecondary, flex: 1 }]}>
-                  {client.location}
-                </Text>
-              </View>
-              
-              <View style={[commonStyles.row, commonStyles.spaceBetween]}>
-                <Text style={[typography.caption, { color: colors.textSecondary }]}>
-                  {client.tasksToday} tasks today
-                </Text>
-                <View style={commonStyles.row}>
-                  <Icon name="star" size={14} style={{ color: colors.warning, marginRight: spacing.xs }} />
-                  <Text style={[typography.caption, { color: colors.textSecondary }]}>
-                    {client.satisfaction}/5.0
-                  </Text>
-                </View>
-              </View>
-            </TouchableOpacity>
+            </View>
           ))}
         </AnimatedCard>
+
+        {/* Quick Actions */}
+        <View style={styles.quickActions}>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => router.push('/supervisor/schedule')}
+          >
+            <Icon name="calendar" size={24} style={{ color: colors.primary }} />
+            <Text style={styles.actionButtonText}>Schedule</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => router.push('/supervisor/inventory')}
+          >
+            <Icon name="cube" size={24} style={{ color: colors.primary }} />
+            <Text style={styles.actionButtonText}>Inventory</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => router.push('/supervisor/payroll')}
+          >
+            <Icon name="card" size={24} style={{ color: colors.primary }} />
+            <Text style={styles.actionButtonText}>Payroll</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => router.push('/supervisor/photos')}
+          >
+            <Icon name="camera" size={24} style={{ color: colors.primary }} />
+            <Text style={styles.actionButtonText}>Photos</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
+
+      {/* Database Setup Modal */}
+      <Modal
+        visible={showDatabaseSetup}
+        animationType="slide"
+        presentationStyle="pageSheet"
+      >
+        <DatabaseSetup onClose={() => setShowDatabaseSetup(false)} />
+      </Modal>
+
+      <Toast />
     </View>
   );
-}
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  title: {
+    ...typography.h2,
+    color: colors.text,
+    fontWeight: '600',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  databaseStatus: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  content: {
+    flex: 1,
+    padding: spacing.lg,
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: spacing.lg,
+    gap: spacing.md,
+  },
+  statCard: {
+    flex: 1,
+    minWidth: '45%',
+    padding: spacing.md,
+  },
+  statContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statText: {
+    marginLeft: spacing.md,
+  },
+  statValue: {
+    ...typography.h2,
+    color: colors.text,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  statLabel: {
+    ...typography.small,
+    color: colors.textSecondary,
+  },
+  progressCard: {
+    marginBottom: spacing.lg,
+    padding: spacing.lg,
+  },
+  progressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+  },
+  cardTitle: {
+    ...typography.h3,
+    color: colors.text,
+    fontWeight: '600',
+  },
+  progressPercentage: {
+    ...typography.h2,
+    color: colors.primary,
+    fontWeight: '700',
+  },
+  progressContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  progressStats: {
+    flex: 1,
+    marginLeft: spacing.lg,
+  },
+  progressStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  progressDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: spacing.sm,
+  },
+  progressStatText: {
+    ...typography.small,
+    color: colors.text,
+  },
+  teamCard: {
+    marginBottom: spacing.lg,
+    padding: spacing.lg,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+  },
+  viewAllText: {
+    ...typography.small,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  teamMember: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  memberInfo: {
+    flex: 1,
+  },
+  memberHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  memberName: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '600',
+    marginRight: spacing.sm,
+  },
+  statusBadge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  statusText: {
+    ...typography.small,
+    color: colors.background,
+    fontWeight: '600',
+    fontSize: 10,
+    textTransform: 'capitalize',
+  },
+  memberTask: {
+    ...typography.small,
+    color: colors.text,
+    marginBottom: 2,
+  },
+  memberLocation: {
+    ...typography.small,
+    color: colors.textSecondary,
+  },
+  memberStats: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  memberStat: {
+    alignItems: 'center',
+  },
+  memberStatValue: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  memberStatLabel: {
+    ...typography.small,
+    color: colors.textSecondary,
+    fontSize: 10,
+  },
+  clientCard: {
+    marginBottom: spacing.lg,
+    padding: spacing.lg,
+  },
+  clientItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  clientInfo: {
+    flex: 1,
+  },
+  clientName: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  clientLocation: {
+    ...typography.small,
+    color: colors.textSecondary,
+  },
+  clientStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  clientStat: {
+    alignItems: 'center',
+  },
+  clientStatValue: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  clientStatLabel: {
+    ...typography.small,
+    color: colors.textSecondary,
+    fontSize: 10,
+  },
+  satisfactionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  satisfactionValue: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '600',
+    marginLeft: 2,
+  },
+  quickActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  actionButton: {
+    flex: 1,
+    minWidth: '45%',
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 12,
+    padding: spacing.lg,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  actionButtonText: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '500',
+    marginTop: spacing.sm,
+  },
+});
+
+export default SupervisorDashboard;

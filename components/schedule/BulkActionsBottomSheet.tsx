@@ -9,48 +9,48 @@ import type { ScheduleEntry } from '../../hooks/useScheduleStorage';
 import type { Cleaner } from '../../hooks/useClientData';
 
 interface BulkActionsBottomSheetProps {
-  bottomSheetRef: React.RefObject<BottomSheet>;
-  selectedEntries: ScheduleEntry[];
-  cleaners: Cleaner[];
-  onReassignCleaner: (cleanerName: string) => void;
-  onChangeStatus: (status: string) => void;
-  onMoveToDay: (day: string) => void;
-  onDuplicate: () => void;
-  onDelete: () => void;
+  visible: boolean;
+  selectedCount: number;
   onClose: () => void;
+  onBulkDelete: () => Promise<void>;
+  onBulkUpdate: (updates: any) => Promise<void>;
 }
 
 const BulkActionsBottomSheet = memo(({
-  bottomSheetRef,
-  selectedEntries,
-  cleaners,
-  onReassignCleaner,
-  onChangeStatus,
-  onMoveToDay,
-  onDuplicate,
-  onDelete,
+  visible,
+  selectedCount,
   onClose,
+  onBulkDelete,
+  onBulkUpdate,
 }: BulkActionsBottomSheetProps) => {
-  console.log('BulkActionsBottomSheet rendered with', selectedEntries.length, 'selected entries');
+  console.log('BulkActionsBottomSheet rendered with', selectedCount, 'selected entries');
 
-  const snapPoints = useMemo(() => ['25%', '50%', '75%'], []);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
 
-  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-  const statuses = ['scheduled', 'in-progress', 'completed', 'cancelled'];
+  const handleBulkDelete = useCallback(async () => {
+    try {
+      setIsDeleting(true);
+      await onBulkDelete();
+      onClose();
+    } catch (error) {
+      console.error('Error in bulk delete:', error);
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [onBulkDelete, onClose]);
 
-  const totalHours = useMemo(() => {
-    return selectedEntries.reduce((sum, entry) => sum + entry.hours, 0);
-  }, [selectedEntries]);
-
-  const uniqueCleaners = useMemo(() => {
-    const cleanerNames = new Set(selectedEntries.map(entry => entry.cleanerName));
-    return Array.from(cleanerNames);
-  }, [selectedEntries]);
-
-  const uniqueClients = useMemo(() => {
-    const clientNames = new Set(selectedEntries.map(entry => entry.clientName));
-    return Array.from(clientNames);
-  }, [selectedEntries]);
+  const handleBulkUpdate = useCallback(async (updates: any) => {
+    try {
+      setIsUpdating(true);
+      await onBulkUpdate(updates);
+      onClose();
+    } catch (error) {
+      console.error('Error in bulk update:', error);
+    } finally {
+      setIsUpdating(false);
+    }
+  }, [onBulkUpdate, onClose]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -62,28 +62,20 @@ const BulkActionsBottomSheet = memo(({
     }
   };
 
-  if (selectedEntries.length === 0) {
+  if (!visible || selectedCount === 0) {
     return null;
   }
 
   return (
-    <BottomSheet
-      ref={bottomSheetRef}
-      index={-1}
-      snapPoints={snapPoints}
-      enablePanDownToClose
-      onClose={onClose}
-      backgroundStyle={{ backgroundColor: colors.background }}
-      handleIndicatorStyle={{ backgroundColor: colors.border }}
-    >
-      <BottomSheetView style={styles.container}>
+    <View style={styles.overlay}>
+      <View style={styles.container}>
         <View style={styles.header}>
           <View style={styles.headerInfo}>
             <Icon name="checkmark-circle" size={24} style={{ color: colors.primary }} />
             <View style={styles.headerText}>
               <Text style={styles.title}>Bulk Actions</Text>
               <Text style={styles.subtitle}>
-                {selectedEntries.length} entries selected • {totalHours}h total
+                {selectedCount} entries selected
               </Text>
             </View>
           </View>
@@ -92,92 +84,30 @@ const BulkActionsBottomSheet = memo(({
           </TouchableOpacity>
         </View>
 
-        {/* Selection Summary */}
-        <View style={styles.summarySection}>
-          <Text style={styles.sectionTitle}>Selection Summary</Text>
-          <View style={styles.summaryGrid}>
-            <View style={styles.summaryItem}>
-              <Text style={styles.summaryLabel}>Cleaners</Text>
-              <Text style={styles.summaryValue}>{uniqueCleaners.join(', ')}</Text>
-            </View>
-            <View style={styles.summaryItem}>
-              <Text style={styles.summaryLabel}>Clients</Text>
-              <Text style={styles.summaryValue}>{uniqueClients.join(', ')}</Text>
-            </View>
-          </View>
-        </View>
-
         {/* Quick Actions */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Quick Actions</Text>
+          <Text style={styles.sectionTitle}>Actions</Text>
           <View style={styles.actionGrid}>
-            <TouchableOpacity style={styles.quickAction} onPress={onDuplicate}>
-              <Icon name="copy" size={20} style={{ color: colors.primary }} />
-              <Text style={styles.quickActionText}>Duplicate</Text>
+            <TouchableOpacity 
+              style={styles.quickAction} 
+              onPress={() => handleBulkUpdate({ status: 'completed' })}
+              disabled={isUpdating}
+            >
+              <Icon name="checkmark" size={20} style={{ color: colors.success }} />
+              <Text style={[styles.quickActionText, { color: colors.success }]}>
+                {isUpdating ? 'Updating...' : 'Mark Complete'}
+              </Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.quickAction} onPress={onDelete}>
+            <TouchableOpacity 
+              style={styles.quickAction} 
+              onPress={handleBulkDelete}
+              disabled={isDeleting}
+            >
               <Icon name="trash" size={20} style={{ color: colors.danger }} />
-              <Text style={[styles.quickActionText, { color: colors.danger }]}>Delete</Text>
+              <Text style={[styles.quickActionText, { color: colors.danger }]}>
+                {isDeleting ? 'Deleting...' : 'Delete'}
+              </Text>
             </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Reassign Cleaner */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Reassign Cleaner</Text>
-          <View style={styles.cleanerGrid}>
-            {cleaners.filter(c => c.isActive).slice(0, 6).map(cleaner => (
-              <TouchableOpacity
-                key={cleaner.id}
-                style={[
-                  styles.cleanerButton,
-                  uniqueCleaners.includes(cleaner.name) && styles.cleanerButtonActive
-                ]}
-                onPress={() => onReassignCleaner(cleaner.name)}
-              >
-                <Text style={[
-                  styles.cleanerButtonText,
-                  uniqueCleaners.includes(cleaner.name) && styles.cleanerButtonTextActive
-                ]}>
-                  {cleaner.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {/* Change Status */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Change Status</Text>
-          <View style={styles.statusGrid}>
-            {statuses.map(status => (
-              <TouchableOpacity
-                key={status}
-                style={[styles.statusButton, { borderColor: getStatusColor(status) }]}
-                onPress={() => onChangeStatus(status)}
-              >
-                <View style={[styles.statusIndicator, { backgroundColor: getStatusColor(status) }]} />
-                <Text style={styles.statusButtonText}>
-                  {status.charAt(0).toUpperCase() + status.slice(1).replace('-', ' ')}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {/* Move to Day */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Move to Day</Text>
-          <View style={styles.dayGrid}>
-            {days.map(day => (
-              <TouchableOpacity
-                key={day}
-                style={styles.dayButton}
-                onPress={() => onMoveToDay(day.toLowerCase())}
-              >
-                <Text style={styles.dayButtonText}>{day.substring(0, 3)}</Text>
-              </TouchableOpacity>
-            ))}
           </View>
         </View>
 
@@ -188,23 +118,29 @@ const BulkActionsBottomSheet = memo(({
             onPress={onClose}
             variant="secondary"
             style={styles.actionButton}
-          />
-          <Button
-            text={`Apply to ${selectedEntries.length} entries`}
-            onPress={onClose}
-            variant="primary"
-            style={styles.actionButton}
+            disabled={isDeleting || isUpdating}
           />
         </View>
-      </BottomSheetView>
-    </BottomSheet>
+      </View>
+    </View>
   );
 });
 
 const styles = StyleSheet.create({
+  overlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    zIndex: 1000,
+  },
   container: {
-    flex: 1,
+    backgroundColor: colors.background,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
     paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xl,
   },
   header: {
     flexDirection: 'row',
