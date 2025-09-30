@@ -89,7 +89,7 @@ const LiveMap: React.FC<LiveMapProps> = ({ cleaners = [], onCleanerPress }) => {
         <Icon name="map" size={48} style={{ color: colors.textSecondary }} />
         <Text style={styles.mapPlaceholderTitle}>Live Map View</Text>
         <Text style={styles.mapPlaceholderText}>
-          Note: react-native-maps is not supported in Natively web environment.
+          Note: Live map monitoring isn't ready yet.
           {'\n'}
           In a production app, this would show a real-time map with cleaner locations.
         </Text>
