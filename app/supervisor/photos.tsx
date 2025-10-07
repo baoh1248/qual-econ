@@ -14,7 +14,7 @@ interface PhotoDoc {
   id: string;
   uri: string;
   timestamp: Date;
-  category: 'before' | 'during' | 'after' | 'issue' | 'completion';
+  category: 'before' | 'after';
   description: string;
   location?: { latitude: number; longitude: number };
   cleanerName: string;
@@ -29,10 +29,7 @@ interface PhotoStats {
   weekPhotos: number;
   byCategory: {
     before: number;
-    during: number;
     after: number;
-    issue: number;
-    completion: number;
   };
   byStatus: {
     pending: number;
@@ -82,8 +79,8 @@ export default function PhotosScreen() {
           id: '3',
           uri: 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=400',
           timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000),
-          category: 'issue',
-          description: 'Water damage found in restroom',
+          category: 'before',
+          description: 'Restroom before cleaning',
           cleanerName: 'Jane Smith',
           clientName: 'MedCenter Hospital',
           buildingName: 'Emergency Wing'
@@ -92,8 +89,8 @@ export default function PhotosScreen() {
           id: '4',
           uri: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400',
           timestamp: new Date(Date.now() - 6 * 60 * 60 * 1000),
-          category: 'completion',
-          description: 'All tasks completed successfully',
+          category: 'after',
+          description: 'Food court after cleaning',
           cleanerName: 'Mike Johnson',
           clientName: 'Downtown Mall',
           buildingName: 'Food Court'
@@ -102,8 +99,18 @@ export default function PhotosScreen() {
           id: '5',
           uri: 'https://images.unsplash.com/photo-1563013544-824ae1b704d3?w=400',
           timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000),
-          category: 'during',
-          description: 'Deep cleaning in progress',
+          category: 'before',
+          description: 'Warehouse before deep cleaning',
+          cleanerName: 'John Doe',
+          clientName: 'TechCorp Inc.',
+          buildingName: 'Warehouse'
+        },
+        {
+          id: '6',
+          uri: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=400',
+          timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000),
+          category: 'after',
+          description: 'Warehouse after deep cleaning',
           cleanerName: 'John Doe',
           clientName: 'TechCorp Inc.',
           buildingName: 'Warehouse'
@@ -123,10 +130,7 @@ export default function PhotosScreen() {
         }).length,
         byCategory: {
           before: mockPhotos.filter(p => p.category === 'before').length,
-          during: mockPhotos.filter(p => p.category === 'during').length,
           after: mockPhotos.filter(p => p.category === 'after').length,
-          issue: mockPhotos.filter(p => p.category === 'issue').length,
-          completion: mockPhotos.filter(p => p.category === 'completion').length,
         },
         byStatus: {
           pending: Math.floor(mockPhotos.length * 0.3),
@@ -147,21 +151,15 @@ export default function PhotosScreen() {
   const getCategoryIcon = (category: PhotoDoc['category']) => {
     switch (category) {
       case 'before': return 'camera-outline';
-      case 'during': return 'time-outline';
       case 'after': return 'checkmark-circle-outline';
-      case 'issue': return 'warning-outline';
-      case 'completion': return 'trophy-outline';
       default: return 'image-outline';
     }
   };
 
   const getCategoryColor = (category: PhotoDoc['category']) => {
     switch (category) {
-      case 'before': return colors.primary;
-      case 'during': return colors.warning;
+      case 'before': return colors.warning;
       case 'after': return colors.success;
-      case 'issue': return colors.danger;
-      case 'completion': return colors.success;
       default: return colors.textSecondary;
     }
   };
@@ -276,7 +274,7 @@ export default function PhotosScreen() {
               </Text>
             </TouchableOpacity>
             
-            {(['before', 'during', 'after', 'issue', 'completion'] as PhotoDoc['category'][]).map(category => (
+            {(['before', 'after'] as PhotoDoc['category'][]).map(category => (
               <TouchableOpacity
                 key={category}
                 style={[styles.categoryButton, selectedCategory === category && styles.categoryButtonActive]}

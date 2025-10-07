@@ -1,5 +1,5 @@
 
-import React, { memo, useState, useEffect } from 'react';
+import React, { memo, useState, useEffect, useMemo } from 'react';
 import { View, Text, Modal, ScrollView, TouchableOpacity, StyleSheet, Platform, Alert } from 'react-native';
 import { colors, spacing, typography, commonStyles, getContrastColor } from '../../styles/commonStyles';
 import Icon from '../Icon';
@@ -21,6 +21,9 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
   const [searchQuery, setSearchQuery] = useState('');
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
   const [transferToDelete, setTransferToDelete] = useState<InventoryTransfer | null>(null);
+  
+  // NEW: Building filter state
+  const [selectedBuilding, setSelectedBuilding] = useState<string>('all');
 
   useEffect(() => {
     if (visible) {
@@ -41,6 +44,28 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
       setLoading(false);
     }
   };
+
+  // NEW: Get unique buildings from transfers
+  const uniqueBuildings = useMemo(() => {
+    const buildings = new Set(transfers.map(t => t.destination));
+    return Array.from(buildings).sort();
+  }, [transfers]);
+
+  // NEW: Filter transfers by building and search query
+  const filteredTransfers = useMemo(() => {
+    return transfers.filter(transfer => {
+      // Building filter
+      const matchesBuilding = selectedBuilding === 'all' || transfer.destination === selectedBuilding;
+      
+      // Search filter
+      const matchesSearch = searchQuery === '' || 
+        transfer.destination.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        transfer.items.some(item => item.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        transfer.transferredBy.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      return matchesBuilding && matchesSearch;
+    });
+  }, [transfers, selectedBuilding, searchQuery]);
 
   const handleDeleteTransfer = (transfer: InventoryTransfer) => {
     console.log('Delete transfer requested:', transfer.id);
@@ -80,12 +105,6 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
       setTransferToDelete(null);
     }
   };
-
-  const filteredTransfers = transfers.filter(transfer => 
-    transfer.destination.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    transfer.items.some(item => item.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
-    transfer.transferredBy.toLowerCase().includes(searchQuery.toLowerCase())
-  );
 
   const groupTransfersByDate = (transfers: InventoryTransfer[]) => {
     const groups: { [key: string]: InventoryTransfer[] } = {};
@@ -181,11 +200,82 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
                   </View>
                   <View style={{ alignItems: 'center' }}>
                     <Text style={[typography.h2, { color: colors.info }]}>
-                      {new Set(transfers.map(t => t.destination)).size}
+                      {uniqueBuildings.length}
                     </Text>
-                    <Text style={[typography.caption, { color: colors.textSecondary }]}>Locations</Text>
+                    <Text style={[typography.caption, { color: colors.textSecondary }]}>Buildings</Text>
                   </View>
                 </View>
+              </View>
+
+              {/* NEW: Building Filter */}
+              <View style={{ marginBottom: spacing.md }}>
+                <Text style={[typography.caption, { 
+                  color: colors.textSecondary, 
+                  marginBottom: spacing.xs,
+                  fontWeight: '600',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.5
+                }]}>
+                  Filter by Building
+                </Text>
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false}
+                  style={{ marginHorizontal: -spacing.sm }}
+                  contentContainerStyle={{ paddingHorizontal: spacing.sm }}
+                >
+                  <TouchableOpacity
+                    style={[
+                      styles.buildingFilterButton,
+                      selectedBuilding === 'all' && styles.buildingFilterButtonActive
+                    ]}
+                    onPress={() => setSelectedBuilding('all')}
+                  >
+                    <Icon 
+                      name="business" 
+                      size={16} 
+                      style={{ 
+                        color: selectedBuilding === 'all' ? colors.background : colors.primary,
+                        marginRight: spacing.xs 
+                      }} 
+                    />
+                    <Text style={[
+                      styles.buildingFilterText,
+                      selectedBuilding === 'all' && styles.buildingFilterTextActive
+                    ]}>
+                      All Buildings ({transfers.length})
+                    </Text>
+                  </TouchableOpacity>
+                  
+                  {uniqueBuildings.map((building) => {
+                    const count = transfers.filter(t => t.destination === building).length;
+                    return (
+                      <TouchableOpacity
+                        key={building}
+                        style={[
+                          styles.buildingFilterButton,
+                          selectedBuilding === building && styles.buildingFilterButtonActive
+                        ]}
+                        onPress={() => setSelectedBuilding(building)}
+                      >
+                        <Icon 
+                          name="location" 
+                          size={16} 
+                          style={{ 
+                            color: selectedBuilding === building ? colors.background : colors.primary,
+                            marginRight: spacing.xs 
+                          }} 
+                        />
+                        <Text style={[
+                          styles.buildingFilterText,
+                          selectedBuilding === building && styles.buildingFilterTextActive
+                        ]}>
+                          {building} ({count})
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
               </View>
 
               <ScrollView showsVerticalScrollIndicator={false}>
@@ -193,10 +283,16 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
                   <View style={{ alignItems: 'center', paddingVertical: spacing.xxl }}>
                     <Icon name="archive" size={48} style={{ color: colors.textSecondary, marginBottom: spacing.md }} />
                     <Text style={[typography.body, { color: colors.textSecondary, textAlign: 'center' }]}>
-                      No transfer history found
+                      {selectedBuilding === 'all' 
+                        ? 'No transfer history found'
+                        : `No transfers found for ${selectedBuilding}`
+                      }
                     </Text>
-                    <Text style={[typography.caption, { color: colors.textSecondary, textAlign: 'center' }]}>
-                      Transfer records will appear here once items are sent
+                    <Text style={[typography.caption, { color: colors.textSecondary, textAlign: 'center', marginTop: spacing.xs }]}>
+                      {selectedBuilding === 'all'
+                        ? 'Transfer records will appear here once items are sent'
+                        : 'Try selecting a different building or view all transfers'
+                      }
                     </Text>
                   </View>
                 ) : (
@@ -373,6 +469,33 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
       </Modal>
     </>
   );
+});
+
+const styles = StyleSheet.create({
+  buildingFilterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 20,
+    backgroundColor: colors.backgroundAlt,
+    marginRight: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  buildingFilterButtonActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  buildingFilterText: {
+    ...typography.small,
+    color: colors.text,
+    fontWeight: '500',
+  },
+  buildingFilterTextActive: {
+    color: colors.background,
+    fontWeight: '600',
+  },
 });
 
 TransferHistoryModal.displayName = 'TransferHistoryModal';

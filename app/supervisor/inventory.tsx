@@ -91,7 +91,6 @@ const SupervisorInventoryScreen = () => {
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [showSendItemsModal, setShowSendItemsModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
-  const [itemToDelete, setItemToDelete] = useState<InventoryItem | null>(null);
   const [requestToReject, setRequestToReject] = useState<RestockRequest | null>(null);
 
   // Form states
@@ -129,7 +128,7 @@ const SupervisorInventoryScreen = () => {
       setIsLoading(true);
       console.log('Loading inventory data from database...');
 
-      // Load inventory items
+      // Load inventory items - FIXED: Use correct table name
       const inventoryData = await executeQuery<InventoryItem>('select', 'inventory_items');
       console.log('Loaded inventory items:', inventoryData.length);
 
@@ -394,38 +393,6 @@ const SupervisorInventoryScreen = () => {
     }
   }, [inventory, executeQuery, showToast]);
 
-  // Request restock
-  const requestRestock = useCallback(async (itemId: string) => {
-    try {
-      const item = inventory.find(i => i.id === itemId);
-      if (!item) return;
-
-      const request: Omit<RestockRequest, 'id'> = {
-        item_id: itemId,
-        item_name: item.name,
-        requested_by: 'Supervisor',
-        requested_at: new Date().toISOString(),
-        quantity: item.reorder_quantity || item.min_stock * 2,
-        priority: item.current_stock <= item.min_stock * 0.5 ? 'high' : 'medium',
-        status: 'pending',
-        notes: `Restock request for ${item.name}`,
-      };
-
-      const requestWithId = {
-        ...request,
-        id: `request-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      };
-
-      await executeQuery('insert', 'restock_requests', requestWithId);
-      
-      setRestockRequests(prev => [...prev, requestWithId]);
-      showToast('Restock request submitted', 'success');
-    } catch (error) {
-      console.error('Error requesting restock:', error);
-      showToast('Failed to submit restock request', 'error');
-    }
-  }, [inventory, executeQuery, showToast]);
-
   // Approve restock request
   const approveRestockRequest = useCallback(async (requestId: string) => {
     try {
@@ -489,20 +456,91 @@ const SupervisorInventoryScreen = () => {
     }
   }, [inventory, executeQuery, showToast]);
 
-  // Delete item
-  const removeItem = useCallback(async (itemId: string) => {
+  // NEW: Delete item function - Completely rewritten
+  const handleDeleteItem = useCallback(async (itemId: string) => {
     try {
-      console.log('Deleting item with ID:', itemId);
-      await executeQuery('delete', 'inventory_items', null, { id: itemId });
+      console.log('╔════════════════════════════════════════╗');
+      console.log('║   STARTING ITEM DELETION PROCESS      ║');
+      console.log('╚════════════════════════════════════════╝');
+      console.log('Target Item ID:', itemId);
+      console.log('Current inventory count:', inventory.length);
       
-      setInventory(prev => prev.filter(i => i.id !== itemId));
-      setItemToDelete(null);
-      showToast('Item deleted successfully', 'success');
-    } catch (error) {
-      console.error('Error deleting item:', error);
-      showToast('Failed to delete item', 'error');
+      // Find the item to verify it exists
+      const itemToDelete = inventory.find(item => item.id === itemId);
+      if (!itemToDelete) {
+        console.error('ERROR: Item not found in inventory');
+        showToast('Item not found', 'error');
+        return;
+      }
+      
+      console.log('Item found:', itemToDelete.name);
+      console.log('Executing database delete operation...');
+      
+      // Execute the delete operation in the database
+      await executeQuery('delete', 'inventory_items', null, { id: itemId });
+      console.log('✓ Database delete operation successful');
+      
+      // Update the local state
+      console.log('Updating local state...');
+      setInventory(currentInventory => {
+        const updatedInventory = currentInventory.filter(item => item.id !== itemId);
+        console.log('✓ State updated. New count:', updatedInventory.length);
+        return updatedInventory;
+      });
+      
+      // Show success message
+      showToast(`"${itemToDelete.name}" deleted successfully`, 'success');
+      
+      console.log('╔════════════════════════════════════════╗');
+      console.log('║   DELETION COMPLETED SUCCESSFULLY     ║');
+      console.log('╚════════════════════════════════════════╝');
+    } catch (error: any) {
+      console.error('╔════════════════════════════════════════╗');
+      console.error('║   DELETION FAILED                     ║');
+      console.error('╚════════════════════════════════════════╝');
+      console.error('Error type:', error?.constructor?.name);
+      console.error('Error message:', error?.message);
+      console.error('Full error:', error);
+      showToast(`Failed to delete item: ${error?.message || 'Unknown error'}`, 'error');
     }
-  }, [executeQuery, showToast]);
+  }, [inventory, executeQuery, showToast]);
+
+  // NEW: Confirm delete with Alert
+  const confirmDeleteItem = useCallback((item: InventoryItem) => {
+    console.log('═══════════════════════════════════════');
+    console.log('DELETE CONFIRMATION REQUESTED');
+    console.log('Item ID:', item.id);
+    console.log('Item Name:', item.name);
+    console.log('═══════════════════════════════════════');
+    
+    Alert.alert(
+      'Delete Item',
+      `Are you sure you want to delete "${item.name}"?\n\nThis action cannot be undone.`,
+      [
+        { 
+          text: 'Cancel', 
+          style: 'cancel',
+          onPress: () => {
+            console.log('User cancelled deletion');
+          }
+        },
+        { 
+          text: 'Delete', 
+          style: 'destructive',
+          onPress: () => {
+            console.log('User confirmed deletion, proceeding...');
+            handleDeleteItem(item.id);
+          }
+        }
+      ],
+      { 
+        cancelable: true,
+        onDismiss: () => {
+          console.log('Alert dismissed');
+        }
+      }
+    );
+  }, [handleDeleteItem]);
 
   // Open edit modal
   const openEditModal = (item: InventoryItem) => {
@@ -560,30 +598,6 @@ const SupervisorInventoryScreen = () => {
     }
   }, [selectedItem, editItemForm, executeQuery, showToast]);
 
-  // Confirm delete item - FIXED
-  const confirmDeleteItem = () => {
-    if (!itemToDelete) return;
-    
-    Alert.alert(
-      'Delete Item',
-      `Are you sure you want to delete "${itemToDelete.name}"? This action cannot be undone.`,
-      [
-        { 
-          text: 'Cancel', 
-          style: 'cancel',
-          onPress: () => setItemToDelete(null)
-        },
-        { 
-          text: 'Delete', 
-          style: 'destructive',
-          onPress: () => {
-            removeItem(itemToDelete.id);
-          }
-        }
-      ]
-    );
-  };
-
   // Confirm reject request
   const confirmRejectRequest = () => {
     if (!requestToReject) return;
@@ -605,6 +619,10 @@ const SupervisorInventoryScreen = () => {
   // Handle items sent
   const handleItemsSent = useCallback(async (itemIds: string[], quantities: number[]) => {
     try {
+      console.log('=== HANDLING ITEMS SENT ===');
+      console.log('Item IDs:', itemIds);
+      console.log('Quantities:', quantities);
+      
       for (let i = 0; i < itemIds.length; i++) {
         const itemId = itemIds[i];
         const quantity = quantities[i];
@@ -612,6 +630,7 @@ const SupervisorInventoryScreen = () => {
         
         if (item && quantity > 0) {
           const newStock = Math.max(0, item.current_stock - quantity);
+          console.log(`Updating ${item.name}: ${item.current_stock} -> ${newStock}`);
           await updateStock(itemId, newStock);
         }
       }
@@ -693,13 +712,6 @@ const SupervisorInventoryScreen = () => {
       );
     }
   };
-
-  // Trigger delete confirmation when itemToDelete changes
-  useEffect(() => {
-    if (itemToDelete) {
-      confirmDeleteItem();
-    }
-  }, [itemToDelete]);
 
   if (isLoading) {
     return (
@@ -815,128 +827,80 @@ const SupervisorInventoryScreen = () => {
         />
       </View>
 
-      {/* Inventory List */}
+      {/* Inventory Grid - COMPACT LAYOUT */}
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {filteredInventory.map((item) => {
-          const stockStatus = getStockStatus(item);
-          const pendingRequests = restockRequests.filter(r => r.item_id === item.id && r.status === 'pending');
-          
-          return (
-            <AnimatedCard key={item.id} style={styles.itemCard}>
-              <View style={styles.itemHeader}>
-                <View style={styles.itemTitleRow}>
-                  <Icon 
-                    name={getCategoryIcon(item.category)} 
-                    size={24} 
-                    style={{ color: colors.primary }} 
-                  />
-                  <View style={styles.itemTitleContainer}>
-                    <Text style={styles.itemName}>{item.name}</Text>
-                    <Text style={styles.itemSupplier}>{item.supplier}</Text>
-                  </View>
-                  <View style={styles.itemActions}>
-                    <IconButton
-                      icon="create"
-                      onPress={() => openEditModal(item)}
-                      size={20}
-                      color={colors.textSecondary}
+        <View style={styles.inventoryGrid}>
+          {filteredInventory.map((item) => {
+            const stockStatus = getStockStatus(item);
+            const pendingRequests = restockRequests.filter(r => r.item_id === item.id && r.status === 'pending');
+            
+            return (
+              <View key={item.id} style={styles.gridItem}>
+                <AnimatedCard style={styles.compactCard}>
+                  {/* Item Header */}
+                  <View style={styles.compactHeader}>
+                    <Icon 
+                      name={getCategoryIcon(item.category)} 
+                      size={20} 
+                      style={{ color: colors.primary }} 
                     />
-                    <IconButton
-                      icon="trash"
-                      onPress={() => setItemToDelete(item)}
-                      size={20}
-                      color={colors.danger}
-                    />
+                    <View style={styles.compactActions}>
+                      <IconButton
+                        icon="create"
+                        onPress={() => openEditModal(item)}
+                        size={18}
+                        color={colors.textSecondary}
+                      />
+                      <IconButton
+                        icon="trash"
+                        onPress={() => confirmDeleteItem(item)}
+                        size={18}
+                        color={colors.danger}
+                      />
+                    </View>
                   </View>
-                </View>
-                
-                <View style={styles.stockInfo}>
-                  <View style={[styles.stockBadge, { backgroundColor: 
+
+                  {/* Item Name */}
+                  <Text style={styles.compactItemName} numberOfLines={2}>
+                    {item.name}
+                  </Text>
+
+                  {/* Stock Badge */}
+                  <View style={[styles.compactStockBadge, { backgroundColor: 
                     stockStatus === 'low' ? colors.danger : 
                     stockStatus === 'medium' ? colors.warning : colors.success 
                   }]}>
-                    <Text style={styles.stockBadgeText}>
+                    <Text style={styles.compactStockText}>
                       {item.current_stock} {item.unit}
                     </Text>
                   </View>
-                  <Text style={styles.stockRange}>
-                    Min: {item.min_stock} • Max: {item.max_stock}
+
+                  {/* Location */}
+                  <Text style={styles.compactLocation} numberOfLines={1}>
+                    {item.location}
                   </Text>
-                </View>
-              </View>
 
-              <View style={styles.itemDetails}>
-                <View style={styles.itemDetailRow}>
-                  <Text style={styles.itemDetailLabel}>Location:</Text>
-                  <Text style={styles.itemDetailValue}>{item.location}</Text>
-                </View>
-                <View style={styles.itemDetailRow}>
-                  <Text style={styles.itemDetailLabel}>Cost:</Text>
-                  <Text style={styles.itemDetailValue}>${item.cost.toFixed(2)}</Text>
-                </View>
-                <View style={styles.itemDetailRow}>
-                  <Text style={styles.itemDetailLabel}>Auto-reorder:</Text>
-                  <TouchableOpacity
-                    onPress={() => toggleAutoReorder(item.id)}
-                    style={styles.toggleButton}
-                  >
-                    <Text style={[styles.toggleButtonText, { 
-                      color: item.auto_reorder_enabled ? colors.success : colors.textSecondary 
-                    }]}>
-                      {item.auto_reorder_enabled ? 'Enabled' : 'Disabled'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {pendingRequests.length > 0 && (
-                <View style={styles.pendingRequests}>
-                  <Text style={styles.pendingRequestsTitle}>Pending Requests:</Text>
-                  {pendingRequests.map((request) => (
-                    <View key={request.id} style={styles.requestItem}>
-                      <View style={styles.requestInfo}>
-                        <Text style={styles.requestQuantity}>{request.quantity} {item.unit}</Text>
-                        <Text style={[styles.requestPriority, { color: getPriorityColor(request.priority) }]}>
-                          {request.priority.toUpperCase()}
-                        </Text>
-                      </View>
-                      <View style={styles.requestActions}>
-                        <IconButton
-                          icon="checkmark"
-                          onPress={() => approveRestockRequest(request.id)}
-                          size={20}
-                          color={colors.success}
-                        />
-                        <IconButton
-                          icon="close"
-                          onPress={() => setRequestToReject(request)}
-                          size={20}
-                          color={colors.danger}
-                        />
-                      </View>
+                  {/* Pending Requests Badge */}
+                  {pendingRequests.length > 0 && (
+                    <View style={styles.pendingBadge}>
+                      <Icon name="alert-circle" size={12} style={{ color: colors.background }} />
+                      <Text style={styles.pendingBadgeText}>{pendingRequests.length}</Text>
                     </View>
-                  ))}
-                </View>
-              )}
+                  )}
 
-              <View style={styles.itemActions}>
-                <Button
-                  title="Update Stock"
-                  onPress={() => handleStockUpdate(item)}
-                  style={[buttonStyles.secondary, { flex: 1, marginRight: spacing.sm }]}
-                />
-                
-                {stockStatus === 'low' && (
-                  <Button
-                    title="Request Restock"
-                    onPress={() => requestRestock(item.id)}
-                    style={[buttonStyles.primary, { flex: 1 }]}
-                  />
-                )}
+                  {/* Update Stock Button */}
+                  <TouchableOpacity
+                    style={styles.compactUpdateButton}
+                    onPress={() => handleStockUpdate(item)}
+                  >
+                    <Icon name="create" size={14} style={{ color: colors.background }} />
+                    <Text style={styles.compactUpdateButtonText}>Update</Text>
+                  </TouchableOpacity>
+                </AnimatedCard>
               </View>
-            </AnimatedCard>
-          );
-        })}
+            );
+          })}
+        </View>
 
         {filteredInventory.length === 0 && (
           <View style={styles.emptyState}>
@@ -1454,115 +1418,86 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: spacing.lg,
   },
-  itemCard: {
-    marginBottom: spacing.md,
-    padding: spacing.lg,
-  },
-  itemHeader: {
-    marginBottom: spacing.md,
-  },
-  itemTitleRow: {
+  // NEW COMPACT GRID STYLES
+  inventoryGrid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: -spacing.xs,
+  },
+  gridItem: {
+    width: '50%', // 2 items per row on mobile
+    paddingHorizontal: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  compactCard: {
+    padding: spacing.md,
+    position: 'relative',
+  },
+  compactHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: spacing.sm,
   },
-  itemTitleContainer: {
-    flex: 1,
-    marginLeft: spacing.md,
+  compactActions: {
+    flexDirection: 'row',
+    gap: spacing.xs,
   },
-  itemName: {
+  compactItemName: {
     ...typography.body,
     color: colors.text,
     fontWeight: '600',
-    marginBottom: 2,
+    marginBottom: spacing.sm,
+    minHeight: 40,
   },
-  itemSupplier: {
-    ...typography.small,
-    color: colors.textSecondary,
-  },
-  itemActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  stockInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  stockBadge: {
+  compactStockBadge: {
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
-    borderRadius: 12,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+    marginBottom: spacing.xs,
   },
-  stockBadgeText: {
+  compactStockText: {
     ...typography.small,
     color: colors.background,
     fontWeight: '600',
   },
-  stockRange: {
+  compactLocation: {
     ...typography.small,
     color: colors.textSecondary,
-  },
-  itemDetails: {
-    marginBottom: spacing.md,
-  },
-  itemDetailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.xs,
-  },
-  itemDetailLabel: {
-    ...typography.small,
-    color: colors.textSecondary,
-  },
-  itemDetailValue: {
-    ...typography.small,
-    color: colors.text,
-    fontWeight: '500',
-  },
-  toggleButton: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-  },
-  toggleButtonText: {
-    ...typography.small,
-    fontWeight: '500',
-  },
-  pendingRequests: {
-    backgroundColor: colors.backgroundAlt,
-    borderRadius: 8,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-  },
-  pendingRequestsTitle: {
-    ...typography.small,
-    color: colors.text,
-    fontWeight: '600',
     marginBottom: spacing.sm,
   },
-  requestItem: {
+  pendingBadge: {
+    position: 'absolute',
+    top: spacing.sm,
+    right: spacing.sm,
+    backgroundColor: colors.warning,
+    borderRadius: 12,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.xs,
+    gap: 2,
   },
-  requestInfo: {
-    flex: 1,
-  },
-  requestQuantity: {
+  pendingBadgeText: {
     ...typography.small,
-    color: colors.text,
-    fontWeight: '500',
-  },
-  requestPriority: {
-    ...typography.small,
+    color: colors.background,
     fontWeight: '600',
+    fontSize: 10,
   },
-  requestActions: {
+  compactUpdateButton: {
     flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: 8,
+    paddingVertical: spacing.xs,
     gap: spacing.xs,
+  },
+  compactUpdateButtonText: {
+    ...typography.small,
+    color: colors.background,
+    fontWeight: '600',
   },
   emptyState: {
     alignItems: 'center',

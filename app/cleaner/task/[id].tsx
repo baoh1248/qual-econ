@@ -13,7 +13,7 @@ interface PhotoDoc {
   id: string;
   uri: string;
   timestamp: Date;
-  category: 'before' | 'during' | 'after' | 'issue' | 'completion';
+  category: 'before' | 'after';
   description: string;
   location?: { latitude: number; longitude: number };
 }
@@ -36,10 +36,7 @@ interface TaskInfo {
 
 const photoCategories = [
   { key: 'before', label: 'Before', icon: 'time', color: colors.warning },
-  { key: 'during', label: 'Progress', icon: 'build', color: colors.primary },
   { key: 'after', label: 'After', icon: 'checkmark-circle', color: colors.success },
-  { key: 'issue', label: 'Issue', icon: 'warning', color: colors.danger },
-  { key: 'completion', label: 'Complete', icon: 'star', color: colors.success },
 ];
 
 export default function TaskDetail() {
@@ -72,7 +69,7 @@ export default function TaskDetail() {
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoDoc | null>(null);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [photoDescription, setPhotoDescription] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<PhotoDoc['category']>('during');
+  const [selectedCategory, setSelectedCategory] = useState<PhotoDoc['category']>('before');
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -120,7 +117,7 @@ export default function TaskDetail() {
   const completeTask = () => {
     const completedItems = task.checklistItems.filter(item => item.completed).length;
     const totalItems = task.checklistItems.length;
-    const hasAfterPhotos = task.photos.some(photo => photo.category === 'after' || photo.category === 'completion');
+    const hasAfterPhotos = task.photos.some(photo => photo.category === 'after');
     
     if (completedItems < totalItems) {
       Alert.alert(
@@ -134,7 +131,7 @@ export default function TaskDetail() {
     } else if (!hasAfterPhotos) {
       Alert.alert(
         'Missing Documentation',
-        'Consider adding completion photos to document the finished work. Continue anyway?',
+        'Consider adding "after" photos to document the finished work. Continue anyway?',
         [
           { text: 'Add Photos', style: 'cancel', onPress: () => setShowCategoryModal(true) },
           { text: 'Complete Anyway', onPress: finishTask },
@@ -167,7 +164,7 @@ export default function TaskDetail() {
     }));
   };
 
-  const takePhoto = async (category: PhotoDoc['category'] = 'during') => {
+  const takePhoto = async (category: PhotoDoc['category'] = 'before') => {
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
@@ -234,7 +231,7 @@ export default function TaskDetail() {
   };
 
   const getCategoryInfo = (category: PhotoDoc['category']) => {
-    return photoCategories.find(cat => cat.key === category) || photoCategories[1];
+    return photoCategories.find(cat => cat.key === category) || photoCategories[0];
   };
 
   const getStatusStyle = (status: string) => {

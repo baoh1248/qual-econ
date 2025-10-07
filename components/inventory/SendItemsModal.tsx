@@ -103,6 +103,10 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
     try {
       setSending(true);
       
+      console.log('=== SENDING ITEMS ===');
+      console.log('Destination:', destination);
+      console.log('Selected items:', selectedItems);
+      
       // Log the transfer
       await logInventoryTransfer({
         items: selectedItems.map(item => ({
@@ -119,18 +123,26 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
       // Update inventory quantities
       const itemIds = selectedItems.map(item => item.id);
       const quantities = selectedItems.map(item => item.quantity);
-      onSend(itemIds, quantities);
+      
+      console.log('Calling onSend with:', { itemIds, quantities });
+      await onSend(itemIds, quantities);
 
       // Show success message
       const itemSummary = selectedItems.map(item => `${item.quantity} ${item.name}`).join(', ');
-      Alert.alert(
-        'Items Sent Successfully',
-        `${itemSummary} have been sent to ${destination}`,
-        [{ text: 'OK', onPress: () => {
-          onSuccess?.();
-          onClose();
-        }}]
-      );
+      
+      console.log('Items sent successfully, closing modal...');
+      
+      // Close modal first
+      onClose();
+      
+      // Then show success alert
+      setTimeout(() => {
+        Alert.alert(
+          'Items Sent Successfully',
+          `${itemSummary} have been sent to ${destination}`,
+          [{ text: 'OK', onPress: () => onSuccess?.() }]
+        );
+      }, 300);
 
     } catch (error) {
       console.error('Failed to send items:', error);

@@ -8,7 +8,6 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 
 // Components
 import LoadingSpinner from '../../components/LoadingSpinner';
-import RecurringTaskModal from '../../components/schedule/RecurringTaskModal';
 import CompanyLogo from '../../components/CompanyLogo';
 import DragDropScheduleGrid from '../../components/schedule/DragDropScheduleGrid';
 import Toast from '../../components/Toast';
@@ -16,6 +15,7 @@ import ScheduleModal from '../../components/schedule/ScheduleModal';
 import ConflictResolutionPanel from '../../components/schedule/ConflictResolutionPanel';
 import ErrorBoundary from '../../components/ErrorBoundary';
 import BulkActionsBottomSheet from '../../components/schedule/BulkActionsBottomSheet';
+import RecurringTaskModal from '../../components/schedule/RecurringTaskModal';
 import IconButton from '../../components/IconButton';
 import Icon from '../../components/Icon';
 
@@ -347,6 +347,95 @@ const ScheduleView = () => {
       return time;
     }
   };
+
+  // Recurring task handlers
+  const handleOpenRecurringModal = useCallback(() => {
+    console.log('Opening recurring task modal');
+    setShowRecurringModal(true);
+  }, []);
+
+  const handleCloseRecurringModal = useCallback(() => {
+    console.log('Closing recurring task modal');
+    setShowRecurringModal(false);
+  }, []);
+
+  const handleSaveRecurringTask = useCallback(async (taskData: any) => {
+    try {
+      console.log('=== SAVING RECURRING TASK ===');
+      console.log('Task data:', taskData);
+
+      const { clientBuilding, cleanerNames, hours, startTime, pattern, notes } = taskData;
+      const weekId = getCurrentWeekId();
+
+      // Generate recurring entries based on pattern
+      const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+      const recurringId = `recurring-${Date.now()}`;
+
+      if (pattern.type === 'weekly' && pattern.daysOfWeek) {
+        // Create entries for each selected day of the week
+        for (const dayIndex of pattern.daysOfWeek) {
+          const dayName = daysOfWeek[dayIndex];
+          
+          const newEntry: ScheduleEntry = {
+            id: `entry-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            clientName: clientBuilding.clientName,
+            buildingName: clientBuilding.buildingName,
+            cleanerName: cleanerNames[0], // For backward compatibility
+            cleanerNames: cleanerNames,
+            hours: hours,
+            day: dayName as any,
+            date: weekId,
+            startTime: startTime || '09:00',
+            endTime: startTime ? addHoursToTime(startTime, hours) : '17:00',
+            status: 'scheduled' as const,
+            weekId,
+            notes: notes || '',
+            priority: 'medium' as const,
+            isRecurring: true,
+            recurringId: recurringId,
+          };
+
+          await addScheduleEntry(weekId, newEntry);
+        }
+      } else if (pattern.type === 'daily') {
+        // Create entries for all weekdays
+        const weekdays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
+        
+        for (const dayName of weekdays) {
+          const newEntry: ScheduleEntry = {
+            id: `entry-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            clientName: clientBuilding.clientName,
+            buildingName: clientBuilding.buildingName,
+            cleanerName: cleanerNames[0],
+            cleanerNames: cleanerNames,
+            hours: hours,
+            day: dayName as any,
+            date: weekId,
+            startTime: startTime || '09:00',
+            endTime: startTime ? addHoursToTime(startTime, hours) : '17:00',
+            status: 'scheduled' as const,
+            weekId,
+            notes: notes || '',
+            priority: 'medium' as const,
+            isRecurring: true,
+            recurringId: recurringId,
+          };
+
+          await addScheduleEntry(weekId, newEntry);
+        }
+      }
+
+      showToast('Recurring task created successfully', 'success');
+      forceRefreshSchedule();
+      handleCloseRecurringModal();
+      
+      console.log('=== RECURRING TASK SAVED SUCCESSFULLY ===');
+    } catch (error) {
+      console.error('=== RECURRING TASK SAVE FAILED ===');
+      console.error('Error saving recurring task:', error);
+      showToast('Failed to create recurring task', 'error');
+    }
+  }, [getCurrentWeekId, addScheduleEntry, showToast, forceRefreshSchedule, handleCloseRecurringModal]);
 
   // Cell press handlers
   const handleCellPress = useCallback((clientBuilding: ClientBuilding, day: string) => {
@@ -758,14 +847,20 @@ const ScheduleView = () => {
             </View>
             <View style={styles.headerActions}>
               <IconButton
-                icon="refresh"
-                onPress={forceRefreshSchedule}
+                icon="repeat"
+                onPress={handleOpenRecurringModal}
                 size={24}
                 color={colors.text}
               />
               <IconButton
                 icon="add"
                 onPress={() => setModalType('add-client')}
+                size={24}
+                color={colors.text}
+              />
+              <IconButton
+                icon="business"
+                onPress={() => setModalType('add-building')}
                 size={24}
                 color={colors.text}
               />
@@ -860,11 +955,8 @@ const ScheduleView = () => {
             visible={showRecurringModal}
             clientBuildings={clientBuildings}
             cleaners={cleaners}
-            onClose={() => setShowRecurringModal(false)}
-            onSave={(taskData) => {
-              console.log('Saving recurring task:', taskData);
-              setShowRecurringModal(false);
-            }}
+            onClose={handleCloseRecurringModal}
+            onSave={handleSaveRecurringTask}
           />
 
           {/* Bulk Actions Bottom Sheet */}

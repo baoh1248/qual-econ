@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Text, View, ScrollView, TouchableOpacity, Dimensions, RefreshControl, Modal, StyleSheet } from 'react-native';
 import { Platform } from 'react-native';
 import { router } from 'expo-router';
@@ -15,6 +15,8 @@ import { commonStyles, colors, spacing, typography, statusColors } from '../../s
 import { useToast } from '../../hooks/useToast';
 import { useInventoryAlerts } from '../../hooks/useInventoryAlerts';
 import { useDatabase } from '../../hooks/useDatabase';
+import { useScheduleStorage } from '../../hooks/useScheduleStorage';
+import { useClientData } from '../../hooks/useClientData';
 
 interface TeamMember {
   id: string;
@@ -24,7 +26,6 @@ interface TeamMember {
   location: string;
   todayHours: number;
   tasksCompleted: number;
-  efficiency: number;
 }
 
 interface TaskSummary {
@@ -41,91 +42,134 @@ interface Client {
   location: string;
   status: 'active' | 'completed' | 'pending';
   tasksToday: number;
-  satisfaction: number;
 }
 
 const SupervisorDashboard = () => {
   const { showToast } = useToast();
   const { config, syncStatus } = useDatabase();
   const { lowStockCount, criticalStockCount } = useInventoryAlerts();
+  const { getWeekSchedule, getCurrentWeekId, getWeekStats } = useScheduleStorage();
+  const { cleaners = [] } = useClientData();
   
   const [refreshing, setRefreshing] = useState(false);
   const [showDatabaseSetup, setShowDatabaseSetup] = useState(false);
   const [showLiveMap, setShowLiveMap] = useState(false);
 
-  // Mock data - in a real app, this would come from your database
-  const [teamMembers] = useState<TeamMember[]>([
-    {
-      id: '1',
-      name: 'John Doe',
-      status: 'on-duty',
-      currentTask: 'TechCorp Main Office',
-      location: 'Downtown',
-      todayHours: 6.5,
-      tasksCompleted: 3,
-      efficiency: 92,
-    },
-    {
-      id: '2',
-      name: 'Jane Smith',
-      status: 'on-duty',
-      currentTask: 'MedCenter Hospital',
-      location: 'Medical District',
-      todayHours: 7.2,
-      tasksCompleted: 4,
-      efficiency: 88,
-    },
-    {
-      id: '3',
-      name: 'Johnson Smith',
-      status: 'break',
-      currentTask: 'Lunch Break',
-      location: 'Downtown Mall',
-      todayHours: 4.0,
-      tasksCompleted: 2,
-      efficiency: 85,
-    },
-  ]);
+  // Get current week schedule and stats
+  const currentWeekId = getCurrentWeekId();
+  const currentWeekSchedule = getWeekSchedule(currentWeekId);
+  const weekStats = getWeekStats(currentWeekId);
 
-  const [taskSummary] = useState<TaskSummary>({
-    total: 24,
-    completed: 18,
-    inProgress: 4,
-    pending: 2,
-    overdue: 0,
-  });
+  // Calculate team members from schedule data
+  const teamMembers = useMemo<TeamMember[]>(() => {
+    const cleanerMap = new Map<string, TeamMember>();
 
-  const [clients] = useState<Client[]>([
-    {
-      id: '1',
-      name: 'TechCorp Inc.',
-      location: 'Downtown',
-      status: 'active',
-      tasksToday: 8,
-      satisfaction: 4.8,
-    },
-    {
-      id: '2',
-      name: 'MedCenter Hospital',
-      location: 'Medical District',
-      status: 'active',
-      tasksToday: 12,
-      satisfaction: 4.9,
-    },
-    {
-      id: '3',
-      name: 'Downtown Mall',
-      location: 'Shopping District',
-      status: 'completed',
-      tasksToday: 4,
-      satisfaction: 4.6,
-    },
-  ]);
+    // Initialize with all active cleaners
+    cleaners.filter(c => c.isActive).forEach(cleaner => {
+      cleanerMap.set(cleaner.name, {
+        id: cleaner.id,
+        name: cleaner.name,
+        status: 'off-duty',
+        currentTask: 'No tasks assigned',
+        location: 'Unknown',
+        todayHours: 0,
+        tasksCompleted: 0,
+      });
+    });
+
+    // Update with schedule data
+    currentWeekSchedule.forEach(entry => {
+      const cleanerNames = entry.cleanerNames && entry.cleanerNames.length > 0 
+        ? entry.cleanerNames 
+        : (entry.cleanerName ? [entry.cleanerName] : []);
+
+      cleanerNames.forEach(cleanerName => {
+        const existing = cleanerMap.get(cleanerName);
+        if (existing) {
+          // Update hours
+          existing.todayHours += entry.hours || 0;
+          
+          // Update task count
+          if (entry.status === 'completed') {
+            existing.tasksCompleted += 1;
+          }
+          
+          // Update status based on entry status
+          if (entry.status === 'in-progress') {
+            existing.status = 'on-duty';
+            existing.currentTask = `${entry.clientName} - ${entry.buildingName}`;
+            existing.location = entry.clientName;
+          } else if (entry.status === 'scheduled' && existing.status === 'off-duty') {
+            existing.status = 'on-duty';
+            existing.currentTask = `${entry.clientName} - ${entry.buildingName}`;
+            existing.location = entry.clientName;
+          }
+        } else {
+          // Add new cleaner from schedule
+          cleanerMap.set(cleanerName, {
+            id: `cleaner-${cleanerName}`,
+            name: cleanerName,
+            status: entry.status === 'in-progress' ? 'on-duty' : 'off-duty',
+            currentTask: `${entry.clientName} - ${entry.buildingName}`,
+            location: entry.clientName,
+            todayHours: entry.hours || 0,
+            tasksCompleted: entry.status === 'completed' ? 1 : 0,
+          });
+        }
+      });
+    });
+
+    return Array.from(cleanerMap.values());
+  }, [cleaners, currentWeekSchedule]);
+
+  // Calculate task summary from schedule
+  const taskSummary = useMemo<TaskSummary>(() => {
+    const total = currentWeekSchedule.length;
+    const completed = currentWeekSchedule.filter(e => e.status === 'completed').length;
+    const inProgress = currentWeekSchedule.filter(e => e.status === 'in-progress').length;
+    const pending = currentWeekSchedule.filter(e => e.status === 'scheduled').length;
+    const overdue = 0; // Could be calculated based on dates
+
+    return {
+      total,
+      completed,
+      inProgress,
+      pending,
+      overdue,
+    };
+  }, [currentWeekSchedule]);
+
+  // Calculate client status from schedule
+  const clients = useMemo<Client[]>(() => {
+    const clientMap = new Map<string, Client>();
+
+    currentWeekSchedule.forEach(entry => {
+      const existing = clientMap.get(entry.clientName);
+      if (existing) {
+        existing.tasksToday += 1;
+        if (entry.status === 'completed') {
+          existing.status = 'completed';
+        } else if (entry.status === 'in-progress' && existing.status !== 'completed') {
+          existing.status = 'active';
+        }
+      } else {
+        clientMap.set(entry.clientName, {
+          id: `client-${entry.clientName}`,
+          name: entry.clientName,
+          location: entry.buildingName,
+          status: entry.status === 'completed' ? 'completed' : 
+                  entry.status === 'in-progress' ? 'active' : 'pending',
+          tasksToday: 1,
+        });
+      }
+    });
+
+    return Array.from(clientMap.values());
+  }, [currentWeekSchedule]);
 
   useEffect(() => {
     // Auto-refresh data every 30 seconds
     const interval = setInterval(() => {
-      // In a real app, you'd refresh data from your database here
       console.log('Auto-refreshing dashboard data...');
     }, 30000);
 
@@ -160,12 +204,6 @@ const SupervisorDashboard = () => {
       default:
         return colors.textSecondary;
     }
-  };
-
-  const getEfficiencyColor = (efficiency: number) => {
-    if (efficiency >= 90) return colors.success;
-    if (efficiency >= 75) return colors.warning;
-    return colors.danger;
   };
 
   return (
@@ -283,17 +321,48 @@ const SupervisorDashboard = () => {
           </View>
         </AnimatedCard>
 
+        {/* Cleaners Management Card */}
+        <AnimatedCard style={styles.cleanersCard}>
+          <TouchableOpacity 
+            style={styles.cleanersHeader}
+            onPress={() => router.push('/supervisor/cleaners')}
+          >
+            <View style={styles.cleanersTitleRow}>
+              <Icon name="people" size={24} style={{ color: colors.primary }} />
+              <Text style={styles.cardTitle}>Cleaners Management</Text>
+            </View>
+            <Icon name="chevron-forward" size={20} style={{ color: colors.textSecondary }} />
+          </TouchableOpacity>
+          <Text style={styles.cleanersDescription}>
+            Manage your cleaning staff, view profiles, and track performance
+          </Text>
+          <View style={styles.cleanersStats}>
+            <View style={styles.cleanersStat}>
+              <Text style={styles.cleanersStatValue}>
+                {teamMembers.length}
+              </Text>
+              <Text style={styles.cleanersStatLabel}>Total Cleaners</Text>
+            </View>
+            <View style={styles.cleanersStat}>
+              <Text style={[styles.cleanersStatValue, { color: colors.success }]}>
+                {teamMembers.filter(m => m.status === 'on-duty').length}
+              </Text>
+              <Text style={styles.cleanersStatLabel}>Active Now</Text>
+            </View>
+          </View>
+        </AnimatedCard>
+
         {/* Task Progress */}
         <AnimatedCard style={styles.progressCard}>
           <View style={styles.progressHeader}>
             <Text style={styles.cardTitle}>Today&apos;s Progress</Text>
             <Text style={styles.progressPercentage}>
-              {Math.round((taskSummary.completed / taskSummary.total) * 100)}%
+              {taskSummary.total > 0 ? Math.round((taskSummary.completed / taskSummary.total) * 100) : 0}%
             </Text>
           </View>
           <View style={styles.progressContent}>
             <ProgressRing
-              progress={(taskSummary.completed / taskSummary.total) * 100}
+              progress={taskSummary.total > 0 ? (taskSummary.completed / taskSummary.total) * 100 : 0}
               size={80}
               strokeWidth={8}
               color={colors.primary}
@@ -323,7 +392,7 @@ const SupervisorDashboard = () => {
               <Text style={styles.viewAllText}>View All</Text>
             </TouchableOpacity>
           </View>
-          {teamMembers.map((member) => (
+          {teamMembers.slice(0, 5).map((member) => (
             <View key={member.id} style={styles.teamMember}>
               <View style={styles.memberInfo}>
                 <View style={styles.memberHeader}>
@@ -337,18 +406,12 @@ const SupervisorDashboard = () => {
               </View>
               <View style={styles.memberStats}>
                 <View style={styles.memberStat}>
-                  <Text style={styles.memberStatValue}>{member.todayHours}h</Text>
+                  <Text style={styles.memberStatValue}>{member.todayHours.toFixed(1)}h</Text>
                   <Text style={styles.memberStatLabel}>Hours</Text>
                 </View>
                 <View style={styles.memberStat}>
                   <Text style={styles.memberStatValue}>{member.tasksCompleted}</Text>
                   <Text style={styles.memberStatLabel}>Tasks</Text>
-                </View>
-                <View style={styles.memberStat}>
-                  <Text style={[styles.memberStatValue, { color: getEfficiencyColor(member.efficiency) }]}>
-                    {member.efficiency}%
-                  </Text>
-                  <Text style={styles.memberStatLabel}>Efficiency</Text>
                 </View>
               </View>
             </View>
@@ -363,7 +426,7 @@ const SupervisorDashboard = () => {
               <Text style={styles.viewAllText}>View Schedule</Text>
             </TouchableOpacity>
           </View>
-          {clients.map((client) => (
+          {clients.slice(0, 5).map((client) => (
             <View key={client.id} style={styles.clientItem}>
               <View style={styles.clientInfo}>
                 <Text style={styles.clientName}>{client.name}</Text>
@@ -373,13 +436,6 @@ const SupervisorDashboard = () => {
                 <View style={styles.clientStat}>
                   <Text style={styles.clientStatValue}>{client.tasksToday}</Text>
                   <Text style={styles.clientStatLabel}>Tasks Today</Text>
-                </View>
-                <View style={styles.clientStat}>
-                  <View style={styles.satisfactionRow}>
-                    <Icon name="star" size={16} style={{ color: colors.warning }} />
-                    <Text style={styles.satisfactionValue}>{client.satisfaction}</Text>
-                  </View>
-                  <Text style={styles.clientStatLabel}>Satisfaction</Text>
                 </View>
                 <View style={[styles.statusBadge, { backgroundColor: getStatusColor(client.status) }]}>
                   <Text style={styles.statusText}>{client.status}</Text>
@@ -397,6 +453,14 @@ const SupervisorDashboard = () => {
           >
             <Icon name="calendar" size={24} style={{ color: colors.primary }} />
             <Text style={styles.actionButtonText}>Schedule</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => router.push('/supervisor/cleaners')}
+          >
+            <Icon name="people" size={24} style={{ color: colors.primary }} />
+            <Text style={styles.actionButtonText}>Cleaners</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -556,6 +620,46 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   liveMapStatLabel: {
+    ...typography.small,
+    color: colors.textSecondary,
+  },
+  cleanersCard: {
+    marginBottom: spacing.lg,
+    padding: spacing.lg,
+  },
+  cleanersHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  cleanersTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  cleanersDescription: {
+    ...typography.small,
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
+  },
+  cleanersStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  cleanersStat: {
+    alignItems: 'center',
+  },
+  cleanersStatValue: {
+    ...typography.h2,
+    color: colors.primary,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  cleanersStatLabel: {
     ...typography.small,
     color: colors.textSecondary,
   },
@@ -721,17 +825,6 @@ const styles = StyleSheet.create({
     ...typography.small,
     color: colors.textSecondary,
     fontSize: 10,
-  },
-  satisfactionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 2,
-  },
-  satisfactionValue: {
-    ...typography.body,
-    color: colors.text,
-    fontWeight: '600',
-    marginLeft: 2,
   },
   quickActions: {
     flexDirection: 'row',

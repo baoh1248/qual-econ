@@ -11,7 +11,7 @@ export interface PhotoDoc {
   id: string;
   uri: string;
   timestamp: Date;
-  category: 'before' | 'during' | 'after' | 'issue' | 'completion';
+  category: 'before' | 'after';
   description: string;
   location?: { latitude: number; longitude: number };
 }
@@ -25,10 +25,7 @@ interface PhotoDocumentationProps {
 
 const photoCategories = [
   { key: 'before', label: 'Before', icon: 'time', color: colors.warning },
-  { key: 'during', label: 'Progress', icon: 'build', color: colors.primary },
   { key: 'after', label: 'After', icon: 'checkmark-circle', color: colors.success },
-  { key: 'issue', label: 'Issue', icon: 'warning', color: colors.danger },
-  { key: 'completion', label: 'Complete', icon: 'star', color: colors.success },
 ];
 
 export default function PhotoDocumentation({ 
@@ -41,9 +38,9 @@ export default function PhotoDocumentation({
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoDoc | null>(null);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [photoDescription, setPhotoDescription] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<PhotoDoc['category']>('during');
+  const [selectedCategory, setSelectedCategory] = useState<PhotoDoc['category']>('before');
 
-  const takePhoto = async (category: PhotoDoc['category'] = 'during') => {
+  const takePhoto = async (category: PhotoDoc['category'] = 'before') => {
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
@@ -103,7 +100,7 @@ export default function PhotoDocumentation({
   };
 
   const getCategoryInfo = (category: PhotoDoc['category']) => {
-    return photoCategories.find(cat => cat.key === category) || photoCategories[1];
+    return photoCategories.find(cat => cat.key === category) || photoCategories[0];
   };
 
   const photosByCategory = photoCategories.map(category => ({
