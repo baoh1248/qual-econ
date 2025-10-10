@@ -170,6 +170,10 @@ export default function CleanersScreen() {
   const resetForm = useCallback(() => {
     setFormData(initialFormData);
     setSelectedCleaner(null);
+    // Don't clear vacation data here - it should persist until modal is closed
+  }, []);
+
+  const resetVacationData = useCallback(() => {
     setCleanerVacations([]);
   }, []);
 
@@ -235,12 +239,13 @@ export default function CleanersScreen() {
       await addCleaner(newCleaner);
       setShowAddModal(false);
       resetForm();
+      resetVacationData();
       showToast('Cleaner added successfully', 'success');
     } catch (error) {
       console.error('Error adding cleaner:', error);
       showToast('Failed to add cleaner', 'error');
     }
-  }, [formData, validateForm, addCleaner, resetForm, showToast]);
+  }, [formData, validateForm, addCleaner, resetForm, resetVacationData, showToast]);
 
   const handleEditCleaner = useCallback(async () => {
     console.log('Editing cleaner with data:', formData);
@@ -267,12 +272,13 @@ export default function CleanersScreen() {
       await updateCleaner(selectedCleaner.id, updatedCleaner);
       setShowEditModal(false);
       resetForm();
+      resetVacationData();
       showToast('Cleaner updated successfully', 'success');
     } catch (error) {
       console.error('Error updating cleaner:', error);
       showToast('Failed to update cleaner', 'error');
     }
-  }, [selectedCleaner, formData, validateForm, updateCleaner, resetForm, showToast]);
+  }, [selectedCleaner, formData, validateForm, updateCleaner, resetForm, resetVacationData, showToast]);
 
   const handleDeleteCleaner = useCallback((cleaner: Cleaner) => {
     Alert.alert(
@@ -878,6 +884,7 @@ export default function CleanersScreen() {
           setShowAddModal(false);
           setShowEditModal(false);
           resetForm();
+          resetVacationData();
         }}
       >
         <View style={styles.modalOverlay}>
@@ -1185,6 +1192,7 @@ export default function CleanersScreen() {
                       setShowAddModal(false);
                       setShowEditModal(false);
                       resetForm();
+                      resetVacationData();
                     }}
                     variant="secondary"
                     style={styles.actionButton}
