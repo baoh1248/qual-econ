@@ -63,7 +63,7 @@ const DatabaseSetup: React.FC<DatabaseSetupProps> = ({ onClose }) => {
     // In a real app, you'd copy to clipboard
     Alert.alert(
       'Database Schema',
-      'The database schema has been copied to your clipboard. Paste it in the Supabase SQL editor.',
+      'The complete database schema (including client_projects, project_completions, and cleaner_vacations tables) has been copied to your clipboard. Paste it in the Supabase SQL editor to create all required tables.',
       [{ text: 'OK' }]
     );
   };
@@ -134,7 +134,7 @@ const DatabaseSetup: React.FC<DatabaseSetupProps> = ({ onClose }) => {
                   <Button
                     title="Open Supabase"
                     onPress={openSupabaseWebsite}
-                    style={[buttonStyles.outline, styles.stepButton]}
+                    style={buttonStyles.secondary}
                   />
                 </View>
               </View>
@@ -171,7 +171,7 @@ const DatabaseSetup: React.FC<DatabaseSetupProps> = ({ onClose }) => {
                   <Button
                     title="Copy Schema"
                     onPress={copyDatabaseSchema}
-                    style={[buttonStyles.secondary, styles.stepButton]}
+                    style={buttonStyles.secondary}
                   />
                 </View>
               </View>
@@ -185,13 +185,13 @@ const DatabaseSetup: React.FC<DatabaseSetupProps> = ({ onClose }) => {
                   title={isConnecting ? "Connecting..." : "Enable Supabase"}
                   onPress={handleEnableSupabase}
                   disabled={isConnecting}
-                  style={[buttonStyles.primary, { flex: 1 }]}
+                  style={buttonStyles.primary}
                 />
               ) : (
                 <Button
                   title="Disable Supabase"
                   onPress={handleDisableSupabase}
-                  style={[buttonStyles.outline, { flex: 1 }]}
+                  style={buttonStyles.secondary}
                 />
               )}
             </View>

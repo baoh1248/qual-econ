@@ -108,6 +108,28 @@ export default function CleanersScreen() {
     return matchesSearch && matchesSecurityLevel;
   });
 
+  // Add sample vacation data for testing
+  const addSampleVacation = useCallback(async (cleanerId: string, cleanerName: string) => {
+    const sampleVacation = {
+      cleaner_id: cleanerId,
+      cleaner_name: cleanerName,
+      start_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      end_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      reason: 'Annual vacation',
+      notes: 'Family trip',
+      status: 'approved' as const
+    };
+
+    try {
+      await executeQuery<CleanerVacation>('insert', 'cleaner_vacations', sampleVacation);
+      showToast('Sample vacation added successfully', 'success');
+      loadCleanerVacations(cleanerId); // Reload to show the new vacation
+    } catch (error) {
+      console.error('Error adding sample vacation:', error);
+      showToast('Failed to add sample vacation', 'error');
+    }
+  }, [executeQuery, showToast]);
+
   // FIXED: Load vacations for selected cleaner
   const loadCleanerVacations = useCallback(async (cleanerId: string) => {
     if (!config.useSupabase || !syncStatus.isOnline) {
@@ -1130,6 +1152,14 @@ export default function CleanersScreen() {
                       <View style={styles.noVacationsContainer}>
                         <Icon name="calendar-outline" size={32} style={{ color: colors.textSecondary }} />
                         <Text style={styles.noVacationsText}>No vacations scheduled</Text>
+                        {config.useSupabase && (
+                          <Button 
+                            text="Add Sample Vacation" 
+                            onPress={() => addSampleVacation(selectedCleaner.id, selectedCleaner.name)} 
+                            variant="secondary" 
+                            style={{ marginTop: spacing.md }}
+                          />
+                        )}
                       </View>
                     )}
                   </View>

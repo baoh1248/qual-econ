@@ -100,6 +100,47 @@ const ProjectsScreen = () => {
     loadProjects();
   }, []);
 
+  // Add sample data for testing if no projects exist
+  const addSampleProjects = useCallback(async () => {
+    if (projects.length > 0) return; // Don't add if projects already exist
+    
+    const sampleProjects = [
+      {
+        client_name: 'Mercedes',
+        project_name: 'Floor Polishing',
+        description: 'Monthly floor polishing and shine treatment',
+        frequency: 'monthly' as const,
+        is_included_in_contract: true,
+        billing_amount: 0,
+        status: 'active' as const,
+        next_scheduled_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        notes: 'Use premium floor polish'
+      },
+      {
+        client_name: 'Honda',
+        project_name: 'Deep Cleaning',
+        description: 'Quarterly deep cleaning of all areas',
+        frequency: 'quarterly' as const,
+        is_included_in_contract: false,
+        billing_amount: 500,
+        status: 'active' as const,
+        next_scheduled_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        notes: 'Includes carpet cleaning'
+      }
+    ];
+
+    try {
+      for (const project of sampleProjects) {
+        await executeQuery<ClientProject>('insert', 'client_projects', project);
+      }
+      showToast('Sample projects added successfully', 'success');
+      loadProjects(); // Reload to show the new projects
+    } catch (error) {
+      console.error('Error adding sample projects:', error);
+      showToast('Failed to add sample projects', 'error');
+    }
+  }, [projects.length, executeQuery, showToast, loadProjects]);
+
   useEffect(() => {
     applyFilters();
   }, [projects, searchQuery, filterStatus, filterBilling]);
@@ -578,7 +619,12 @@ const ProjectsScreen = () => {
           <View style={styles.emptyState}>
             <Icon name="folder-open-outline" size={64} style={{ color: colors.textSecondary }} />
             <Text style={styles.emptyStateText}>No projects found</Text>
-            <Button text="Add Project" onPress={() => setShowAddModal(true)} variant="primary" />
+            <View style={{ flexDirection: 'row', gap: spacing.md, marginTop: spacing.md }}>
+              <Button text="Add Project" onPress={() => setShowAddModal(true)} variant="primary" />
+              {config.useSupabase && (
+                <Button text="Add Sample Data" onPress={addSampleProjects} variant="secondary" />
+              )}
+            </View>
           </View>
         ) : (
           filteredProjects.map((project) => (
