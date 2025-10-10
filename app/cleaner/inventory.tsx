@@ -271,27 +271,6 @@ export default function InventoryScreen() {
     }
   };
 
-  const deleteItem = (itemId: string) => {
-    const item = inventory.find(i => i.id === itemId);
-    if (item) {
-      Alert.alert(
-        'Delete Item',
-        `Are you sure you want to delete "${item.name}"? This action cannot be undone.`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { 
-            text: 'Delete', 
-            style: 'destructive',
-            onPress: () => {
-              setInventory(prev => prev.filter(i => i.id !== itemId));
-              console.log(`Item deleted: ${item.name}`);
-            }
-          },
-        ]
-      );
-    }
-  };
-
   const updateStock = (itemId: string, newStock: number) => {
     setInventory(prev => prev.map(item => 
       item.id === itemId 
@@ -598,16 +577,6 @@ export default function InventoryScreen() {
                       </Text>
                     </TouchableOpacity>
                   )}
-                </View>
-
-                {/* Delete Button */}
-                <View style={[commonStyles.row, { marginTop: spacing.sm, justifyContent: 'flex-end' }]}>
-                  <IconButton
-                    icon="trash"
-                    onPress={() => deleteItem(item.id)}
-                    variant="danger"
-                    size="small"
-                  />
                 </View>
 
                 <Text style={[typography.small, { color: colors.textSecondary, marginTop: spacing.sm }]}>

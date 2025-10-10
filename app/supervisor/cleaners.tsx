@@ -108,32 +108,11 @@ export default function CleanersScreen() {
     return matchesSearch && matchesSecurityLevel;
   });
 
-  // Add sample vacation data for testing
-  const addSampleVacation = useCallback(async (cleanerId: string, cleanerName: string) => {
-    const sampleVacation = {
-      cleaner_id: cleanerId,
-      cleaner_name: cleanerName,
-      start_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      end_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      reason: 'Annual vacation',
-      notes: 'Family trip',
-      status: 'approved' as const
-    };
-
-    try {
-      await executeQuery<CleanerVacation>('insert', 'cleaner_vacations', sampleVacation);
-      showToast('Sample vacation added successfully', 'success');
-      loadCleanerVacations(cleanerId); // Reload to show the new vacation
-    } catch (error) {
-      console.error('Error adding sample vacation:', error);
-      showToast('Failed to add sample vacation', 'error');
-    }
-  }, [executeQuery, showToast]);
-
-  // FIXED: Load vacations for selected cleaner
+  // IMPROVED: Load vacations with better error handling and logging
   const loadCleanerVacations = useCallback(async (cleanerId: string) => {
     if (!config.useSupabase || !syncStatus.isOnline) {
-      console.log('Supabase not available, skipping vacation load');
+      console.log('⚠️ Supabase not available, skipping vacation load');
+      showToast('Database connection required for vacation management', 'warning');
       return;
     }
 
@@ -143,6 +122,7 @@ export default function CleanersScreen() {
       console.log('║   LOADING VACATIONS FOR CLEANER       ║');
       console.log('╚════════════════════════════════════════╝');
       console.log('Cleaner ID:', cleanerId);
+      console.log('Database config:', { useSupabase: config.useSupabase, isOnline: syncStatus.isOnline });
       
       const result = await executeQuery<CleanerVacation>(
         'select',
@@ -152,8 +132,9 @@ export default function CleanersScreen() {
       );
       
       console.log('✓ Vacations loaded from database:', result.length);
-      console.log('Vacation data:', JSON.stringify(result, null, 2));
-      console.log('Cleaner ID used for query:', cleanerId);
+      if (result.length > 0) {
+        console.log('Sample vacation:', JSON.stringify(result[0], null, 2));
+      }
       
       // Update state with fresh data from database
       setCleanerVacations(result);
@@ -163,6 +144,7 @@ export default function CleanersScreen() {
       console.error('╚════════════════════════════════════════╝');
       console.error('Error:', error);
       showToast('Failed to load vacations', 'error');
+      setCleanerVacations([]); // Clear vacations on error
     } finally {
       setIsLoadingVacations(false);
     }
@@ -171,10 +153,6 @@ export default function CleanersScreen() {
   const resetForm = useCallback(() => {
     setFormData(initialFormData);
     setSelectedCleaner(null);
-    // Don't clear vacation data here - it should persist until modal is closed
-  }, []);
-
-  const resetVacationData = useCallback(() => {
     setCleanerVacations([]);
   }, []);
 
@@ -240,13 +218,12 @@ export default function CleanersScreen() {
       await addCleaner(newCleaner);
       setShowAddModal(false);
       resetForm();
-      resetVacationData();
       showToast('Cleaner added successfully', 'success');
     } catch (error) {
       console.error('Error adding cleaner:', error);
       showToast('Failed to add cleaner', 'error');
     }
-  }, [formData, validateForm, addCleaner, resetForm, resetVacationData, showToast]);
+  }, [formData, validateForm, addCleaner, resetForm, showToast]);
 
   const handleEditCleaner = useCallback(async () => {
     console.log('Editing cleaner with data:', formData);
@@ -273,13 +250,12 @@ export default function CleanersScreen() {
       await updateCleaner(selectedCleaner.id, updatedCleaner);
       setShowEditModal(false);
       resetForm();
-      resetVacationData();
       showToast('Cleaner updated successfully', 'success');
     } catch (error) {
       console.error('Error updating cleaner:', error);
       showToast('Failed to update cleaner', 'error');
     }
-  }, [selectedCleaner, formData, validateForm, updateCleaner, resetForm, resetVacationData, showToast]);
+  }, [selectedCleaner, formData, validateForm, updateCleaner, resetForm, showToast]);
 
   const handleDeleteCleaner = useCallback((cleaner: Cleaner) => {
     Alert.alert(
@@ -305,12 +281,6 @@ export default function CleanersScreen() {
   }, [deleteCleaner, showToast]);
 
   const openEditModal = useCallback(async (cleaner: Cleaner) => {
-    console.log('╔════════════════════════════════════════╗');
-    console.log('║   OPENING EDIT MODAL FOR CLEANER      ║');
-    console.log('╚════════════════════════════════════════╝');
-    console.log('Cleaner:', cleaner.name);
-    console.log('Cleaner ID:', cleaner.id);
-    
     setSelectedCleaner(cleaner);
     setFormData({
       name: cleaner.name,
@@ -333,7 +303,7 @@ export default function CleanersScreen() {
     setShowEditModal(true);
   }, [loadCleanerVacations]);
 
-  // FIXED: Add vacation handler - properly updates state after insert
+  // IMPROVED: Add vacation with reload after success
   const handleAddVacation = useCallback(async () => {
     if (!selectedCleaner) {
       showToast('No cleaner selected', 'error');
@@ -346,7 +316,7 @@ export default function CleanersScreen() {
     }
 
     if (!config.useSupabase || !syncStatus.isOnline) {
-      showToast('Supabase not available. Please check your connection.', 'error');
+      showToast('Database connection required. Please check your connection.', 'error');
       return;
     }
 
@@ -380,8 +350,6 @@ export default function CleanersScreen() {
       };
 
       console.log('Inserting vacation:', JSON.stringify(newVacation, null, 2));
-      console.log('Cleaner ID being used for vacation:', selectedCleaner.id);
-      console.log('Cleaner name being used for vacation:', selectedCleaner.name);
 
       // Insert into database
       await executeQuery<CleanerVacation>(
@@ -392,7 +360,7 @@ export default function CleanersScreen() {
 
       console.log('✓ Vacation added to database successfully');
       
-      // Reload vacations from database to ensure consistency
+      // IMPROVED: Reload vacations from database to ensure consistency
       await loadCleanerVacations(selectedCleaner.id);
       
       showToast('Vacation added successfully', 'success');
@@ -405,8 +373,9 @@ export default function CleanersScreen() {
       console.error('Error:', error);
       showToast(`Failed to add vacation: ${error?.message || 'Unknown error'}`, 'error');
     }
-  }, [selectedCleaner, vacationStartDate, vacationEndDate, vacationReason, vacationNotes, config.useSupabase, syncStatus.isOnline, executeQuery, showToast, resetVacationForm]);
+  }, [selectedCleaner, vacationStartDate, vacationEndDate, vacationReason, vacationNotes, config.useSupabase, syncStatus.isOnline, executeQuery, showToast, resetVacationForm, loadCleanerVacations]);
 
+  // IMPROVED: Update vacation with reload after success
   const handleUpdateVacation = useCallback(async () => {
     if (!editingVacation || !selectedCleaner) {
       showToast('No vacation selected', 'error');
@@ -419,7 +388,7 @@ export default function CleanersScreen() {
     }
 
     if (!config.useSupabase || !syncStatus.isOnline) {
-      showToast('Supabase not available. Please check your connection.', 'error');
+      showToast('Database connection required. Please check your connection.', 'error');
       return;
     }
 
@@ -452,14 +421,8 @@ export default function CleanersScreen() {
 
       console.log('✓ Vacation updated successfully');
       
-      // FIXED: Update local state immediately
-      setCleanerVacations(prevVacations => 
-        prevVacations.map(v => 
-          v.id === editingVacation.id 
-            ? { ...v, ...updatedVacation }
-            : v
-        )
-      );
+      // IMPROVED: Reload vacations from database to ensure consistency
+      await loadCleanerVacations(selectedCleaner.id);
       
       showToast('Vacation updated successfully', 'success');
       setShowVacationModal(false);
@@ -471,11 +434,17 @@ export default function CleanersScreen() {
       console.error('Error:', error);
       showToast(`Failed to update vacation: ${error?.message || 'Unknown error'}`, 'error');
     }
-  }, [editingVacation, selectedCleaner, vacationStartDate, vacationEndDate, vacationReason, vacationNotes, config.useSupabase, syncStatus.isOnline, executeQuery, showToast, resetVacationForm]);
+  }, [editingVacation, selectedCleaner, vacationStartDate, vacationEndDate, vacationReason, vacationNotes, config.useSupabase, syncStatus.isOnline, executeQuery, showToast, resetVacationForm, loadCleanerVacations]);
 
+  // IMPROVED: Delete vacation with reload after success
   const handleDeleteVacation = useCallback(async (vacation: CleanerVacation) => {
     if (!config.useSupabase || !syncStatus.isOnline) {
-      showToast('Supabase not available. Please check your connection.', 'error');
+      showToast('Database connection required. Please check your connection.', 'error');
+      return;
+    }
+
+    if (!selectedCleaner) {
+      showToast('No cleaner selected', 'error');
       return;
     }
 
@@ -503,10 +472,8 @@ export default function CleanersScreen() {
 
               console.log('✓ Vacation deleted successfully');
               
-              // FIXED: Update local state immediately
-              setCleanerVacations(prevVacations => 
-                prevVacations.filter(v => v.id !== vacation.id)
-              );
+              // IMPROVED: Reload vacations from database to ensure consistency
+              await loadCleanerVacations(selectedCleaner.id);
               
               showToast('Vacation deleted successfully', 'success');
             } catch (error: any) {
@@ -520,7 +487,7 @@ export default function CleanersScreen() {
         }
       ]
     );
-  }, [config.useSupabase, syncStatus.isOnline, executeQuery, showToast]);
+  }, [config.useSupabase, syncStatus.isOnline, executeQuery, showToast, selectedCleaner, loadCleanerVacations]);
 
   const openVacationModal = useCallback((vacation?: CleanerVacation) => {
     if (vacation) {
@@ -893,7 +860,6 @@ export default function CleanersScreen() {
           setShowAddModal(false);
           setShowEditModal(false);
           resetForm();
-          resetVacationData();
         }}
       >
         <View style={styles.modalOverlay}>
@@ -1168,14 +1134,6 @@ export default function CleanersScreen() {
                       <View style={styles.noVacationsContainer}>
                         <Icon name="calendar-outline" size={32} style={{ color: colors.textSecondary }} />
                         <Text style={styles.noVacationsText}>No vacations scheduled</Text>
-                        {config.useSupabase && (
-                          <Button 
-                            text="Add Sample Vacation" 
-                            onPress={() => addSampleVacation(selectedCleaner.id, selectedCleaner.name)} 
-                            variant="secondary" 
-                            style={{ marginTop: spacing.md }}
-                          />
-                        )}
                       </View>
                     )}
                   </View>
@@ -1201,7 +1159,6 @@ export default function CleanersScreen() {
                       setShowAddModal(false);
                       setShowEditModal(false);
                       resetForm();
-                      resetVacationData();
                     }}
                     variant="secondary"
                     style={styles.actionButton}
