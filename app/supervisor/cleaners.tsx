@@ -153,6 +153,7 @@ export default function CleanersScreen() {
       
       console.log('✓ Vacations loaded from database:', result.length);
       console.log('Vacation data:', JSON.stringify(result, null, 2));
+      console.log('Cleaner ID used for query:', cleanerId);
       
       // Update state with fresh data from database
       setCleanerVacations(result);
@@ -304,6 +305,12 @@ export default function CleanersScreen() {
   }, [deleteCleaner, showToast]);
 
   const openEditModal = useCallback(async (cleaner: Cleaner) => {
+    console.log('╔════════════════════════════════════════╗');
+    console.log('║   OPENING EDIT MODAL FOR CLEANER      ║');
+    console.log('╚════════════════════════════════════════╝');
+    console.log('Cleaner:', cleaner.name);
+    console.log('Cleaner ID:', cleaner.id);
+    
     setSelectedCleaner(cleaner);
     setFormData({
       name: cleaner.name,
@@ -373,6 +380,8 @@ export default function CleanersScreen() {
       };
 
       console.log('Inserting vacation:', JSON.stringify(newVacation, null, 2));
+      console.log('Cleaner ID being used for vacation:', selectedCleaner.id);
+      console.log('Cleaner name being used for vacation:', selectedCleaner.name);
 
       // Insert into database
       await executeQuery<CleanerVacation>(
@@ -383,8 +392,8 @@ export default function CleanersScreen() {
 
       console.log('✓ Vacation added to database successfully');
       
-      // FIXED: Update local state immediately with the new vacation
-      setCleanerVacations(prevVacations => [...prevVacations, newVacation]);
+      // Reload vacations from database to ensure consistency
+      await loadCleanerVacations(selectedCleaner.id);
       
       showToast('Vacation added successfully', 'success');
       setShowVacationModal(false);
