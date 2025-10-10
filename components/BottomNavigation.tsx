@@ -29,6 +29,7 @@ export default function BottomNavigation({ role }: BottomNavigationProps) {
   const supervisorNavItems: NavItem[] = [
     { name: 'home', icon: 'home', path: '/supervisor', label: 'Dashboard' },
     { name: 'schedule', icon: 'calendar', path: '/supervisor/schedule', label: 'Schedule' },
+    { name: 'projects', icon: 'briefcase', path: '/supervisor/projects', label: 'Projects' },
     { name: 'inventory', icon: 'cube', path: '/supervisor/inventory', label: 'Inventory' },
     { name: 'photos', icon: 'camera', path: '/supervisor/photos', label: 'Photos' },
   ];

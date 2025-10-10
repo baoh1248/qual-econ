@@ -1,12 +1,4 @@
 
-import React, { memo, useMemo, useState, useCallback } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Dimensions, StyleSheet, Alert } from 'react-native';
-import { colors, spacing, typography } from '../../styles/commonStyles';
-import Icon from '../Icon';
-import type { ScheduleEntry } from '../../hooks/useScheduleStorage';
-import type { ClientBuilding, Client, Cleaner } from '../../hooks/useClientData';
-import { useConflictDetection } from '../../hooks/useConflictDetection';
-import { GestureHandlerRootView, PanGestureHandler } from 'react-native-gesture-handler';
 import Animated, { 
   useSharedValue, 
   useAnimatedStyle, 
@@ -15,6 +7,14 @@ import Animated, {
   withSpring,
   withTiming
 } from 'react-native-reanimated';
+import React, { memo, useMemo, useState, useCallback } from 'react';
+import { GestureHandlerRootView, PanGestureHandler } from 'react-native-gesture-handler';
+import UserScheduleView from './UserScheduleView';
+import Icon from '../Icon';
+import { colors, spacing, typography } from '../../styles/commonStyles';
+import type { ClientBuilding, Client, Cleaner } from '../../hooks/useClientData';
+import { View, Text, TouchableOpacity, ScrollView, Dimensions, StyleSheet, Alert } from 'react-native';
+import type { ScheduleEntry } from '../../hooks/useScheduleStorage';
 
 interface DragDropScheduleGridProps {
   clientBuildings: ClientBuilding[];
@@ -29,6 +29,9 @@ interface DragDropScheduleGridProps {
   onBulkSelect: (entries: ScheduleEntry[]) => void;
   bulkMode: boolean;
   selectedEntries: string[];
+  viewMode: 'building' | 'user';
+  onAddShiftToCleaner?: (cleaner: Cleaner, day: string) => void;
+  currentWeekId?: string;
 }
 
 const DragDropScheduleGrid = memo(({
@@ -42,1114 +45,289 @@ const DragDropScheduleGrid = memo(({
   onBuildingLongPress,
   onMoveEntry,
   onBulkSelect,
-  bulkMode = false,
-  selectedEntries = [],
+  bulkMode,
+  selectedEntries,
+  viewMode,
+  onAddShiftToCleaner,
+  currentWeekId,
 }: DragDropScheduleGridProps) => {
-  console.log('DragDropScheduleGrid rendered with enhanced error handling');
+  console.log('DragDropScheduleGrid rendered with viewMode:', viewMode, 'currentWeekId:', currentWeekId);
 
-  // FIXED: Ensure all arrays are properly initialized and validated
-  const safeClientBuildings = useMemo(() => {
-    try {
-      if (!Array.isArray(clientBuildings)) {
-        console.error('clientBuildings is not an array:', typeof clientBuildings, clientBuildings);
-        return [];
-      }
-      return clientBuildings.filter(building => 
-        building && 
-        typeof building === 'object' && 
-        building.id && 
-        building.clientName && 
-        building.buildingName
-      );
-    } catch (error) {
-      console.error('Error processing clientBuildings:', error);
-      return [];
+  // FIXED: Calculate the week's dates based on currentWeekId
+  const days = useMemo(() => {
+    console.log('Recalculating week dates for building view, week ID:', currentWeekId);
+    
+    let monday: Date;
+    
+    if (currentWeekId) {
+      // Parse week ID (format: YYYY-MM-DD, which is the Monday of the week)
+      const [year, month, day] = currentWeekId.split('-').map(Number);
+      monday = new Date(year, month - 1, day);
+      console.log('Using week ID date:', monday.toISOString());
+    } else {
+      // Fall back to current week
+      const today = new Date();
+      const dayOfWeek = today.getDay();
+      const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+      monday = new Date(today);
+      monday.setDate(today.getDate() + diff);
+      console.log('Using current week date:', monday.toISOString());
     }
+
+    const weekDays = [];
+    const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(monday);
+      date.setDate(monday.getDate() + i);
+      
+      weekDays.push({
+        name: dayNames[i],
+        date: `${date.getMonth() + 1}/${date.getDate()}`,
+      });
+    }
+
+    console.log('Building view week dates calculated:', weekDays.map(d => `${d.name} ${d.date}`).join(', '));
+    return weekDays;
+  }, [currentWeekId]); // FIXED: Recalculate when currentWeekId changes
+
+  const buildingsByClient = useMemo(() => {
+    const grouped = new Map<string, ClientBuilding[]>();
+    
+    for (const building of clientBuildings) {
+      if (!grouped.has(building.clientName)) {
+        grouped.set(building.clientName, []);
+      }
+      grouped.get(building.clientName)!.push(building);
+    }
+    
+    return grouped;
   }, [clientBuildings]);
 
-  const safeClients = useMemo(() => {
-    try {
-      if (!Array.isArray(clients)) {
-        console.error('clients is not an array:', typeof clients, clients);
-        return [];
-      }
-      return clients.filter(client => 
-        client && 
-        typeof client === 'object' && 
-        client.id && 
-        client.name
-      );
-    } catch (error) {
-      console.error('Error processing clients:', error);
-      return [];
-    }
-  }, [clients]);
+  const activeClients = useMemo(() => {
+    return clients.filter(client => 
+      client.isActive && buildingsByClient.has(client.name)
+    );
+  }, [clients, buildingsByClient]);
 
-  const safeCleaners = useMemo(() => {
-    try {
-      if (!Array.isArray(cleaners)) {
-        console.error('cleaners is not an array:', typeof cleaners, cleaners);
-        return [];
-      }
-      return cleaners.filter(cleaner => 
-        cleaner && 
-        typeof cleaner === 'object' && 
-        cleaner.id && 
-        cleaner.name
-      );
-    } catch (error) {
-      console.error('Error processing cleaners:', error);
-      return [];
-    }
-  }, [cleaners]);
-
-  const safeSchedule = useMemo(() => {
-    try {
-      if (!Array.isArray(schedule)) {
-        console.error('schedule is not an array:', typeof schedule, schedule);
-        return [];
-      }
-      return schedule.filter(entry => 
-        entry && 
-        typeof entry === 'object' && 
-        entry.id && 
-        entry.clientName && 
-        entry.buildingName && 
-        entry.day
-      );
-    } catch (error) {
-      console.error('Error processing schedule:', error);
-      return [];
-    }
+  const getEntriesForCell = useCallback((buildingName: string, day: string): ScheduleEntry[] => {
+    return schedule.filter(entry => 
+      entry.buildingName === buildingName && 
+      entry.day.toLowerCase() === day.toLowerCase()
+    );
   }, [schedule]);
 
-  const safeSelectedEntries = useMemo(() => {
-    try {
-      if (!Array.isArray(selectedEntries)) {
-        console.error('selectedEntries is not an array:', typeof selectedEntries, selectedEntries);
-        return [];
-      }
-      return selectedEntries.filter(id => typeof id === 'string' && id.length > 0);
-    } catch (error) {
-      console.error('Error processing selectedEntries:', error);
-      return [];
-    }
-  }, [selectedEntries]);
-
-  const days = useMemo(() => ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'], []);
-  const screenWidth = Dimensions.get('window').width;
-  const buildingColumnWidth = Math.max(180, screenWidth * 0.25);
-  const cellWidth = Math.max(100, (screenWidth - buildingColumnWidth) / 7);
-  const totalGridWidth = buildingColumnWidth + (cellWidth * days.length);
-
-  const [draggedEntry, setDraggedEntry] = useState<ScheduleEntry | null>(null);
-  const [dropTarget, setDropTarget] = useState<{ building: ClientBuilding; day: string } | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [previewConflicts, setPreviewConflicts] = useState<string[]>([]);
-
-  // Enhanced conflict detection with safe arrays
-  const { 
-    conflicts = [], 
-    getEntryConflicts, 
-    validateScheduleChange,
-    hasConflicts = false,
-    conflictSummary = { total: 0, critical: 0, high: 0, medium: 0, low: 0 }
-  } = useConflictDetection(safeSchedule, safeCleaners, safeClientBuildings);
-
-  // Animation values for drag and drop
-  const translateX = useSharedValue(0);
-  const translateY = useSharedValue(0);
-  const scale = useSharedValue(1);
-  const opacity = useSharedValue(1);
-
-  // FIXED: Safe grouping with better error handling
-  const buildingsByClient = useMemo(() => {
-    try {
-      const grouped = new Map<string, ClientBuilding[]>();
-      
-      if (safeClientBuildings.length === 0) {
-        console.log('No client buildings to group');
-        return grouped;
-      }
-
-      for (const building of safeClientBuildings) {
-        if (!building || !building.clientName) {
-          console.warn('Invalid building skipped:', building);
-          continue;
-        }
-
-        if (!grouped.has(building.clientName)) {
-          grouped.set(building.clientName, []);
-        }
-        grouped.get(building.clientName)!.push(building);
-      }
-      
-      console.log('Buildings grouped by client:', grouped.size, 'clients');
-      return grouped;
-    } catch (error) {
-      console.error('Error grouping buildings by client:', error);
-      return new Map<string, ClientBuilding[]>();
-    }
-  }, [safeClientBuildings]);
-
-  // FIXED: Safe schedule map with better error handling
-  const scheduleMap = useMemo(() => {
-    try {
-      const map = new Map<string, ScheduleEntry>();
-      
-      if (safeSchedule.length === 0) {
-        console.log('No schedule entries to map');
-        return map;
-      }
-
-      for (const entry of safeSchedule) {
-        if (!entry || !entry.clientName || !entry.buildingName || !entry.day) {
-          console.warn('Invalid schedule entry skipped:', entry);
-          continue;
-        }
-
-        const key = `${entry.clientName}|${entry.buildingName}|${entry.day.toLowerCase()}`;
-        map.set(key, entry);
-      }
-      
-      console.log('Schedule map created with', map.size, 'entries');
-      return map;
-    } catch (error) {
-      console.error('Error creating schedule map:', error);
-      return new Map<string, ScheduleEntry>();
-    }
-  }, [safeSchedule]);
-
-  // FIXED: Safe conflict map with better error handling
-  const entryConflictMap = useMemo(() => {
-    try {
-      const map = new Map<string, string[]>();
-      
-      if (!Array.isArray(conflicts) || conflicts.length === 0) {
-        console.log('No conflicts to map');
-        return map;
-      }
-      
-      for (const conflict of conflicts) {
-        if (!conflict || !Array.isArray(conflict.affectedEntries)) {
-          console.warn('Invalid conflict skipped:', conflict);
-          continue;
-        }
-
-        for (const entry of conflict.affectedEntries) {
-          if (!entry || !entry.id) {
-            console.warn('Invalid entry in conflict skipped:', entry);
-            continue;
-          }
-
-          if (!map.has(entry.id)) {
-            map.set(entry.id, []);
-          }
-          map.get(entry.id)!.push(conflict.id);
-        }
-      }
-      
-      console.log('Entry conflict map created with', map.size, 'entries');
-      return map;
-    } catch (error) {
-      console.error('Error creating entry conflict map:', error);
-      return new Map<string, string[]>();
-    }
-  }, [conflicts]);
-
-  // FIXED: Safe lookup function with comprehensive error handling
-  const getScheduleEntry = useCallback((clientName: string, buildingName: string, day: string): ScheduleEntry | null => {
-    try {
-      if (!clientName || !buildingName || !day) {
-        return null;
-      }
-
-      if (typeof clientName !== 'string' || typeof buildingName !== 'string' || typeof day !== 'string') {
-        console.error('Invalid parameter types for getScheduleEntry:', { clientName, buildingName, day });
-        return null;
-      }
-
-      const key = `${clientName}|${buildingName}|${day.toLowerCase()}`;
-      return scheduleMap.get(key) || null;
-    } catch (error) {
-      console.error('Error getting schedule entry:', error);
-      return null;
-    }
-  }, [scheduleMap]);
-
-  // Helper function to safely get cleaners from an entry
-  const getEntryCleaners = useCallback((entry: ScheduleEntry): string[] => {
-    try {
-      if (!entry) return [];
-      
-      if (Array.isArray(entry.cleanerNames) && entry.cleanerNames.length > 0) {
-        return entry.cleanerNames.filter(name => typeof name === 'string' && name.length > 0);
-      }
-      
-      if (typeof entry.cleanerName === 'string' && entry.cleanerName.length > 0) {
-        return [entry.cleanerName];
-      }
-      
-      return [];
-    } catch (error) {
-      console.error('Error getting entry cleaners:', error);
-      return [];
-    }
-  }, []);
-
-  // Enhanced color functions with safe defaults
   const getStatusColor = useCallback((status: string) => {
-    try {
-      if (typeof status !== 'string') return colors.border;
-      
-      switch (status.toLowerCase()) {
-        case 'scheduled': return colors.primary;
-        case 'in-progress': return colors.warning;
-        case 'completed': return colors.success;
-        case 'cancelled': return colors.danger;
-        default: return colors.border;
-      }
-    } catch (error) {
-      console.error('Error getting status color:', error);
-      return colors.border;
+    switch (status.toLowerCase()) {
+      case 'scheduled': return colors.primary;
+      case 'in-progress': return colors.warning;
+      case 'completed': return colors.success;
+      case 'cancelled': return colors.danger;
+      default: return colors.border;
     }
   }, []);
 
-  const getConflictSeverityColor = useCallback((severity: string) => {
-    try {
-      if (typeof severity !== 'string') return colors.textSecondary;
-      
-      switch (severity.toLowerCase()) {
-        case 'critical': return colors.danger;
-        case 'high': return '#FF6B35';
-        case 'medium': return colors.warning;
-        case 'low': return '#4ECDC4';
-        default: return colors.textSecondary;
-      }
-    } catch (error) {
-      console.error('Error getting conflict severity color:', error);
-      return colors.textSecondary;
-    }
-  }, []);
-
-  const getSecurityLevelColor = useCallback((level: string) => {
-    try {
-      if (typeof level !== 'string') return colors.text;
-      
-      switch (level.toLowerCase()) {
-        case 'high': return colors.danger;
-        case 'medium': return colors.warning;
-        case 'low': return colors.success;
-        default: return colors.text;
-      }
-    } catch (error) {
-      console.error('Error getting security level color:', error);
-      return colors.text;
-    }
-  }, []);
-
-  // FIXED: Safe conflict checking with proper validation
-  const hasEntryConflict = useCallback((entry: ScheduleEntry): boolean => {
-    try {
-      if (!entry || !entry.id || typeof entry.id !== 'string') {
-        return false;
-      }
-      return entryConflictMap.has(entry.id);
-    } catch (error) {
-      console.error('Error checking entry conflict:', error);
-      return false;
-    }
-  }, [entryConflictMap]);
-
-  const getEntryConflictSeverity = useCallback((entry: ScheduleEntry): string => {
-    try {
-      if (!entry || !entry.id || !entryConflictMap.has(entry.id)) {
-        return 'none';
-      }
-
-      if (typeof getEntryConflicts !== 'function') {
-        console.error('getEntryConflicts is not a function');
-        return 'none';
-      }
-
-      const entryConflicts = getEntryConflicts(entry.id);
-      if (!Array.isArray(entryConflicts) || entryConflicts.length === 0) {
-        return 'none';
-      }
-
-      // Return the highest severity
-      const severities = entryConflicts
-        .map(c => c && c.severity ? c.severity : 'none')
-        .filter(s => s !== 'none');
-      
-      if (severities.includes('critical')) return 'critical';
-      if (severities.includes('high')) return 'high';
-      if (severities.includes('medium')) return 'medium';
-      if (severities.includes('low')) return 'low';
-      return 'none';
-    } catch (error) {
-      console.error('Error getting entry conflict severity:', error);
-      return 'none';
-    }
-  }, [entryConflictMap, getEntryConflicts]);
-
-  // FIXED: Safe drop target detection
-  const findDropTarget = useCallback((x: number, y: number) => {
-    try {
-      if (typeof x !== 'number' || typeof y !== 'number' || isNaN(x) || isNaN(y)) {
-        return null;
-      }
-
-      // Calculate which day column we're over
-      const dayIndex = Math.floor((x - buildingColumnWidth) / cellWidth);
-      if (dayIndex < 0 || dayIndex >= days.length) {
-        return null;
-      }
-
-      // Calculate which building row we're over (approximate)
-      const headerHeight = 60;
-      const rowHeight = 60;
-      const buildingIndex = Math.floor((y - headerHeight) / rowHeight);
-      
-      const allBuildings = Array.from(buildingsByClient.values()).flat();
-      if (buildingIndex < 0 || buildingIndex >= allBuildings.length) {
-        return null;
-      }
-
-      const targetBuilding = allBuildings[buildingIndex];
-      const targetDay = days[dayIndex];
-
-      if (targetBuilding && targetDay && targetBuilding.id && targetBuilding.clientName && targetBuilding.buildingName) {
-        return {
-          building: targetBuilding,
-          day: targetDay.toLowerCase()
-        };
-      }
-
-      return null;
-    } catch (error) {
-      console.error('Error finding drop target:', error);
-      return null;
-    }
-  }, [buildingColumnWidth, cellWidth, days, buildingsByClient]);
-
-  // FIXED: Safe drop validation
-  const validateDrop = useCallback((entry: ScheduleEntry, target: { building: ClientBuilding; day: string }) => {
-    try {
-      if (!entry || !target || !target.building || !target.day) {
-        return { canDrop: false, conflicts: [], warnings: [] };
-      }
-
-      if (typeof validateScheduleChange !== 'function') {
-        console.error('validateScheduleChange is not a function');
-        return { canDrop: true, conflicts: [], warnings: [] };
-      }
-
-      // Create a temporary entry for validation
-      const tempEntry = {
-        ...entry,
-        clientName: target.building.clientName,
-        buildingName: target.building.buildingName,
-        day: target.day as any
-      };
-
-      const validation = validateScheduleChange(tempEntry, entry.id);
-      
-      return {
-        canDrop: validation.canProceed,
-        conflicts: validation.conflicts || [],
-        warnings: validation.warnings || []
-      };
-    } catch (error) {
-      console.error('Error validating drop:', error);
-      return { canDrop: true, conflicts: [], warnings: [] };
-    }
-  }, [validateScheduleChange]);
-
-  const handleDrop = useCallback(() => {
-    try {
-      console.log('Handling enhanced drop:', { draggedEntry: draggedEntry?.id, dropTarget });
-      
-      if (!draggedEntry || !dropTarget || !onMoveEntry) {
-        console.log('Missing required data for drop operation');
-        return;
-      }
-
-      // Check if we're dropping on a different location
-      const isSameLocation = 
-        draggedEntry.buildingName === dropTarget.building.buildingName &&
-        draggedEntry.day.toLowerCase() === dropTarget.day.toLowerCase();
-          
-      if (!isSameLocation) {
-        // Validate the drop
-        const validation = validateDrop(draggedEntry, dropTarget);
-        
-        if (!validation.canDrop && Array.isArray(validation.conflicts) && validation.conflicts.length > 0) {
-          // Show conflict warning
-          const conflictMessages = validation.conflicts
-            .map(c => c && c.description ? c.description : 'Unknown conflict')
-            .join('\n');
-          Alert.alert(
-            'Scheduling Conflict Detected',
-            `Moving this entry will create conflicts:\n\n${conflictMessages}\n\nDo you want to proceed anyway?`,
-            [
-              { text: 'Cancel', style: 'cancel' },
-              { 
-                text: 'Proceed Anyway', 
-                style: 'destructive',
-                onPress: () => {
-                  console.log('User chose to proceed despite conflicts');
-                  onMoveEntry(draggedEntry.id, dropTarget.building, dropTarget.day);
-                }
-              }
-            ]
-          );
-        } else if (Array.isArray(validation.warnings) && validation.warnings.length > 0) {
-          // Show warnings but allow the move
-          Alert.alert(
-            'Schedule Warning',
-            validation.warnings.join('\n') + '\n\nDo you want to continue?',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              { 
-                text: 'Continue', 
-                onPress: () => onMoveEntry(draggedEntry.id, dropTarget.building, dropTarget.day)
-              }
-            ]
-          );
-        } else {
-          // No conflicts, proceed with move
-          console.log('Moving entry to new location');
-          onMoveEntry(draggedEntry.id, dropTarget.building, dropTarget.day);
-        }
-      } else {
-        console.log('Dropped on same location, no move needed');
-      }
-      
-      // Reset drag state
-      setDraggedEntry(null);
-      setDropTarget(null);
-      setIsDragging(false);
-      setPreviewConflicts([]);
-    } catch (error) {
-      console.error('Error handling drop:', error);
-    }
-  }, [draggedEntry, dropTarget, onMoveEntry, validateDrop]);
-
-  // Move the gesture handler to component level
-  const gestureHandler = useAnimatedGestureHandler({
-    onStart: (_, context: any) => {
-      try {
-        console.log('Enhanced drag started');
-        context.startX = translateX.value;
-        context.startY = translateY.value;
-        scale.value = withSpring(1.1);
-        opacity.value = withTiming(0.8);
-        runOnJS(setIsDragging)(true);
-      } catch (error) {
-        console.error('Error in gesture start:', error);
-      }
-    },
-    onActive: (event, context: any) => {
-      try {
-        translateX.value = context.startX + event.translationX;
-        translateY.value = context.startY + event.translationY;
-        
-        // Find drop target and validate conflicts
-        const target = runOnJS(findDropTarget)(event.absoluteX, event.absoluteY);
-        if (target) {
-          runOnJS(setDropTarget)(target);
-          
-          // Preview conflicts for this drop
-          if (draggedEntry) {
-            const validation = runOnJS(validateDrop)(draggedEntry, target);
-            if (validation && Array.isArray(validation.conflicts)) {
-              runOnJS(setPreviewConflicts)(validation.conflicts.map(c => c && c.id ? c.id : '').filter(Boolean));
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Error in gesture active:', error);
-      }
-    },
-    onEnd: () => {
-      try {
-        console.log('Enhanced drag ended');
-        translateX.value = withSpring(0);
-        translateY.value = withSpring(0);
-        scale.value = withSpring(1);
-        opacity.value = withTiming(1);
-        runOnJS(handleDrop)();
-      } catch (error) {
-        console.error('Error in gesture end:', error);
-      }
-    },
-  });
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: translateX.value },
-      { translateY: translateY.value },
-      { scale: scale.value },
-    ],
-    opacity: opacity.value,
-    zIndex: isDragging ? 1000 : 1,
-  }));
-
-  // FIXED: Safe event handlers with comprehensive validation
-  const selectedEntriesSet = useMemo(() => {
-    try {
-      return new Set(safeSelectedEntries);
-    } catch (error) {
-      console.error('Error creating selected entries set:', error);
-      return new Set<string>();
-    }
-  }, [safeSelectedEntries]);
-
-  const handleEntryPress = useCallback((entry: ScheduleEntry, building: ClientBuilding, day: string) => {
-    try {
-      if (!entry || !building || !day) {
-        console.error('Invalid parameters for entry press');
-        return;
-      }
-
-      if (bulkMode && onBulkSelect) {
-        const isSelected = selectedEntriesSet.has(entry.id);
-        const newSelection = isSelected 
-          ? safeSelectedEntries.filter(id => id !== entry.id)
-          : [...safeSelectedEntries, entry.id];
-        
-        const selectedScheduleEntries = safeSchedule.filter(e => e && newSelection.includes(e.id));
-        onBulkSelect(selectedScheduleEntries);
-      } else if (onCellPress) {
-        onCellPress(building, day);
-      }
-    } catch (error) {
-      console.error('Error handling entry press:', error);
-    }
-  }, [bulkMode, selectedEntriesSet, safeSelectedEntries, safeSchedule, onBulkSelect, onCellPress]);
-
-  const handleEntryLongPress = useCallback((entry: ScheduleEntry, building: ClientBuilding, day: string) => {
-    try {
-      if (!entry || !building || !day) {
-        console.error('Invalid parameters for entry long press');
-        return;
-      }
-
-      if (!bulkMode) {
-        console.log('Long press detected, preparing for enhanced drag:', entry.id);
-        setDraggedEntry(entry);
-        
-        // Show conflict info if entry has conflicts
-        let message = `Drag ${getEntryCleaners(entry)[0] || 'this'}'s shift to move it to a different time slot`;
-        
-        if (typeof getEntryConflicts === 'function') {
-          const entryConflicts = getEntryConflicts(entry.id);
-          if (Array.isArray(entryConflicts) && entryConflicts.length > 0) {
-            message += `\n\nNote: This entry currently has ${entryConflicts.length} conflict(s). Moving it may help resolve them.`;
-          }
-        }
-        
-        Alert.alert('Move Entry', message, [{ text: 'OK' }]);
-      } else if (onCellLongPress) {
-        onCellLongPress(building, day);
-      }
-    } catch (error) {
-      console.error('Error handling entry long press:', error);
-    }
-  }, [bulkMode, onCellLongPress, getEntryConflicts, getEntryCleaners]);
-
-  // FIXED: Safe cell renderer with comprehensive error handling
-  const renderCell = useCallback((building: ClientBuilding, day: string) => {
-    try {
-      if (!building || !day || !building.clientName || !building.buildingName) {
-        console.warn('Invalid building or day for cell render:', { building, day });
-        return (
-          <View key={`error-${building?.id || 'unknown'}-${day}`} style={[styles.cell, { width: cellWidth }]}>
-            <Text style={styles.errorText}>Error</Text>
-          </View>
-        );
-      }
-
-      const dayKey = day.toLowerCase() as 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
-      const entry = getScheduleEntry(building.clientName, building.buildingName, day);
-      const isDropTarget = dropTarget?.building?.id === building.id && dropTarget?.day === dayKey;
-      const isSelected = entry && selectedEntriesSet.has(entry.id);
-      const isDraggedEntry = draggedEntry?.id === entry?.id;
-      const hasConflict = entry && hasEntryConflict(entry);
-      const conflictSeverity = entry ? getEntryConflictSeverity(entry) : 'none';
-      const isPreviewConflict = entry && Array.isArray(previewConflicts) && previewConflicts.includes(entry.id);
-      
-      // Determine cell background color based on conflicts and status
-      let backgroundColor = colors.backgroundAlt;
-      let borderColor = colors.border;
-      let borderWidth = 1;
-      
-      if (entry) {
-        backgroundColor = getStatusColor(entry.status) + '20';
-        borderColor = getStatusColor(entry.status);
-        
-        if (hasConflict) {
-          const severityColor = getConflictSeverityColor(conflictSeverity);
-          backgroundColor = severityColor + '30';
-          borderColor = severityColor;
-          borderWidth = 2;
-        }
-      }
-      
-      if (isDropTarget) {
-        borderWidth = 3;
-        if (Array.isArray(previewConflicts) && previewConflicts.length > 0) {
-          borderColor = colors.danger;
-          backgroundColor = colors.danger + '20';
-        } else {
-          borderColor = colors.success;
-          backgroundColor = colors.success + '20';
-        }
-      }
-      
+  const renderCellContent = useCallback((building: ClientBuilding, day: string) => {
+    const entries = getEntriesForCell(building.buildingName, day);
+    
+    if (entries.length === 0) {
       return (
+        <View style={styles.emptyCell}>
+          <Icon name="add-circle-outline" size={20} style={{ color: colors.textSecondary, opacity: 0.3 }} />
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.cellContent}>
+        {entries.map((entry, index) => {
+          const statusColor = getStatusColor(entry.status);
+          const isSelected = selectedEntries.includes(entry.id);
+          
+          return (
+            <View
+              key={entry.id}
+              style={[
+                styles.entryCard,
+                { 
+                  backgroundColor: statusColor + '15',
+                  borderLeftColor: statusColor,
+                },
+                isSelected && styles.entryCardSelected,
+                index > 0 && { marginTop: spacing.xs }
+              ]}
+            >
+              <View style={styles.entryHeader}>
+                <Text style={[styles.entryTime, { color: statusColor }]} numberOfLines={1}>
+                  {entry.startTime || '09:00'}
+                </Text>
+                {bulkMode && (
+                  <Icon 
+                    name={isSelected ? "checkmark-circle" : "ellipse-outline"} 
+                    size={16} 
+                    style={{ color: isSelected ? colors.success : colors.textSecondary }} 
+                  />
+                )}
+              </View>
+              <Text style={styles.entryCleaners} numberOfLines={1}>
+                {entry.cleanerNames && entry.cleanerNames.length > 0 
+                  ? entry.cleanerNames.join(', ')
+                  : entry.cleanerName
+                }
+              </Text>
+              <Text style={styles.entryHours}>{entry.hours}h</Text>
+            </View>
+          );
+        })}
+      </View>
+    );
+  }, [getEntriesForCell, getStatusColor, selectedEntries, bulkMode]);
+
+  const renderBuildingRow = useCallback((building: ClientBuilding) => {
+    return (
+      <View key={building.id} style={styles.buildingRow}>
         <TouchableOpacity
-          key={`${building.id}-${day}`}
-          style={[
-            styles.cell,
-            { 
-              width: cellWidth,
-              backgroundColor,
-              borderColor,
-              borderWidth,
-            },
-            isSelected && styles.selectedCell,
-            isDraggedEntry && styles.draggedCell,
-          ]}
-          onPress={() => {
-            if (entry) {
-              handleEntryPress(entry, building, dayKey);
-            } else if (onCellPress) {
-              onCellPress(building, dayKey);
-            }
-          }}
-          onLongPress={() => {
-            if (entry) {
-              handleEntryLongPress(entry, building, dayKey);
-            } else if (onCellLongPress) {
-              onCellLongPress(building, dayKey);
-            }
-          }}
+          style={styles.buildingCell}
+          onLongPress={() => onBuildingLongPress(building)}
           activeOpacity={0.7}
         >
-          {entry ? (
-            <PanGestureHandler 
-              onGestureEvent={gestureHandler} 
-              enabled={!bulkMode && draggedEntry?.id === entry.id}
-            >
-              <Animated.View style={[styles.cellContent, isDraggedEntry ? animatedStyle : {}]}>
-                {bulkMode && (
-                  <View style={styles.selectionIndicator}>
-                    <Icon 
-                      name={isSelected ? "checkmark-circle" : "ellipse-outline"} 
-                      size={16} 
-                      style={{ color: isSelected ? colors.success : colors.textSecondary }} 
-                    />
-                  </View>
-                )}
-                
-                <View style={styles.cleanerNamesContainer}>
-                  {(() => {
-                    const entryCleaners = getEntryCleaners(entry);
-                    
-                    if (entryCleaners.length === 0) {
-                      return (
-                        <Text style={[styles.cleanerName, { color: colors.textSecondary }]} numberOfLines={1}>
-                          No cleaner assigned
-                        </Text>
-                      );
-                    } else if (entryCleaners.length === 1) {
-                      return (
-                        <Text style={[styles.cleanerName, { color: getStatusColor(entry.status) }]} numberOfLines={1}>
-                          {entryCleaners[0]}
-                        </Text>
-                      );
-                    } else {
-                      return (
-                        <>
-                          <Text style={[styles.cleanerName, { color: getStatusColor(entry.status) }]} numberOfLines={1}>
-                            {entryCleaners[0]}
-                          </Text>
-                          <Text style={[styles.additionalCleaners, { color: colors.textSecondary }]} numberOfLines={1}>
-                            +{entryCleaners.length - 1} more
-                          </Text>
-                        </>
-                      );
-                    }
-                  })()}
-                </View>
-                <Text style={[styles.hours, { color: colors.textSecondary }]} numberOfLines={1}>
-                  {entry.hours || 0}h
-                </Text>
-                {entry.startTime && (
-                  <Text style={[styles.time, { color: colors.textSecondary }]} numberOfLines={1}>
-                    {entry.startTime}
-                  </Text>
-                )}
-                
-                {/* Enhanced conflict indicators */}
-                {hasConflict && (
-                  <View style={[styles.conflictIndicator, { backgroundColor: getConflictSeverityColor(conflictSeverity) }]}>
-                    <Icon 
-                      name={conflictSeverity === 'critical' ? 'alert-circle' : 'warning'} 
-                      size={12} 
-                      style={{ color: colors.background }} 
-                    />
-                  </View>
-                )}
-                
-                {/* Preview conflict indicator */}
-                {isPreviewConflict && (
-                  <View style={styles.previewConflictIndicator}>
-                    <Icon name="flash" size={10} style={{ color: colors.background }} />
-                  </View>
-                )}
-                
-                {!bulkMode && (
-                  <View style={styles.dragIndicator}>
-                    <Icon name="reorder-three-outline" size={12} style={{ color: colors.textSecondary }} />
-                  </View>
-                )}
-              </Animated.View>
-            </PanGestureHandler>
-          ) : (
-            <View style={styles.emptyCell}>
-              <Icon name="add" size={16} style={{ color: colors.textSecondary }} />
-            </View>
-          )}
+          <Text style={styles.buildingName} numberOfLines={2}>
+            {building.buildingName}
+          </Text>
+          <View style={styles.securityBadge}>
+            <Icon 
+              name="shield-checkmark" 
+              size={12} 
+              style={{ color: colors.textSecondary }} 
+            />
+            <Text style={styles.securityText}>
+              {building.securityLevel.toUpperCase()}
+            </Text>
+          </View>
         </TouchableOpacity>
-      );
-    } catch (error) {
-      console.error('Error rendering cell:', error);
-      return (
-        <View key={`error-${building?.id || 'unknown'}-${day}`} style={[styles.cell, { width: cellWidth }]}>
-          <Text style={styles.errorText}>Error</Text>
-        </View>
-      );
-    }
-  }, [
-    cellWidth, 
-    getScheduleEntry, 
-    getStatusColor, 
-    selectedEntriesSet, 
-    dropTarget, 
-    bulkMode, 
-    draggedEntry, 
-    hasEntryConflict,
-    getEntryConflictSeverity,
-    getConflictSeverityColor,
-    previewConflicts,
-    handleEntryPress, 
-    handleEntryLongPress, 
-    onCellPress, 
-    onCellLongPress, 
-    gestureHandler, 
-    animatedStyle,
-    getEntryCleaners
-  ]);
-
-  // FIXED: Safe building row renderer
-  const renderBuildingRow = useCallback((building: ClientBuilding) => {
-    try {
-      if (!building || !building.id || !building.buildingName) {
-        console.warn('Invalid building for row render:', building);
-        return null;
-      }
-
-      // Check if this building has any conflicts
-      const buildingEntries = safeSchedule.filter(entry => 
-        entry && entry.buildingName === building.buildingName
-      );
-      const buildingHasConflicts = buildingEntries.some(entry => hasEntryConflict(entry));
-
-      return (
-        <View key={building.id} style={styles.row}>
+        
+        {days.map(day => (
           <TouchableOpacity
-            style={[
-              styles.buildingCell, 
-              { width: buildingColumnWidth },
-              bulkMode && styles.buildingCellBulkMode,
-              buildingHasConflicts && styles.buildingCellWithConflicts
-            ]}
-            onLongPress={() => onBuildingLongPress && onBuildingLongPress(building)}
+            key={day.name}
+            style={styles.dayCell}
+            onPress={() => onCellPress(building, day.name)}
+            onLongPress={() => onCellLongPress(building, day.name)}
             activeOpacity={0.7}
           >
-            <View style={styles.buildingInfo}>
-              <View style={styles.buildingNameRow}>
-                <Text style={styles.buildingName} numberOfLines={2}>
-                  {building.buildingName || 'Unknown Building'}
-                </Text>
-                {buildingHasConflicts && (
-                  <Icon name="warning" size={16} style={{ color: colors.danger }} />
-                )}
-              </View>
-              <View style={styles.buildingMeta}>
-                <View style={[styles.securityBadge, { backgroundColor: getSecurityLevelColor(building.securityLevel || 'medium') }]}>
-                  <Icon name="shield" size={12} style={{ color: colors.background }} />
-                </View>
-              </View>
-            </View>
+            {renderCellContent(building, day.name)}
           </TouchableOpacity>
-          {days.map(day => renderCell(building, day))}
-        </View>
-      );
-    } catch (error) {
-      console.error('Error rendering building row:', error);
-      return null;
-    }
-  }, [
-    buildingColumnWidth, 
-    bulkMode, 
-    days, 
-    safeSchedule,
-    hasEntryConflict,
-    renderCell, 
-    onBuildingLongPress, 
-    getSecurityLevelColor
-  ]);
-
-  // FIXED: Safe client section renderer
-  const renderClientSection = useCallback((clientName: string, buildings: ClientBuilding[]) => {
-    try {
-      if (!clientName || !Array.isArray(buildings) || buildings.length === 0) {
-        console.warn('Invalid client section data:', { clientName, buildings });
-        return null;
-      }
-
-      const client = safeClients.find(c => c?.name === clientName);
-      if (!client) {
-        console.warn('Client not found:', clientName);
-        return null;
-      }
-
-      // Check for client-level conflicts
-      const clientEntries = safeSchedule.filter(entry => entry && entry.clientName === clientName);
-      const clientConflicts = clientEntries.filter(entry => hasEntryConflict(entry));
-
-      return (
-        <View key={clientName} style={styles.clientSection}>
-          <View style={styles.clientHeader}>
-            <TouchableOpacity
-              style={styles.clientHeaderContent}
-              onLongPress={() => onClientLongPress && onClientLongPress(client)}
-              activeOpacity={0.7}
-            >
-              <View style={styles.clientInfo}>
-                <View style={styles.clientNameRow}>
-                  <Text style={styles.clientName}>{client.name}</Text>
-                  {clientConflicts.length > 0 && (
-                    <View style={styles.clientConflictBadge}>
-                      <Icon name="warning" size={12} style={{ color: colors.background }} />
-                      <Text style={styles.clientConflictText}>{clientConflicts.length}</Text>
-                    </View>
-                  )}
-                </View>
-                <View style={styles.clientMeta}>
-                  <View style={[styles.securityBadge, { backgroundColor: getSecurityLevelColor(client.securityLevel || 'medium') }]}>
-                    <Icon name="shield" size={12} style={{ color: colors.background }} />
-                  </View>
-                  <Text style={styles.buildingCount}>{buildings.length} buildings</Text>
-                  {clientEntries.length > 0 && (
-                    <Text style={styles.entryCount}>{clientEntries.length} jobs</Text>
-                  )}
-                </View>
-              </View>
-            </TouchableOpacity>
-          </View>
-          {buildings.map(building => renderBuildingRow(building))}
-        </View>
-      );
-    } catch (error) {
-      console.error('Error rendering client section:', error);
-      return null;
-    }
-  }, [
-    safeClients, 
-    safeSchedule,
-    hasEntryConflict,
-    onClientLongPress, 
-    getSecurityLevelColor, 
-    renderBuildingRow
-  ]);
-
-  // FIXED: Early return for empty state with safe checks
-  if (!Array.isArray(safeClientBuildings) || safeClientBuildings.length === 0) {
-    return (
-      <View style={styles.emptyState}>
-        <Icon name="business" size={48} style={{ color: colors.textSecondary }} />
-        <Text style={styles.emptyText}>No buildings found</Text>
-        <Text style={styles.emptySubtext}>Add clients and buildings to start scheduling</Text>
+        ))}
       </View>
+    );
+  }, [days, onCellPress, onCellLongPress, onBuildingLongPress, renderCellContent]);
+
+  const renderClientSection = useCallback((client: Client) => {
+    const buildings = buildingsByClient.get(client.name) || [];
+    
+    if (buildings.length === 0) return null;
+
+    return (
+      <View key={client.id} style={styles.clientSection}>
+        <TouchableOpacity
+          style={[styles.clientHeader, { backgroundColor: client.color || colors.primary }]}
+          onLongPress={() => onClientLongPress(client)}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.clientName}>{client.name}</Text>
+          <Text style={styles.buildingCount}>
+            {buildings.length} {buildings.length === 1 ? 'building' : 'buildings'}
+          </Text>
+        </TouchableOpacity>
+        
+        {buildings.map(building => renderBuildingRow(building))}
+      </View>
+    );
+  }, [buildingsByClient, onClientLongPress, renderBuildingRow]);
+
+  if (viewMode === 'user') {
+    return (
+      <UserScheduleView
+        cleaners={cleaners}
+        schedule={schedule}
+        currentWeekId={currentWeekId}
+        onTaskPress={(entry) => {
+          const building = clientBuildings.find(b => b.buildingName === entry.buildingName);
+          if (building) {
+            onCellPress(building, entry.day);
+          }
+        }}
+        onAddShiftToCleaner={onAddShiftToCleaner}
+      />
     );
   }
 
-  try {
-    return (
-      <GestureHandlerRootView style={styles.container}>
-        <View style={styles.container}>
-          {/* Enhanced drag overlay with conflict preview */}
-          {isDragging && (
-            <View style={[
-              styles.dragOverlay,
-              { backgroundColor: (Array.isArray(previewConflicts) && previewConflicts.length > 0) ? colors.danger + '20' : colors.primary + '20' }
-            ]}>
-              <Icon 
-                name={(Array.isArray(previewConflicts) && previewConflicts.length > 0) ? "warning" : "move"} 
-                size={20} 
-                style={{ color: (Array.isArray(previewConflicts) && previewConflicts.length > 0) ? colors.danger : colors.primary }} 
-              />
-              <Text style={[
-                styles.dragOverlayText,
-                { color: (Array.isArray(previewConflicts) && previewConflicts.length > 0) ? colors.danger : colors.primary }
-              ]}>
-                {(Array.isArray(previewConflicts) && previewConflicts.length > 0)
-                  ? `⚠️ Will create ${previewConflicts.length} conflict(s)` 
-                  : "Drop on a cell to move the entry"
-                }
-              </Text>
+  return (
+    <GestureHandlerRootView style={styles.container}>
+      <ScrollView 
+        horizontal 
+        showsHorizontalScrollIndicator={true}
+        style={styles.horizontalScroll}
+        bounces={false}
+      >
+        <View style={styles.scheduleGrid}>
+          <View style={styles.headerRow}>
+            <View style={styles.buildingHeaderCell}>
+              <Text style={styles.headerText}>Buildings</Text>
             </View>
-          )}
-
-          {/* Conflict summary header */}
-          {hasConflicts && conflictSummary && (
-            <View style={styles.conflictSummaryHeader}>
-              <Icon name="warning" size={20} style={{ color: colors.danger }} />
-              <Text style={styles.conflictSummaryText}>
-                {conflictSummary.total || 0} conflicts detected • {(conflictSummary.critical || 0) + (conflictSummary.high || 0)} high priority
-              </Text>
-            </View>
-          )}
-          
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={true}
-            style={styles.horizontalScroll}
-            contentContainerStyle={{ minWidth: Math.max(totalGridWidth, screenWidth) }}
-            bounces={false}
-            decelerationRate="fast"
-          >
-            <ScrollView 
-              style={styles.verticalScroll}
-              showsVerticalScrollIndicator={false}
-              bounces={false}
-            >
-              <View style={[styles.grid, { width: totalGridWidth }]}>
-                {/* Enhanced Header Row */}
-                <View style={styles.headerRow}>
-                  <View style={[styles.buildingHeaderCell, { width: buildingColumnWidth }]}>
-                    <Text style={styles.headerText}>Buildings</Text>
-                    {bulkMode && (
-                      <Text style={styles.bulkModeIndicator}>Bulk Mode</Text>
-                    )}
-                    {hasConflicts && conflictSummary && (
-                      <Text style={styles.conflictIndicatorText}>
-                        {(conflictSummary.critical || 0) > 0 && `${conflictSummary.critical} Critical`}
-                        {(conflictSummary.high || 0) > 0 && ` ${conflictSummary.high} High`}
-                      </Text>
-                    )}
-                  </View>
-                  {days.map(day => (
-                    <View key={day} style={[styles.dayHeaderCell, { width: cellWidth }]}>
-                      <Text style={styles.dayHeaderText} numberOfLines={1}>
-                        {day.substring(0, 3)}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-
-                {/* Client Sections */}
-                {Array.from(buildingsByClient.entries()).map(([clientName, buildings]) =>
-                  renderClientSection(clientName, buildings)
-                )}
+            {days.map(day => (
+              <View key={day.name} style={styles.dayHeaderCell}>
+                <Text style={styles.dayHeaderText}>{day.name}</Text>
+                <Text style={styles.dayHeaderDate}>{day.date}</Text>
               </View>
-            </ScrollView>
+            ))}
+          </View>
+
+          <ScrollView 
+            style={styles.verticalScroll}
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+          >
+            {activeClients.length > 0 ? (
+              activeClients.map(client => renderClientSection(client))
+            ) : (
+              <View style={styles.emptyState}>
+                <Icon name="business-outline" size={64} style={{ color: colors.textSecondary }} />
+                <Text style={styles.emptyStateText}>No clients or buildings available</Text>
+                <Text style={styles.emptyStateSubtext}>Add a client and building to get started</Text>
+              </View>
+            )}
           </ScrollView>
         </View>
-      </GestureHandlerRootView>
-    );
-  } catch (error) {
-    console.error('Error rendering DragDropScheduleGrid:', error);
-    return (
-      <View style={styles.errorState}>
-        <Icon name="warning-outline" size={48} style={{ color: colors.danger }} />
-        <Text style={styles.errorText}>Error loading schedule grid</Text>
-        <Text style={styles.errorSubtext}>Please try refreshing the page</Text>
-      </View>
-    );
-  }
+      </ScrollView>
+    </GestureHandlerRootView>
+  );
 });
+
+const BUILDING_COLUMN_WIDTH = 200;
+const DAY_COLUMN_WIDTH = 150;
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
   },
-  dragOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 999,
-    padding: spacing.md,
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: spacing.sm,
-  },
-  dragOverlayText: {
-    ...typography.body,
-    fontWeight: '600',
-  },
-  conflictSummaryHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: spacing.md,
-    backgroundColor: colors.danger + '10',
-    borderBottomWidth: 1,
-    borderBottomColor: colors.danger + '30',
-    gap: spacing.sm,
-  },
-  conflictSummaryText: {
-    ...typography.body,
-    color: colors.danger,
-    fontWeight: '600',
-  },
   horizontalScroll: {
     flex: 1,
   },
-  verticalScroll: {
-    flex: 1,
-  },
-  grid: {
-    paddingBottom: spacing.lg,
-    minHeight: '100%',
+  scheduleGrid: {
+    minWidth: BUILDING_COLUMN_WIDTH + (DAY_COLUMN_WIDTH * 7),
   },
   headerRow: {
     flexDirection: 'row',
     backgroundColor: colors.backgroundAlt,
     borderBottomWidth: 2,
     borderBottomColor: colors.border,
-    paddingVertical: spacing.sm,
-    position: 'sticky',
-    top: 0,
-    zIndex: 1,
   },
   buildingHeaderCell: {
+    width: BUILDING_COLUMN_WIDTH,
     paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
     justifyContent: 'center',
-    borderRightWidth: 1,
-    borderRightColor: colors.border,
-  },
-  dayHeaderCell: {
-    paddingHorizontal: spacing.xs,
-    justifyContent: 'center',
-    alignItems: 'center',
     borderRightWidth: 1,
     borderRightColor: colors.border,
   },
@@ -1158,210 +336,128 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text,
   },
-  bulkModeIndicator: {
-    ...typography.small,
-    color: colors.primary,
-    fontWeight: '600',
-    marginTop: spacing.xs,
-  },
-  conflictIndicatorText: {
-    ...typography.small,
-    color: colors.danger,
-    fontWeight: '600',
-    marginTop: spacing.xs,
+  dayHeaderCell: {
+    width: DAY_COLUMN_WIDTH,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRightWidth: 1,
+    borderRightColor: colors.border,
   },
   dayHeaderText: {
     ...typography.small,
     fontWeight: '600',
     color: colors.text,
-    textAlign: 'center',
+    marginBottom: 2,
+  },
+  dayHeaderDate: {
+    ...typography.small,
+    color: colors.textSecondary,
+    fontSize: 11,
+  },
+  verticalScroll: {
+    flex: 1,
   },
   clientSection: {
-    marginBottom: spacing.sm,
+    borderBottomWidth: 2,
+    borderBottomColor: colors.border,
   },
   clientHeader: {
-    backgroundColor: colors.primary + '10',
-    borderLeftWidth: 4,
-    borderLeftColor: colors.primary,
-  },
-  clientHeaderContent: {
-    paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
-  },
-  clientInfo: {
+    paddingVertical: spacing.sm,
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  clientNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    gap: spacing.sm,
   },
   clientName: {
     ...typography.body,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  clientConflictBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.danger,
-    paddingHorizontal: spacing.xs,
-    paddingVertical: 2,
-    borderRadius: 10,
-    gap: 2,
-  },
-  clientConflictText: {
-    ...typography.small,
     color: colors.background,
     fontWeight: '600',
-    fontSize: 10,
-  },
-  clientMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
   },
   buildingCount: {
     ...typography.small,
-    color: colors.textSecondary,
+    color: colors.background,
+    opacity: 0.9,
   },
-  entryCount: {
-    ...typography.small,
-    color: colors.textSecondary,
-  },
-  row: {
+  buildingRow: {
     flexDirection: 'row',
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    minHeight: 60,
+    minHeight: 80,
   },
   buildingCell: {
+    width: BUILDING_COLUMN_WIDTH,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     justifyContent: 'center',
+    backgroundColor: colors.background,
     borderRightWidth: 1,
     borderRightColor: colors.border,
-    backgroundColor: colors.background,
-  },
-  buildingCellBulkMode: {
-    backgroundColor: colors.backgroundAlt,
-  },
-  buildingCellWithConflicts: {
-    backgroundColor: colors.danger + '05',
-    borderLeftWidth: 3,
-    borderLeftColor: colors.danger,
-  },
-  buildingInfo: {
-    flex: 1,
-    justifyContent: 'space-between',
-  },
-  buildingNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.xs,
   },
   buildingName: {
     ...typography.body,
     color: colors.text,
     fontWeight: '500',
-    flex: 1,
-  },
-  buildingMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
+    marginBottom: spacing.xs,
   },
   securityBadge: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 4,
   },
-  cell: {
-    minHeight: 60,
+  securityText: {
+    ...typography.small,
+    color: colors.textSecondary,
+    fontSize: 10,
+  },
+  dayCell: {
+    width: DAY_COLUMN_WIDTH,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.sm,
     borderRightWidth: 1,
     borderRightColor: colors.border,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing.xs,
-  },
-  selectedCell: {
-    backgroundColor: colors.primary + '30',
-    borderColor: colors.primary,
-    borderWidth: 2,
-  },
-  draggedCell: {
-    opacity: 0.5,
-  },
-  cellContent: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '100%',
-    position: 'relative',
-  },
-  selectionIndicator: {
-    position: 'absolute',
-    top: -spacing.xs,
-    right: -spacing.xs,
-    zIndex: 1,
-  },
-  dragIndicator: {
-    position: 'absolute',
-    bottom: -spacing.xs,
-    right: -spacing.xs,
-    zIndex: 1,
-  },
-  cleanerNamesContainer: {
-    alignItems: 'center',
-    marginBottom: 2,
-  },
-  cleanerName: {
-    ...typography.small,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  additionalCleaners: {
-    ...typography.small,
-    fontSize: 10,
-    textAlign: 'center',
-    fontWeight: '500',
-  },
-  hours: {
-    ...typography.small,
-    textAlign: 'center',
-    marginBottom: 2,
-  },
-  time: {
-    ...typography.small,
-    textAlign: 'center',
-    fontSize: 10,
-  },
-  conflictIndicator: {
-    position: 'absolute',
-    top: -spacing.xs,
-    left: -spacing.xs,
-    borderRadius: 8,
-    padding: 2,
-  },
-  previewConflictIndicator: {
-    position: 'absolute',
-    top: -spacing.xs,
-    right: spacing.xs,
-    backgroundColor: colors.warning,
-    borderRadius: 6,
-    padding: 1,
+    backgroundColor: colors.background,
   },
   emptyCell: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    opacity: 0.5,
+    minHeight: 60,
+  },
+  cellContent: {
+    flex: 1,
+  },
+  entryCard: {
+    padding: spacing.sm,
+    borderRadius: 6,
+    borderLeftWidth: 3,
+  },
+  entryCardSelected: {
+    borderWidth: 2,
+    borderColor: colors.success,
+  },
+  entryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  entryTime: {
+    ...typography.small,
+    fontWeight: '600',
+    fontSize: 11,
+  },
+  entryCleaners: {
+    ...typography.small,
+    color: colors.text,
+    fontWeight: '500',
+    marginBottom: 2,
+  },
+  entryHours: {
+    ...typography.small,
+    color: colors.textSecondary,
+    fontSize: 11,
   },
   emptyState: {
     flex: 1,
@@ -1369,33 +465,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: spacing.xxl,
   },
-  emptyText: {
+  emptyStateText: {
     ...typography.h3,
     color: colors.textSecondary,
     marginTop: spacing.md,
-    marginBottom: spacing.sm,
   },
-  emptySubtext: {
+  emptyStateSubtext: {
     ...typography.body,
     color: colors.textSecondary,
-    textAlign: 'center',
-  },
-  errorState: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.xxl,
-  },
-  errorText: {
-    ...typography.h3,
-    color: colors.danger,
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  errorSubtext: {
-    ...typography.body,
-    color: colors.textSecondary,
-    textAlign: 'center',
+    marginTop: spacing.xs,
   },
 });
 

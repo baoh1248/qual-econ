@@ -1,6 +1,7 @@
 
 import React, { memo, useState, useEffect } from 'react';
 import { View, Text, Modal, ScrollView, TouchableOpacity, TextInput, StyleSheet, Platform, Alert } from 'react-native';
+import PropTypes from 'prop-types';
 import { colors, spacing, typography, commonStyles, buttonStyles, getContrastColor } from '../../styles/commonStyles';
 import Icon from '../Icon';
 import Button from '../Button';
@@ -37,7 +38,6 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
   const [searchQuery, setSearchQuery] = useState('');
   const [sending, setSending] = useState(false);
 
-  // Common destinations for quick selection
   const commonDestinations = [
     'TechCorp Main Office',
     'Downtown Mall Food Court',
@@ -51,7 +51,6 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
 
   useEffect(() => {
     if (!visible) {
-      // Reset form when modal closes
       setDestination('');
       setSelectedItems([]);
       setNotes('');
@@ -107,7 +106,6 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
       console.log('Destination:', destination);
       console.log('Selected items:', selectedItems);
       
-      // Log the transfer
       await logInventoryTransfer({
         items: selectedItems.map(item => ({
           name: item.name,
@@ -116,26 +114,22 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
         })),
         destination: destination.trim(),
         timestamp: new Date().toISOString(),
-        transferredBy: 'Supervisor', // In a real app, this would be the current user
+        transferredBy: 'Supervisor',
         notes: notes.trim() || undefined,
       });
 
-      // Update inventory quantities
       const itemIds = selectedItems.map(item => item.id);
       const quantities = selectedItems.map(item => item.quantity);
       
       console.log('Calling onSend with:', { itemIds, quantities });
       await onSend(itemIds, quantities);
 
-      // Show success message
       const itemSummary = selectedItems.map(item => `${item.quantity} ${item.name}`).join(', ');
       
       console.log('Items sent successfully, closing modal...');
       
-      // Close modal first
       onClose();
       
-      // Then show success alert
       setTimeout(() => {
         Alert.alert(
           'Items Sent Successfully',
@@ -212,7 +206,6 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
           </View>
 
           <ScrollView style={commonStyles.content} showsVerticalScrollIndicator={false}>
-            {/* Destination Input */}
             <View style={{ marginBottom: spacing.lg }}>
               <Text style={[typography.body, { color: colors.text, fontWeight: '600', marginBottom: spacing.sm }]}>
                 Destination
@@ -225,7 +218,6 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
                 onChangeText={setDestination}
               />
               
-              {/* Quick destination buttons */}
               <Text style={[typography.caption, { color: colors.textSecondary, marginBottom: spacing.sm }]}>
                 Quick Select:
               </Text>
@@ -236,7 +228,7 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
                       key={dest}
                       style={[
                         destination === dest ? buttonStyles.quickSelectButtonActive : buttonStyles.quickSelectButton,
-                        { borderWidth: 0 } // Remove outline
+                        { borderWidth: 0 }
                       ]}
                       onPress={() => setDestination(dest)}
                     >
@@ -257,7 +249,6 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
               </ScrollView>
             </View>
 
-            {/* Selected Items */}
             {selectedItems.length > 0 && (
               <View style={{ marginBottom: spacing.lg }}>
                 <Text style={[typography.body, { color: colors.text, fontWeight: '600', marginBottom: spacing.sm }]}>
@@ -312,7 +303,6 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
               </View>
             )}
 
-            {/* Add Items */}
             <View style={{ marginBottom: spacing.lg }}>
               <Text style={[typography.body, { color: colors.text, fontWeight: '600', marginBottom: spacing.sm }]}>
                 Add Items
@@ -378,7 +368,6 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
               )}
             </View>
 
-            {/* Notes */}
             <View style={{ marginBottom: spacing.lg }}>
               <Text style={[typography.body, { color: colors.text, fontWeight: '600', marginBottom: spacing.sm }]}>
                 Notes (Optional)
@@ -393,7 +382,6 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
               />
             </View>
 
-            {/* Send Button */}
             <Button
               text={sending ? 'Sending...' : `Send ${totalItems} Item${totalItems !== 1 ? 's' : ''}`}
               onPress={handleSendItems}
@@ -407,6 +395,20 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
     </Modal>
   );
 });
+
+SendItemsModal.propTypes = {
+  visible: PropTypes.bool.isRequired,
+  onClose: PropTypes.func.isRequired,
+  inventory: PropTypes.arrayOf(PropTypes.shape({
+    id: PropTypes.string.isRequired,
+    name: PropTypes.string.isRequired,
+    current_stock: PropTypes.number.isRequired,
+    unit: PropTypes.string.isRequired,
+    category: PropTypes.string.isRequired,
+  }).isRequired).isRequired,
+  onSend: PropTypes.func.isRequired,
+  onSuccess: PropTypes.func,
+};
 
 SendItemsModal.displayName = 'SendItemsModal';
 

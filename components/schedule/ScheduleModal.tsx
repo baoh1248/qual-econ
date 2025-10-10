@@ -1,5 +1,5 @@
 
-import React, { memo, useState } from 'react';
+import React, { memo, useState, useEffect, useMemo } from 'react';
 import { View, Text, Modal, ScrollView, TouchableOpacity, TextInput, StyleSheet, Platform, Alert, Switch } from 'react-native';
 import { colors, spacing, typography, commonStyles } from '../../styles/commonStyles';
 import Button from '../Button';
@@ -17,10 +17,11 @@ interface ScheduleModalProps {
   selectedClientBuilding: ClientBuilding | null;
   cleaners: Cleaner[];
   clients: Client[];
+  clientBuildings: ClientBuilding[];
   
   // Form states
   cleanerName: string;
-  selectedCleaners: string[]; // New field for multiple cleaners
+  selectedCleaners: string[];
   hours: string;
   startTime: string;
   newClientName: string;
@@ -34,10 +35,11 @@ interface ScheduleModalProps {
   showClientDropdown: boolean;
   showCleanerDropdown: boolean;
   showSecurityLevelDropdown: boolean;
+  showBuildingDropdown: boolean;
 
   // Setters
   setCleanerName: (value: string) => void;
-  setSelectedCleaners: (value: string[]) => void; // New setter for multiple cleaners
+  setSelectedCleaners: (value: string[]) => void;
   setHours: (value: string) => void;
   setStartTime: (value: string) => void;
   setNewClientName: (value: string) => void;
@@ -51,10 +53,12 @@ interface ScheduleModalProps {
   setShowClientDropdown: (value: boolean) => void;
   setShowCleanerDropdown: (value: boolean) => void;
   setShowSecurityLevelDropdown: (value: boolean) => void;
+  setShowBuildingDropdown: (value: boolean) => void;
+  setSelectedClientBuilding: (value: ClientBuilding | null) => void;
 
   // Actions
   onClose: () => void;
-  onSave: () => Promise<void>; // Make this async to handle the save properly
+  onSave: () => Promise<void>;
   onDelete: () => void;
   onAddClient: () => void;
   onAddBuilding: () => void;
@@ -72,6 +76,7 @@ const ScheduleModal = memo(({
   selectedClientBuilding,
   cleaners,
   clients,
+  clientBuildings = [],
   cleanerName,
   selectedCleaners = [],
   hours,
@@ -87,6 +92,7 @@ const ScheduleModal = memo(({
   showClientDropdown,
   showCleanerDropdown,
   showSecurityLevelDropdown,
+  showBuildingDropdown = false,
   setCleanerName,
   setSelectedCleaners,
   setHours,
@@ -102,6 +108,8 @@ const ScheduleModal = memo(({
   setShowClientDropdown,
   setShowCleanerDropdown,
   setShowSecurityLevelDropdown,
+  setShowBuildingDropdown,
+  setSelectedClientBuilding,
   onClose,
   onSave,
   onDelete,
@@ -123,7 +131,7 @@ const ScheduleModal = memo(({
   // Local state for save loading
   const [isSaving, setIsSaving] = useState(false);
 
-  // NEW: Payment-related state
+  // Payment-related state
   const [paymentType, setPaymentType] = useState<'hourly' | 'flat_rate'>(() => {
     try {
       return selectedEntry?.paymentType || 'hourly';
@@ -140,14 +148,49 @@ const ScheduleModal = memo(({
       return '100';
     }
   });
-  const [hourlyRate, setHourlyRate] = useState(() => {
-    try {
-      return selectedEntry?.hourlyRate?.toString() || '15';
-    } catch (error) {
-      console.error('Error initializing hourly rate:', error);
-      return '15';
+
+  // Calculate estimated payment based on selected cleaners and their hourly rates
+  const estimatedPayment = useMemo(() => {
+    const hoursNum = parseFloat(hours) || 0;
+    
+    if (paymentType === 'flat_rate') {
+      return parseFloat(flatRateAmount) || 0;
+    } else {
+      // For hourly rate, calculate based on selected cleaners' rates
+      if (selectedCleaners && selectedCleaners.length > 0) {
+        let totalPayment = 0;
+        
+        for (const cleanerName of selectedCleaners) {
+          const cleaner = cleaners.find(c => c.name === cleanerName);
+          const rate = cleaner?.defaultHourlyRate || 15;
+          totalPayment += hoursNum * rate;
+        }
+        
+        return totalPayment;
+      }
+      
+      // Default calculation if no cleaners selected
+      return hoursNum * 15;
     }
-  });
+  }, [hours, paymentType, flatRateAmount, selectedCleaners, cleaners]);
+
+  // Get breakdown of payment per cleaner
+  const paymentBreakdown = useMemo(() => {
+    if (paymentType === 'flat_rate' || !selectedCleaners || selectedCleaners.length === 0) {
+      return [];
+    }
+    
+    const hoursNum = parseFloat(hours) || 0;
+    return selectedCleaners.map(cleanerName => {
+      const cleaner = cleaners.find(c => c.name === cleanerName);
+      const rate = cleaner?.defaultHourlyRate || 15;
+      return {
+        name: cleanerName,
+        rate,
+        payment: hoursNum * rate
+      };
+    });
+  }, [hours, paymentType, selectedCleaners, cleaners]);
 
   if (!visible) return null;
 
@@ -277,15 +320,12 @@ const ScheduleModal = memo(({
       console.log('Calling onDelete function...');
       await onDelete();
       console.log('Delete operation completed successfully');
-      // Don't close modal here - let the parent component handle it after successful deletion
     } catch (error) {
       console.error('Error during delete confirmation:', error);
-      // Reset the confirmation state but don't close the modal so user can try again
       setShowDeleteConfirm(false);
     }
   };
 
-  // IMPROVED: Enhanced save handler with payment information
   const handleSave = async () => {
     if (isSaving) {
       console.log('Save already in progress, ignoring duplicate call');
@@ -301,39 +341,25 @@ const ScheduleModal = memo(({
         startTime,
         paymentType,
         flatRateAmount,
-        hourlyRate,
+        estimatedPayment,
         selectedEntry: selectedEntry?.id,
         isSaving
       });
       
       setIsSaving(true);
       
-      // Call the parent's save function and wait for it to complete
       console.log('Calling parent onSave function...');
       await onSave();
       console.log('Parent onSave completed successfully');
       
-      // Add a small delay to ensure the UI has time to update
       await new Promise(resolve => setTimeout(resolve, 100));
       
       console.log('=== SAVE OPERATION COMPLETED ===');
     } catch (error) {
       console.error('=== SAVE OPERATION FAILED ===');
       console.error('Error during save operation:', error);
-      // Don't close the modal on error so user can try again
     } finally {
       setIsSaving(false);
-    }
-  };
-
-  // NEW: Calculate estimated payment
-  const calculateEstimatedPayment = () => {
-    const hoursNum = parseFloat(hours) || 0;
-    if (paymentType === 'flat_rate') {
-      return parseFloat(flatRateAmount) || 0;
-    } else {
-      const rate = parseFloat(hourlyRate) || 15;
-      return hoursNum * rate;
     }
   };
 
@@ -406,7 +432,6 @@ const ScheduleModal = memo(({
                   </Text>
                 </View>
                 
-                {/* NEW: Payment Information */}
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Payment Type:</Text>
                   <View style={[styles.paymentTypeBadge, { 
@@ -482,12 +507,89 @@ const ScheduleModal = memo(({
               {modalType === 'add' ? 'Add New Shift' : 'Edit Shift'}
             </Text>
             <View style={styles.formContainer}>
+              {/* Building Selection */}
+              {modalType === 'add' && !selectedClientBuilding && (
+                <>
+                  <Text style={styles.inputLabel}>Building *</Text>
+                  <TouchableOpacity
+                    style={styles.input}
+                    onPress={() => setShowBuildingDropdown(!showBuildingDropdown)}
+                  >
+                    <Text style={[styles.inputText, !selectedClientBuilding && styles.placeholderText]}>
+                      {selectedClientBuilding ? `${selectedClientBuilding.clientName} - ${selectedClientBuilding.buildingName}` : 'Select building'}
+                    </Text>
+                    <Icon name="chevron-down" size={20} style={{ color: colors.textSecondary }} />
+                  </TouchableOpacity>
+                  
+                  {showBuildingDropdown && (
+                    <View style={styles.dropdownContainer}>
+                      <ScrollView style={styles.dropdown} nestedScrollEnabled>
+                        {clientBuildings.length === 0 ? (
+                          <View style={styles.noResultsContainer}>
+                            <Icon name="business-outline" size={24} style={styles.noResultsIcon} />
+                            <Text style={styles.noResultsText}>No buildings available</Text>
+                          </View>
+                        ) : (
+                          clientBuildings.map((building, index) => (
+                            <TouchableOpacity
+                              key={index}
+                              style={styles.dropdownItem}
+                              onPress={() => {
+                                setSelectedClientBuilding(building);
+                                setShowBuildingDropdown(false);
+                              }}
+                            >
+                              <View style={styles.buildingDropdownRow}>
+                                <View style={styles.buildingInfo}>
+                                  <Text style={styles.dropdownText}>
+                                    {building.buildingName}
+                                  </Text>
+                                  <Text style={styles.buildingClientText}>
+                                    {building.clientName}
+                                  </Text>
+                                </View>
+                                <View style={[
+                                  styles.securityIndicator,
+                                  { backgroundColor: getSecurityLevelColor(building.securityLevel) + '20' }
+                                ]}>
+                                  <Icon 
+                                    name={getSecurityLevelIcon(building.securityLevel)} 
+                                    size={12} 
+                                    style={{ color: getSecurityLevelColor(building.securityLevel) }} 
+                                  />
+                                </View>
+                              </View>
+                            </TouchableOpacity>
+                          ))
+                        )}
+                      </ScrollView>
+                      <TouchableOpacity
+                        style={styles.closeDropdownButton}
+                        onPress={() => setShowBuildingDropdown(false)}
+                      >
+                        <Text style={styles.closeDropdownText}>Close</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </>
+              )}
+
+              {/* Show selected building info */}
+              {selectedClientBuilding && (
+                <View style={styles.selectedBuildingInfo}>
+                  <Icon name="business" size={16} style={{ color: colors.primary }} />
+                  <View style={styles.selectedBuildingText}>
+                    <Text style={styles.selectedBuildingName}>{selectedClientBuilding.buildingName}</Text>
+                    <Text style={styles.selectedBuildingClient}>{selectedClientBuilding.clientName}</Text>
+                  </View>
+                </View>
+              )}
+
               <Text style={styles.inputLabel}>Cleaners * (Select one or more)</Text>
               <TouchableOpacity
                 style={styles.input}
                 onPress={() => {
                   setShowCleanerDropdown(!showCleanerDropdown);
-                  // Clear search when opening dropdown
                   if (!showCleanerDropdown) {
                     setCleanerSearchQuery('');
                   }
@@ -524,7 +626,6 @@ const ScheduleModal = memo(({
               {/* Multi-select cleaner dropdown with search */}
               {showCleanerDropdown && (
                 <View style={styles.dropdownContainer}>
-                  {/* Search input */}
                   <View style={styles.searchContainer}>
                     <Icon name="search" size={16} style={styles.searchIcon} />
                     <TextInput
@@ -561,7 +662,6 @@ const ScheduleModal = memo(({
                         const securityLevel = cleaner.securityLevel || 'low';
                         const employeeId = cleaner.employeeId || 'N/A';
                         
-                        // Check if cleaner can access the building's security level
                         const canAccess = selectedClientBuilding ? 
                           canAccessJob(securityLevel, selectedClientBuilding.securityLevel) : true;
                         
@@ -596,6 +696,7 @@ const ScheduleModal = memo(({
                                     !canAccess && styles.cleanerMetadataTextDisabled
                                   ]}>
                                     ID: {employeeId} • {securityLevel.toUpperCase()} Security
+                                    {cleaner.defaultHourlyRate && ` • $${cleaner.defaultHourlyRate.toFixed(2)}/hr`}
                                   </Text>
                                   {!canAccess && selectedClientBuilding && (
                                     <Text style={styles.accessDeniedText}>
@@ -659,7 +760,7 @@ const ScheduleModal = memo(({
                 onChangeText={setStartTime}
               />
 
-              {/* NEW: Payment Configuration Section */}
+              {/* Payment Configuration Section */}
               <View style={styles.paymentSection}>
                 <Text style={styles.sectionTitle}>Payment Configuration</Text>
                 
@@ -714,18 +815,7 @@ const ScheduleModal = memo(({
                   </View>
                 </View>
 
-                {paymentType === 'hourly' ? (
-                  <View>
-                    <Text style={styles.inputLabel}>Hourly Rate ($)</Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="15.00"
-                      value={hourlyRate}
-                      onChangeText={setHourlyRate}
-                      keyboardType="decimal-pad"
-                    />
-                  </View>
-                ) : (
+                {paymentType === 'flat_rate' && (
                   <View>
                     <Text style={styles.inputLabel}>Flat Rate Amount ($)</Text>
                     <TextInput
@@ -741,14 +831,29 @@ const ScheduleModal = memo(({
                 {/* Payment Estimate */}
                 <View style={styles.paymentEstimate}>
                   <View style={styles.paymentEstimateRow}>
-                    <Text style={styles.paymentEstimateLabel}>Estimated Payment:</Text>
+                    <Text style={styles.paymentEstimateLabel}>Estimated Total Payment:</Text>
                     <Text style={styles.paymentEstimateValue}>
-                      ${calculateEstimatedPayment().toFixed(2)}
+                      ${estimatedPayment.toFixed(2)}
                     </Text>
                   </View>
-                  {paymentType === 'hourly' && (
+                  
+                  {paymentType === 'hourly' && paymentBreakdown.length > 0 && (
+                    <View style={styles.paymentBreakdown}>
+                      <Text style={styles.paymentBreakdownTitle}>Payment Breakdown:</Text>
+                      {paymentBreakdown.map((item, index) => (
+                        <View key={index} style={styles.paymentBreakdownItem}>
+                          <Text style={styles.paymentBreakdownName}>{item.name}</Text>
+                          <Text style={styles.paymentBreakdownAmount}>
+                            {hours || '0'} hrs × ${item.rate.toFixed(2)}/hr = ${item.payment.toFixed(2)}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                  
+                  {paymentType === 'flat_rate' && (
                     <Text style={styles.paymentEstimateNote}>
-                      {hours || '0'} hours × ${hourlyRate || '15'}/hr
+                      Flat rate payment for all selected cleaners
                     </Text>
                   )}
                 </View>
@@ -1167,11 +1272,11 @@ const styles = StyleSheet.create({
   },
   modalContainer: {
     width: '90%',
-    maxWidth: 500, // Increased for payment section
+    maxWidth: 500,
     backgroundColor: colors.background,
     borderRadius: 16,
     ...commonStyles.shadow,
-    maxHeight: '85%', // Increased for payment section
+    maxHeight: '85%',
     ...(Platform.OS === 'web' && {
       zIndex: 10000,
       position: 'relative' as any,
@@ -1328,7 +1433,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     flex: 1,
   },
-
   selectedCleanersContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1426,8 +1530,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     flex: 1,
   },
-
-  // New search-related styles
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1472,8 +1574,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontStyle: 'italic',
   },
-
-  // Delete confirmation modal styles
   confirmModalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -1527,8 +1627,6 @@ const styles = StyleSheet.create({
   confirmButton: {
     flex: 1,
   },
-
-  // NEW: Payment-related styles
   paymentSection: {
     backgroundColor: colors.backgroundAlt,
     borderRadius: 12,
@@ -1587,6 +1685,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: spacing.xs,
   },
   paymentEstimateLabel: {
     ...typography.body,
@@ -1604,6 +1703,31 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     fontStyle: 'italic',
   },
+  paymentBreakdown: {
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.success + '30',
+  },
+  paymentBreakdownTitle: {
+    ...typography.small,
+    color: colors.text,
+    fontWeight: '600',
+    marginBottom: spacing.xs,
+  },
+  paymentBreakdownItem: {
+    marginTop: spacing.xs,
+  },
+  paymentBreakdownName: {
+    ...typography.small,
+    color: colors.text,
+    fontWeight: '500',
+  },
+  paymentBreakdownAmount: {
+    ...typography.small,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
   paymentTypeBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1614,6 +1738,42 @@ const styles = StyleSheet.create({
   paymentTypeText: {
     ...typography.small,
     fontWeight: '600',
+  },
+  selectedBuildingInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary + '10',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 8,
+    marginBottom: spacing.md,
+    gap: spacing.sm,
+  },
+  selectedBuildingText: {
+    flex: 1,
+  },
+  selectedBuildingName: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '600',
+  },
+  selectedBuildingClient: {
+    ...typography.small,
+    color: colors.textSecondary,
+  },
+  buildingDropdownRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  buildingInfo: {
+    flex: 1,
+  },
+  buildingClientText: {
+    ...typography.small,
+    color: colors.textSecondary,
+    marginTop: 2,
   },
 });
 

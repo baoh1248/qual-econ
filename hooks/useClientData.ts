@@ -1,6 +1,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from '../app/integrations/supabase/client';
 
 export interface Client {
   id: string;
@@ -47,6 +48,7 @@ export interface Cleaner {
   phoneNumber: string;
   email?: string;
   hireDate?: string;
+  defaultHourlyRate?: number;
   emergencyContact?: {
     name: string;
     phone: string;
@@ -54,6 +56,7 @@ export interface Cleaner {
   };
   createdAt?: Date;
   updatedAt?: Date;
+  user_id?: string;
 }
 
 const STORAGE_KEYS = {
@@ -231,11 +234,12 @@ export const useClientData = () => {
         name: 'John Doe', 
         isActive: true, 
         specialties: ['Office Cleaning', 'Deep Cleaning'],
-        employeeId: '4',
+        employeeId: 'EMP-001',
         securityLevel: 'high',
         phoneNumber: '+1 (555) 123-4567',
         email: 'john.doe@cleaningcompany.com',
         hireDate: '2023-01-15',
+        defaultHourlyRate: 18.00,
         emergencyContact: {
           name: 'Jane Doe',
           phone: '+1 (555) 987-6543',
@@ -249,11 +253,12 @@ export const useClientData = () => {
         name: 'Jane Smith', 
         isActive: true, 
         specialties: ['Medical Facilities', 'Sanitization'],
-        employeeId: '2',
+        employeeId: 'EMP-002',
         securityLevel: 'medium',
         phoneNumber: '+1 (555) 234-5678',
         email: 'jane.smith@cleaningcompany.com',
         hireDate: '2023-03-20',
+        defaultHourlyRate: 16.50,
         emergencyContact: {
           name: 'Bob Smith',
           phone: '+1 (555) 876-5432',
@@ -267,11 +272,12 @@ export const useClientData = () => {
         name: 'Johnson Smith', 
         isActive: true, 
         specialties: ['Industrial', 'Equipment Maintenance'],
-        employeeId: '9',
+        employeeId: 'EMP-003',
         securityLevel: 'low',
         phoneNumber: '+1 (555) 345-6789',
         email: 'johnson.smith@cleaningcompany.com',
         hireDate: '2023-05-10',
+        defaultHourlyRate: 15.00,
         createdAt: new Date(),
         updatedAt: new Date()
       },
@@ -280,6 +286,65 @@ export const useClientData = () => {
     debouncedSave(STORAGE_KEYS.CLEANERS, mockCleaners);
     return mockCleaners;
   }, [debouncedSave]);
+
+  // Load cleaners from Supabase
+  const loadCleanersFromSupabase = useCallback(async (): Promise<Cleaner[]> => {
+    try {
+      console.log('Loading cleaners from Supabase...');
+      
+      const { data, error } = await supabase
+        .from('cleaners')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error loading cleaners from Supabase:', error);
+        throw error;
+      }
+
+      if (!data || data.length === 0) {
+        console.log('No cleaners found in Supabase, using mock data');
+        return await initializeMockCleaners();
+      }
+
+      // Transform Supabase data to match our Cleaner interface
+      const cleaners: Cleaner[] = data.map(row => ({
+        id: row.id,
+        name: row.name,
+        employeeId: row.employee_id || `EMP-${row.id.slice(-6)}`,
+        securityLevel: row.security_level as 'low' | 'medium' | 'high',
+        phoneNumber: row.phone_number || '',
+        email: row.email || undefined,
+        specialties: row.specialties || [],
+        hireDate: row.hire_date || undefined,
+        defaultHourlyRate: row.default_hourly_rate || 15.00,
+        emergencyContact: row.emergency_contact_name ? {
+          name: row.emergency_contact_name,
+          phone: row.emergency_contact_phone || '',
+          relationship: row.emergency_contact_relationship || undefined
+        } : undefined,
+        isActive: row.is_active !== false,
+        createdAt: row.created_at ? new Date(row.created_at) : undefined,
+        updatedAt: row.updated_at ? new Date(row.updated_at) : undefined,
+        user_id: row.user_id || undefined,
+      }));
+
+      console.log(`Loaded ${cleaners.length} cleaners from Supabase`);
+      
+      // Save to local storage as backup
+      debouncedSave(STORAGE_KEYS.CLEANERS, cleaners);
+      
+      return cleaners;
+    } catch (error) {
+      console.error('Failed to load cleaners from Supabase:', error);
+      // Fall back to local storage or mock data
+      const localData = await AsyncStorage.getItem(STORAGE_KEYS.CLEANERS);
+      if (localData) {
+        return JSON.parse(localData);
+      }
+      return await initializeMockCleaners();
+    }
+  }, [debouncedSave, initializeMockCleaners]);
 
   // Optimized data loading with parallel operations
   const loadData = useCallback(async () => {
@@ -292,10 +357,9 @@ export const useClientData = () => {
       setError(null);
 
       // Load all data in parallel for better performance
-      const [clientsData, buildingsData, cleanersData] = await Promise.all([
+      const [clientsData, buildingsData] = await Promise.all([
         AsyncStorage.getItem(STORAGE_KEYS.CLIENTS),
         AsyncStorage.getItem(STORAGE_KEYS.BUILDINGS),
-        AsyncStorage.getItem(STORAGE_KEYS.CLEANERS),
       ]);
 
       // Process clients
@@ -320,16 +384,10 @@ export const useClientData = () => {
         buildingsCache.set('all', mockBuildings);
       }
 
-      // Process cleaners
-      if (cleanersData) {
-        const parsedCleaners = JSON.parse(cleanersData);
-        setCleaners(parsedCleaners);
-        cleanersCache.set('all', parsedCleaners);
-      } else {
-        const mockCleaners = await initializeMockCleaners();
-        setCleaners(mockCleaners);
-        cleanersCache.set('all', mockCleaners);
-      }
+      // Load cleaners from Supabase (this will handle fallback to local/mock data)
+      const loadedCleaners = await loadCleanersFromSupabase();
+      setCleaners(loadedCleaners);
+      cleanersCache.set('all', loadedCleaners);
 
       console.log('Client data loaded successfully');
     } catch (err) {
@@ -339,7 +397,7 @@ export const useClientData = () => {
       setIsLoading(false);
       loadingRef.current = false;
     }
-  }, [initializeMockBuildings, initializeMockCleaners, initializeMockClients]);
+  }, [initializeMockBuildings, initializeMockClients, loadCleanersFromSupabase]);
 
   // Optimized save functions with caching
   const saveClients = useCallback(async (newClients: Client[]) => {
@@ -399,11 +457,80 @@ export const useClientData = () => {
 
   const addCleaner = useCallback(async (cleaner: Omit<Cleaner, 'id'> | Cleaner) => {
     const newCleaner = 'id' in cleaner ? cleaner : { ...cleaner, id: `cleaner-${Date.now()}` };
+    
+    try {
+      // Try to save to Supabase first
+      const { error } = await supabase
+        .from('cleaners')
+        .insert({
+          id: newCleaner.id,
+          name: newCleaner.name,
+          employee_id: newCleaner.employeeId,
+          security_level: newCleaner.securityLevel,
+          phone_number: newCleaner.phoneNumber,
+          email: newCleaner.email || null,
+          specialties: newCleaner.specialties || [],
+          hire_date: newCleaner.hireDate || null,
+          default_hourly_rate: newCleaner.defaultHourlyRate || 15.00,
+          emergency_contact_name: newCleaner.emergencyContact?.name || null,
+          emergency_contact_phone: newCleaner.emergencyContact?.phone || null,
+          emergency_contact_relationship: newCleaner.emergencyContact?.relationship || null,
+          is_active: newCleaner.isActive !== false,
+          user_id: newCleaner.user_id || null,
+        });
+
+      if (error) {
+        console.error('Error adding cleaner to Supabase:', error);
+        throw error;
+      }
+
+      console.log('Cleaner added to Supabase successfully');
+    } catch (error) {
+      console.error('Failed to add cleaner to Supabase, saving locally:', error);
+    }
+
+    // Update local state
     const updatedCleaners = [...cleaners, newCleaner];
     await saveCleaners(updatedCleaners);
   }, [cleaners, saveCleaners]);
 
   const updateCleaner = useCallback(async (cleanerId: string, updates: Partial<Cleaner>) => {
+    try {
+      // Try to update in Supabase first
+      const updateData: any = {};
+      if (updates.name !== undefined) updateData.name = updates.name;
+      if (updates.employeeId !== undefined) updateData.employee_id = updates.employeeId;
+      if (updates.securityLevel !== undefined) updateData.security_level = updates.securityLevel;
+      if (updates.phoneNumber !== undefined) updateData.phone_number = updates.phoneNumber;
+      if (updates.email !== undefined) updateData.email = updates.email || null;
+      if (updates.specialties !== undefined) updateData.specialties = updates.specialties;
+      if (updates.hireDate !== undefined) updateData.hire_date = updates.hireDate || null;
+      if (updates.defaultHourlyRate !== undefined) updateData.default_hourly_rate = updates.defaultHourlyRate;
+      if (updates.emergencyContact !== undefined) {
+        updateData.emergency_contact_name = updates.emergencyContact?.name || null;
+        updateData.emergency_contact_phone = updates.emergencyContact?.phone || null;
+        updateData.emergency_contact_relationship = updates.emergencyContact?.relationship || null;
+      }
+      if (updates.isActive !== undefined) updateData.is_active = updates.isActive;
+      
+      updateData.updated_at = new Date().toISOString();
+
+      const { error } = await supabase
+        .from('cleaners')
+        .update(updateData)
+        .eq('id', cleanerId);
+
+      if (error) {
+        console.error('Error updating cleaner in Supabase:', error);
+        throw error;
+      }
+
+      console.log('Cleaner updated in Supabase successfully');
+    } catch (error) {
+      console.error('Failed to update cleaner in Supabase, updating locally:', error);
+    }
+
+    // Update local state
     const updatedCleaners = cleaners.map(cleaner =>
       cleaner.id === cleanerId ? { ...cleaner, ...updates, updatedAt: new Date() } : cleaner
     );
@@ -411,6 +538,24 @@ export const useClientData = () => {
   }, [cleaners, saveCleaners]);
 
   const deleteCleaner = useCallback(async (cleanerId: string) => {
+    try {
+      // Try to delete from Supabase first
+      const { error } = await supabase
+        .from('cleaners')
+        .delete()
+        .eq('id', cleanerId);
+
+      if (error) {
+        console.error('Error deleting cleaner from Supabase:', error);
+        throw error;
+      }
+
+      console.log('Cleaner deleted from Supabase successfully');
+    } catch (error) {
+      console.error('Failed to delete cleaner from Supabase, deleting locally:', error);
+    }
+
+    // Update local state
     const updatedCleaners = cleaners.filter(cleaner => cleaner.id !== cleanerId);
     await saveCleaners(updatedCleaners);
   }, [cleaners, saveCleaners]);

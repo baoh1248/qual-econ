@@ -122,37 +122,6 @@ const SupervisorInventoryScreen = () => {
     reorder_quantity: '',
   });
 
-  // Load data from database
-  const loadInventoryData = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      console.log('Loading inventory data from database...');
-
-      // Load inventory items - FIXED: Use correct table name
-      const inventoryData = await executeQuery<InventoryItem>('select', 'inventory_items');
-      console.log('Loaded inventory items:', inventoryData.length);
-
-      // Load restock requests
-      const requestsData = await executeQuery<RestockRequest>('select', 'restock_requests');
-      console.log('Loaded restock requests:', requestsData.length);
-
-      // If no data exists, initialize with sample data
-      if (inventoryData.length === 0) {
-        console.log('No inventory data found, initializing with sample data...');
-        await initializeSampleData();
-        return; // initializeSampleData will call loadInventoryData again
-      }
-
-      setInventory(inventoryData);
-      setRestockRequests(requestsData);
-    } catch (error) {
-      console.error('Error loading inventory data:', error);
-      showToast('Failed to load inventory data', 'error');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [executeQuery, showToast]);
-
   // Initialize sample data
   const initializeSampleData = useCallback(async () => {
     try {
@@ -256,14 +225,42 @@ const SupervisorInventoryScreen = () => {
 
       console.log('Sample data initialized successfully');
       showToast('Sample inventory data loaded', 'success');
-
-      // Reload data
-      await loadInventoryData();
     } catch (error) {
       console.error('Error initializing sample data:', error);
       showToast('Failed to initialize sample data', 'error');
     }
-  }, [executeQuery, showToast, loadInventoryData]);
+  }, [executeQuery, showToast]);
+
+  // Load data from database
+  const loadInventoryData = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      console.log('Loading inventory data from database...');
+
+      // Load inventory items
+      const inventoryData = await executeQuery<InventoryItem>('select', 'inventory_items');
+      console.log('Loaded inventory items:', inventoryData.length);
+
+      // Load restock requests
+      const requestsData = await executeQuery<RestockRequest>('select', 'restock_requests');
+      console.log('Loaded restock requests:', requestsData.length);
+
+      // If no data exists, initialize with sample data
+      if (inventoryData.length === 0) {
+        console.log('No inventory data found, initializing with sample data...');
+        await initializeSampleData();
+        return;
+      }
+
+      setInventory(inventoryData);
+      setRestockRequests(requestsData);
+    } catch (error) {
+      console.error('Error loading inventory data:', error);
+      showToast('Failed to load inventory data', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [executeQuery, showToast, initializeSampleData]);
 
   // Load data on component mount
   useEffect(() => {
@@ -456,91 +453,69 @@ const SupervisorInventoryScreen = () => {
     }
   }, [inventory, executeQuery, showToast]);
 
-  // NEW: Delete item function - Completely rewritten
-  const handleDeleteItem = useCallback(async (itemId: string) => {
-    try {
-      console.log('╔════════════════════════════════════════╗');
-      console.log('║   STARTING ITEM DELETION PROCESS      ║');
-      console.log('╚════════════════════════════════════════╝');
-      console.log('Target Item ID:', itemId);
-      console.log('Current inventory count:', inventory.length);
-      
-      // Find the item to verify it exists
-      const itemToDelete = inventory.find(item => item.id === itemId);
-      if (!itemToDelete) {
-        console.error('ERROR: Item not found in inventory');
-        showToast('Item not found', 'error');
-        return;
-      }
-      
-      console.log('Item found:', itemToDelete.name);
-      console.log('Executing database delete operation...');
-      
-      // Execute the delete operation in the database
-      await executeQuery('delete', 'inventory_items', null, { id: itemId });
-      console.log('✓ Database delete operation successful');
-      
-      // Update the local state
-      console.log('Updating local state...');
-      setInventory(currentInventory => {
-        const updatedInventory = currentInventory.filter(item => item.id !== itemId);
-        console.log('✓ State updated. New count:', updatedInventory.length);
-        return updatedInventory;
-      });
-      
-      // Show success message
-      showToast(`"${itemToDelete.name}" deleted successfully`, 'success');
-      
-      console.log('╔════════════════════════════════════════╗');
-      console.log('║   DELETION COMPLETED SUCCESSFULLY     ║');
-      console.log('╚════════════════════════════════════════╝');
-    } catch (error: any) {
-      console.error('╔════════════════════════════════════════╗');
-      console.error('║   DELETION FAILED                     ║');
-      console.error('╚════════════════════════════════════════╝');
-      console.error('Error type:', error?.constructor?.name);
-      console.error('Error message:', error?.message);
-      console.error('Full error:', error);
-      showToast(`Failed to delete item: ${error?.message || 'Unknown error'}`, 'error');
-    }
-  }, [inventory, executeQuery, showToast]);
-
-  // NEW: Confirm delete with Alert
-  const confirmDeleteItem = useCallback((item: InventoryItem) => {
-    console.log('═══════════════════════════════════════');
-    console.log('DELETE CONFIRMATION REQUESTED');
-    console.log('Item ID:', item.id);
-    console.log('Item Name:', item.name);
-    console.log('═══════════════════════════════════════');
+  // FIXED: Delete item handler - simplified and more robust
+  const handleDeleteItem = useCallback((item: InventoryItem) => {
+    console.log('╔════════════════════════════════════════╗');
+    console.log('║   DELETE ITEM BUTTON PRESSED          ║');
+    console.log('╚════════════════════════════════════════╝');
+    console.log('Item to delete:', item.name, 'ID:', item.id);
     
     Alert.alert(
       'Delete Item',
-      `Are you sure you want to delete "${item.name}"?\n\nThis action cannot be undone.`,
+      `Are you sure you want to delete "${item.name}"? This action cannot be undone.`,
       [
         { 
           text: 'Cancel', 
           style: 'cancel',
           onPress: () => {
-            console.log('User cancelled deletion');
+            console.log('Delete cancelled by user');
           }
         },
-        { 
-          text: 'Delete', 
+        {
+          text: 'Delete',
           style: 'destructive',
-          onPress: () => {
-            console.log('User confirmed deletion, proceeding...');
-            handleDeleteItem(item.id);
-          }
-        }
+          onPress: async () => {
+            try {
+              console.log('╔════════════════════════════════════════╗');
+              console.log('║   STARTING ITEM DELETION PROCESS      ║');
+              console.log('╚════════════════════════════════════════╝');
+              console.log('Target Item ID:', item.id);
+              console.log('Item Name:', item.name);
+              console.log('Current inventory count:', inventory.length);
+              console.log('Using Supabase:', config.useSupabase);
+              console.log('Is Online:', syncStatus.isOnline);
+              
+              // Delete from database using executeQuery
+              await executeQuery('delete', 'inventory_items', undefined, { id: item.id });
+              console.log('✓ Database delete successful');
+              
+              // Update local state immediately
+              setInventory(currentInventory => {
+                const updatedInventory = currentInventory.filter(i => i.id !== item.id);
+                console.log('✓ State updated. Previous count:', currentInventory.length, 'New count:', updatedInventory.length);
+                return updatedInventory;
+              });
+              
+              showToast(`"${item.name}" deleted successfully`, 'success');
+              
+              console.log('╔════════════════════════════════════════╗');
+              console.log('║   DELETION COMPLETED SUCCESSFULLY     ║');
+              console.log('╚════════════════════════════════════════╝');
+            } catch (error: any) {
+              console.error('╔════════════════════════════════════════╗');
+              console.error('║   DELETION FAILED                     ║');
+              console.error('╚════════════════════════════════════════╝');
+              console.error('Error type:', typeof error);
+              console.error('Error message:', error?.message);
+              console.error('Full error:', JSON.stringify(error, null, 2));
+              showToast(`Failed to delete item: ${error?.message || 'Unknown error'}`, 'error');
+            }
+          },
+        },
       ],
-      { 
-        cancelable: true,
-        onDismiss: () => {
-          console.log('Alert dismissed');
-        }
-      }
+      { cancelable: true }
     );
-  }, [handleDeleteItem]);
+  }, [inventory, executeQuery, showToast, config.useSupabase, syncStatus.isOnline]);
 
   // Open edit modal
   const openEditModal = (item: InventoryItem) => {
@@ -673,45 +648,13 @@ const SupervisorInventoryScreen = () => {
     }
   };
 
-  // Handle stock update with prompt
-  const handleStockUpdate = (item: InventoryItem) => {
-    if (Platform.OS === 'web') {
-      const newStock = prompt(
-        `Update stock for ${item.name}\nCurrent stock: ${item.current_stock} ${item.unit}`,
-        item.current_stock.toString()
-      );
-      
-      if (newStock !== null) {
-        const stockValue = parseInt(newStock);
-        if (!isNaN(stockValue) && stockValue >= 0) {
-          updateStock(item.id, stockValue);
-        } else {
-          showToast('Please enter a valid stock number', 'error');
-        }
-      }
-    } else {
-      Alert.prompt(
-        'Update Stock',
-        `Current stock: ${item.current_stock} ${item.unit}`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { 
-            text: 'Update', 
-            onPress: (value) => {
-              const newStock = parseInt(value || '0');
-              if (!isNaN(newStock) && newStock >= 0) {
-                updateStock(item.id, newStock);
-              } else {
-                showToast('Please enter a valid stock number', 'error');
-              }
-            }
-          }
-        ],
-        'plain-text',
-        item.current_stock.toString()
-      );
-    }
-  };
+  const handleSendSuccess = useCallback(() => {
+    loadInventoryData();
+  }, [loadInventoryData]);
+
+  const handleTransferRefresh = useCallback(() => {
+    loadInventoryData();
+  }, [loadInventoryData]);
 
   if (isLoading) {
     return (
@@ -733,7 +676,6 @@ const SupervisorInventoryScreen = () => {
           <Text style={commonStyles.headerTitle}>Inventory Management</Text>
         </View>
         <View style={styles.headerActions}>
-          {/* Database status indicator */}
           <View style={[styles.statusIndicator, { 
             backgroundColor: config.useSupabase && syncStatus.isOnline ? colors.success : colors.warning 
           }]}>
@@ -788,7 +730,7 @@ const SupervisorInventoryScreen = () => {
             style={[styles.filterButton, selectedCategory === 'equipment' && styles.filterButtonActive]}
             onPress={() => setSelectedCategory('equipment')}
           >
-            <Text style={[styles.filterButtonText, selectedCategory === 'equipment' && styles.filterButtonTextActive]}>
+            <Text style={[styles.filterButtonText, selectedCategory === 'equipment' && styles.filterButtonActive]}>
               Equipment
             </Text>
           </TouchableOpacity>
@@ -827,7 +769,7 @@ const SupervisorInventoryScreen = () => {
         />
       </View>
 
-      {/* Inventory Grid - COMPACT LAYOUT */}
+      {/* Inventory Grid */}
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.inventoryGrid}>
           {filteredInventory.map((item) => {
@@ -837,7 +779,6 @@ const SupervisorInventoryScreen = () => {
             return (
               <View key={item.id} style={styles.gridItem}>
                 <AnimatedCard style={styles.compactCard}>
-                  {/* Item Header */}
                   <View style={styles.compactHeader}>
                     <Icon 
                       name={getCategoryIcon(item.category)} 
@@ -853,19 +794,20 @@ const SupervisorInventoryScreen = () => {
                       />
                       <IconButton
                         icon="trash"
-                        onPress={() => confirmDeleteItem(item)}
+                        onPress={() => {
+                          console.log('Trash icon pressed for item:', item.name);
+                          handleDeleteItem(item);
+                        }}
                         size={18}
                         color={colors.danger}
                       />
                     </View>
                   </View>
 
-                  {/* Item Name */}
                   <Text style={styles.compactItemName} numberOfLines={2}>
                     {item.name}
                   </Text>
 
-                  {/* Stock Badge */}
                   <View style={[styles.compactStockBadge, { backgroundColor: 
                     stockStatus === 'low' ? colors.danger : 
                     stockStatus === 'medium' ? colors.warning : colors.success 
@@ -875,27 +817,16 @@ const SupervisorInventoryScreen = () => {
                     </Text>
                   </View>
 
-                  {/* Location */}
                   <Text style={styles.compactLocation} numberOfLines={1}>
                     {item.location}
                   </Text>
 
-                  {/* Pending Requests Badge */}
                   {pendingRequests.length > 0 && (
                     <View style={styles.pendingBadge}>
                       <Icon name="alert-circle" size={12} style={{ color: colors.background }} />
                       <Text style={styles.pendingBadgeText}>{pendingRequests.length}</Text>
                     </View>
                   )}
-
-                  {/* Update Stock Button */}
-                  <TouchableOpacity
-                    style={styles.compactUpdateButton}
-                    onPress={() => handleStockUpdate(item)}
-                  >
-                    <Icon name="create" size={14} style={{ color: colors.background }} />
-                    <Text style={styles.compactUpdateButtonText}>Update</Text>
-                  </TouchableOpacity>
                 </AnimatedCard>
               </View>
             );
@@ -1290,12 +1221,14 @@ const SupervisorInventoryScreen = () => {
         inventory={inventory}
         onClose={() => setShowSendItemsModal(false)}
         onSend={handleItemsSent}
+        onSuccess={handleSendSuccess}
       />
 
       {/* Transfer History Modal */}
       <TransferHistoryModal
         visible={showTransferModal}
         onClose={() => setShowTransferModal(false)}
+        onRefresh={handleTransferRefresh}
       />
 
       {/* Reject Request Confirmation */}
@@ -1418,14 +1351,13 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: spacing.lg,
   },
-  // NEW COMPACT GRID STYLES
   inventoryGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     marginHorizontal: -spacing.xs,
   },
   gridItem: {
-    width: '50%', // 2 items per row on mobile
+    width: '25%',
     paddingHorizontal: spacing.xs,
     marginBottom: spacing.sm,
   },
@@ -1484,20 +1416,6 @@ const styles = StyleSheet.create({
     color: colors.background,
     fontWeight: '600',
     fontSize: 10,
-  },
-  compactUpdateButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: 8,
-    paddingVertical: spacing.xs,
-    gap: spacing.xs,
-  },
-  compactUpdateButtonText: {
-    ...typography.small,
-    color: colors.background,
-    fontWeight: '600',
   },
   emptyState: {
     alignItems: 'center',

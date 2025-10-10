@@ -4,7 +4,7 @@ import { View, Text, StyleSheet, Animated } from 'react-native';
 import { colors, typography } from '../styles/commonStyles';
 
 interface ProgressRingProps {
-  progress: number; // 0-100
+  progress: number;
   size?: number;
   strokeWidth?: number;
   color?: string;
@@ -28,14 +28,12 @@ export default function ProgressRing({
   const rotationAnim = useRef(new Animated.Value(0)).current;
   
   useEffect(() => {
-    // Smooth progress animation
     Animated.timing(animatedProgress, {
       toValue: progress,
       duration: 1500,
       useNativeDriver: false,
     }).start();
     
-    // Continuous rotation for smoother feel
     const rotationAnimation = Animated.loop(
       Animated.timing(rotationAnim, {
         toValue: 1,
@@ -49,14 +47,12 @@ export default function ProgressRing({
     return () => {
       rotationAnimation.stop();
     };
-  }, [progress]);
+  }, [progress, animatedProgress, rotationAnim]);
   
-  // Create more segments for smoother animation
-  const segments = 60; // Increased from 40 for smoother appearance
+  const segments = 60;
   
   return (
     <View style={[styles.container, { width: size, height: size }]}>
-      {/* Background circle */}
       <View style={[
         styles.backgroundCircle,
         {
@@ -68,7 +64,6 @@ export default function ProgressRing({
         }
       ]} />
       
-      {/* Animated progress segments */}
       <Animated.View 
         style={[
           styles.segmentsContainer, 
@@ -86,10 +81,9 @@ export default function ProgressRing({
       >
         {Array.from({ length: segments }).map((_, index) => {
           const angle = (360 / segments) * index;
-          const segmentSize = strokeWidth * 0.9; // Slightly larger segments
+          const segmentSize = strokeWidth * 0.9;
           const radius = (size - strokeWidth) / 2;
           
-          // Calculate position for each segment
           const x = Math.cos((angle - 90) * Math.PI / 180) * radius;
           const y = Math.sin((angle - 90) * Math.PI / 180) * radius;
           

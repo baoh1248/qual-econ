@@ -6,11 +6,13 @@ import { commonStyles, colors, spacing, typography, buttonStyles } from '../../s
 import CompanyLogo from '../../components/CompanyLogo';
 import { useClientData, type Cleaner } from '../../hooks/useClientData';
 import { useToast } from '../../hooks/useToast';
+import { useDatabase } from '../../hooks/useDatabase';
 import Icon from '../../components/Icon';
 import Button from '../../components/Button';
 import AnimatedCard from '../../components/AnimatedCard';
 import Toast from '../../components/Toast';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 interface CleanerFormData {
   name: string;
@@ -20,10 +22,24 @@ interface CleanerFormData {
   email: string;
   specialties: string[];
   hireDate: string;
+  defaultHourlyRate: string;
   emergencyContact: {
     name: string;
     phone: string;
   };
+}
+
+interface CleanerVacation {
+  id: string;
+  cleaner_id: string;
+  cleaner_name: string;
+  start_date: string;
+  end_date: string;
+  reason?: string;
+  notes?: string;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  created_at?: string;
+  updated_at?: string;
 }
 
 const initialFormData: CleanerFormData = {
@@ -34,6 +50,7 @@ const initialFormData: CleanerFormData = {
   email: '',
   specialties: [],
   hireDate: new Date().toISOString().split('T')[0],
+  defaultHourlyRate: '15.00',
   emergencyContact: {
     name: '',
     phone: ''
@@ -59,6 +76,7 @@ export default function CleanersScreen() {
   
   const { cleaners, isLoading, addCleaner, updateCleaner, deleteCleaner } = useClientData();
   const { toast, showToast, hideToast } = useToast();
+  const { executeQuery, config, syncStatus } = useDatabase();
   
   const [searchQuery, setSearchQuery] = useState('');
   const [filterSecurityLevel, setFilterSecurityLevel] = useState<'all' | 'low' | 'medium' | 'high'>('all');
@@ -68,6 +86,18 @@ export default function CleanersScreen() {
   const [formData, setFormData] = useState<CleanerFormData>(initialFormData);
   const [showSecurityDropdown, setShowSecurityDropdown] = useState(false);
   const [showSpecialtiesModal, setShowSpecialtiesModal] = useState(false);
+  
+  // Vacation management states
+  const [showVacationModal, setShowVacationModal] = useState(false);
+  const [cleanerVacations, setCleanerVacations] = useState<CleanerVacation[]>([]);
+  const [vacationStartDate, setVacationStartDate] = useState(new Date());
+  const [vacationEndDate, setVacationEndDate] = useState(new Date());
+  const [vacationReason, setVacationReason] = useState('');
+  const [vacationNotes, setVacationNotes] = useState('');
+  const [showStartDatePicker, setShowStartDatePicker] = useState(false);
+  const [showEndDatePicker, setShowEndDatePicker] = useState(false);
+  const [editingVacation, setEditingVacation] = useState<CleanerVacation | null>(null);
+  const [isLoadingVacations, setIsLoadingVacations] = useState(false);
 
   // Filter cleaners based on search and security level
   const filteredCleaners = cleaners.filter(cleaner => {
@@ -78,9 +108,55 @@ export default function CleanersScreen() {
     return matchesSearch && matchesSecurityLevel;
   });
 
+  // FIXED: Load vacations for selected cleaner
+  const loadCleanerVacations = useCallback(async (cleanerId: string) => {
+    if (!config.useSupabase || !syncStatus.isOnline) {
+      console.log('Supabase not available, skipping vacation load');
+      return;
+    }
+
+    try {
+      setIsLoadingVacations(true);
+      console.log('╔════════════════════════════════════════╗');
+      console.log('║   LOADING VACATIONS FOR CLEANER       ║');
+      console.log('╚════════════════════════════════════════╝');
+      console.log('Cleaner ID:', cleanerId);
+      
+      const result = await executeQuery<CleanerVacation>(
+        'select',
+        'cleaner_vacations',
+        undefined,
+        { cleaner_id: cleanerId }
+      );
+      
+      console.log('✓ Vacations loaded from database:', result.length);
+      console.log('Vacation data:', JSON.stringify(result, null, 2));
+      
+      // Update state with fresh data from database
+      setCleanerVacations(result);
+    } catch (error) {
+      console.error('╔════════════════════════════════════════╗');
+      console.error('║   VACATION LOAD FAILED                ║');
+      console.error('╚════════════════════════════════════════╝');
+      console.error('Error:', error);
+      showToast('Failed to load vacations', 'error');
+    } finally {
+      setIsLoadingVacations(false);
+    }
+  }, [config.useSupabase, syncStatus.isOnline, executeQuery, showToast]);
+
   const resetForm = useCallback(() => {
     setFormData(initialFormData);
     setSelectedCleaner(null);
+    setCleanerVacations([]);
+  }, []);
+
+  const resetVacationForm = useCallback(() => {
+    setVacationStartDate(new Date());
+    setVacationEndDate(new Date());
+    setVacationReason('');
+    setVacationNotes('');
+    setEditingVacation(null);
   }, []);
 
   const validateForm = useCallback((): boolean => {
@@ -125,10 +201,11 @@ export default function CleanersScreen() {
         email: formData.email.trim(),
         specialties: formData.specialties,
         hireDate: formData.hireDate,
+        defaultHourlyRate: parseFloat(formData.defaultHourlyRate) || 15.00,
         emergencyContact: formData.emergencyContact.name ? {
           name: formData.emergencyContact.name,
           phone: formData.emergencyContact.phone,
-          relationship: '' // Keep empty since we removed relationship
+          relationship: ''
         } : undefined,
         isActive: true
       };
@@ -157,10 +234,11 @@ export default function CleanersScreen() {
         email: formData.email.trim(),
         specialties: formData.specialties,
         hireDate: formData.hireDate,
+        defaultHourlyRate: parseFloat(formData.defaultHourlyRate) || 15.00,
         emergencyContact: formData.emergencyContact.name ? {
           name: formData.emergencyContact.name,
           phone: formData.emergencyContact.phone,
-          relationship: '' // Keep empty since we removed relationship
+          relationship: ''
         } : undefined
       };
 
@@ -197,7 +275,7 @@ export default function CleanersScreen() {
     );
   }, [deleteCleaner, showToast]);
 
-  const openEditModal = useCallback((cleaner: Cleaner) => {
+  const openEditModal = useCallback(async (cleaner: Cleaner) => {
     setSelectedCleaner(cleaner);
     setFormData({
       name: cleaner.name,
@@ -207,13 +285,219 @@ export default function CleanersScreen() {
       email: cleaner.email || '',
       specialties: cleaner.specialties || [],
       hireDate: cleaner.hireDate || new Date().toISOString().split('T')[0],
+      defaultHourlyRate: (cleaner.defaultHourlyRate || 15.00).toString(),
       emergencyContact: {
         name: cleaner.emergencyContact?.name || '',
         phone: cleaner.emergencyContact?.phone || ''
       }
     });
+    
+    // Load vacations for this cleaner
+    await loadCleanerVacations(cleaner.id);
+    
     setShowEditModal(true);
-  }, []);
+  }, [loadCleanerVacations]);
+
+  // FIXED: Add vacation handler - properly updates state after insert
+  const handleAddVacation = useCallback(async () => {
+    if (!selectedCleaner) {
+      showToast('No cleaner selected', 'error');
+      return;
+    }
+
+    if (vacationEndDate < vacationStartDate) {
+      showToast('End date must be after start date', 'error');
+      return;
+    }
+
+    if (!config.useSupabase || !syncStatus.isOnline) {
+      showToast('Supabase not available. Please check your connection.', 'error');
+      return;
+    }
+
+    try {
+      // Format dates properly as YYYY-MM-DD (DATE type in PostgreSQL)
+      const startDateStr = vacationStartDate.toISOString().split('T')[0];
+      const endDateStr = vacationEndDate.toISOString().split('T')[0];
+      
+      console.log('╔════════════════════════════════════════╗');
+      console.log('║   ADDING VACATION                     ║');
+      console.log('╚════════════════════════════════════════╝');
+      console.log('Cleaner:', selectedCleaner.name);
+      console.log('Cleaner ID:', selectedCleaner.id);
+      console.log('Start Date:', startDateStr);
+      console.log('End Date:', endDateStr);
+      console.log('Reason:', vacationReason);
+
+      const vacationId = `vacation-${Date.now()}`;
+      
+      const newVacation: CleanerVacation = {
+        id: vacationId,
+        cleaner_id: selectedCleaner.id,
+        cleaner_name: selectedCleaner.name,
+        start_date: startDateStr,
+        end_date: endDateStr,
+        reason: vacationReason.trim() || undefined,
+        notes: vacationNotes.trim() || undefined,
+        status: 'approved',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      console.log('Inserting vacation:', JSON.stringify(newVacation, null, 2));
+
+      // Insert into database
+      await executeQuery<CleanerVacation>(
+        'insert',
+        'cleaner_vacations',
+        newVacation
+      );
+
+      console.log('✓ Vacation added to database successfully');
+      
+      // FIXED: Update local state immediately with the new vacation
+      setCleanerVacations(prevVacations => [...prevVacations, newVacation]);
+      
+      showToast('Vacation added successfully', 'success');
+      setShowVacationModal(false);
+      resetVacationForm();
+    } catch (error: any) {
+      console.error('╔════════════════════════════════════════╗');
+      console.error('║   VACATION ADD FAILED                 ║');
+      console.error('╚════════════════════════════════════════╝');
+      console.error('Error:', error);
+      showToast(`Failed to add vacation: ${error?.message || 'Unknown error'}`, 'error');
+    }
+  }, [selectedCleaner, vacationStartDate, vacationEndDate, vacationReason, vacationNotes, config.useSupabase, syncStatus.isOnline, executeQuery, showToast, resetVacationForm]);
+
+  const handleUpdateVacation = useCallback(async () => {
+    if (!editingVacation || !selectedCleaner) {
+      showToast('No vacation selected', 'error');
+      return;
+    }
+
+    if (vacationEndDate < vacationStartDate) {
+      showToast('End date must be after start date', 'error');
+      return;
+    }
+
+    if (!config.useSupabase || !syncStatus.isOnline) {
+      showToast('Supabase not available. Please check your connection.', 'error');
+      return;
+    }
+
+    try {
+      // Format dates properly as YYYY-MM-DD (DATE type in PostgreSQL)
+      const startDateStr = vacationStartDate.toISOString().split('T')[0];
+      const endDateStr = vacationEndDate.toISOString().split('T')[0];
+      
+      console.log('╔════════════════════════════════════════╗');
+      console.log('║   UPDATING VACATION                   ║');
+      console.log('╚════════════════════════════════════════╝');
+      console.log('Vacation ID:', editingVacation.id);
+      console.log('Start Date:', startDateStr);
+      console.log('End Date:', endDateStr);
+
+      const updatedVacation = {
+        start_date: startDateStr,
+        end_date: endDateStr,
+        reason: vacationReason.trim() || undefined,
+        notes: vacationNotes.trim() || undefined,
+        updated_at: new Date().toISOString(),
+      };
+
+      await executeQuery<CleanerVacation>(
+        'update',
+        'cleaner_vacations',
+        updatedVacation,
+        { id: editingVacation.id }
+      );
+
+      console.log('✓ Vacation updated successfully');
+      
+      // FIXED: Update local state immediately
+      setCleanerVacations(prevVacations => 
+        prevVacations.map(v => 
+          v.id === editingVacation.id 
+            ? { ...v, ...updatedVacation }
+            : v
+        )
+      );
+      
+      showToast('Vacation updated successfully', 'success');
+      setShowVacationModal(false);
+      resetVacationForm();
+    } catch (error: any) {
+      console.error('╔════════════════════════════════════════╗');
+      console.error('║   VACATION UPDATE FAILED              ║');
+      console.error('╚════════════════════════════════════════╝');
+      console.error('Error:', error);
+      showToast(`Failed to update vacation: ${error?.message || 'Unknown error'}`, 'error');
+    }
+  }, [editingVacation, selectedCleaner, vacationStartDate, vacationEndDate, vacationReason, vacationNotes, config.useSupabase, syncStatus.isOnline, executeQuery, showToast, resetVacationForm]);
+
+  const handleDeleteVacation = useCallback(async (vacation: CleanerVacation) => {
+    if (!config.useSupabase || !syncStatus.isOnline) {
+      showToast('Supabase not available. Please check your connection.', 'error');
+      return;
+    }
+
+    Alert.alert(
+      'Delete Vacation',
+      'Are you sure you want to delete this vacation period?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              console.log('╔════════════════════════════════════════╗');
+              console.log('║   DELETING VACATION                   ║');
+              console.log('╚════════════════════════════════════════╝');
+              console.log('Vacation ID:', vacation.id);
+              
+              await executeQuery<CleanerVacation>(
+                'delete',
+                'cleaner_vacations',
+                undefined,
+                { id: vacation.id }
+              );
+
+              console.log('✓ Vacation deleted successfully');
+              
+              // FIXED: Update local state immediately
+              setCleanerVacations(prevVacations => 
+                prevVacations.filter(v => v.id !== vacation.id)
+              );
+              
+              showToast('Vacation deleted successfully', 'success');
+            } catch (error: any) {
+              console.error('╔════════════════════════════════════════╗');
+              console.error('║   VACATION DELETE FAILED              ║');
+              console.error('╚════════════════════════════════════════╝');
+              console.error('Error:', error);
+              showToast(`Failed to delete vacation: ${error?.message || 'Unknown error'}`, 'error');
+            }
+          }
+        }
+      ]
+    );
+  }, [config.useSupabase, syncStatus.isOnline, executeQuery, showToast]);
+
+  const openVacationModal = useCallback((vacation?: CleanerVacation) => {
+    if (vacation) {
+      setEditingVacation(vacation);
+      // Parse date strings properly (they're in YYYY-MM-DD format)
+      setVacationStartDate(new Date(vacation.start_date + 'T12:00:00'));
+      setVacationEndDate(new Date(vacation.end_date + 'T12:00:00'));
+      setVacationReason(vacation.reason || '');
+      setVacationNotes(vacation.notes || '');
+    } else {
+      resetVacationForm();
+    }
+    setShowVacationModal(true);
+  }, [resetVacationForm]);
 
   const toggleSpecialty = useCallback((specialty: string) => {
     setFormData(prev => ({
@@ -262,6 +546,56 @@ export default function CleanersScreen() {
     const levels = { low: 1, medium: 2, high: 3 };
     return levels[cleanerLevel as keyof typeof levels] >= levels[jobLevel as keyof typeof levels];
   };
+
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr + 'T12:00:00');
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  const getVacationStatus = (vacation: CleanerVacation) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const start = new Date(vacation.start_date + 'T12:00:00');
+    const end = new Date(vacation.end_date + 'T12:00:00');
+    
+    if (vacation.status === 'cancelled') return 'Cancelled';
+    if (today < start) return 'Upcoming';
+    if (today > end) return 'Past';
+    return 'Active';
+  };
+
+  const getVacationStatusColor = (status: string) => {
+    switch (status) {
+      case 'Active': return colors.success;
+      case 'Upcoming': return colors.primary;
+      case 'Past': return colors.textSecondary;
+      case 'Cancelled': return colors.danger;
+      default: return colors.textSecondary;
+    }
+  };
+
+  // Handle date picker changes for native platforms
+  const handleStartDateChange = useCallback((event: any, selectedDate?: Date) => {
+    console.log('Start date picker event:', event.type, selectedDate);
+    
+    setShowStartDatePicker(Platform.OS === 'ios');
+    
+    if (selectedDate && event.type !== 'dismissed') {
+      setVacationStartDate(selectedDate);
+      console.log('Start date set to:', selectedDate.toISOString().split('T')[0]);
+    }
+  }, []);
+
+  const handleEndDateChange = useCallback((event: any, selectedDate?: Date) => {
+    console.log('End date picker event:', event.type, selectedDate);
+    
+    setShowEndDatePicker(Platform.OS === 'ios');
+    
+    if (selectedDate && event.type !== 'dismissed') {
+      setVacationEndDate(selectedDate);
+      console.log('End date set to:', selectedDate.toISOString().split('T')[0]);
+    }
+  }, []);
 
   if (isLoading) {
     return (
@@ -393,6 +727,14 @@ export default function CleanersScreen() {
                   <View style={styles.cleanerInfo}>
                     <Text style={styles.cleanerName}>{cleaner.name}</Text>
                     <Text style={styles.cleanerEmployeeId}>ID: {cleaner.employeeId}</Text>
+                    {cleaner.defaultHourlyRate && (
+                      <View style={styles.hourlyRateBadge}>
+                        <Icon name="cash" size={12} style={{ color: colors.success }} />
+                        <Text style={styles.hourlyRateText}>
+                          ${cleaner.defaultHourlyRate.toFixed(2)}/hr
+                        </Text>
+                      </View>
+                    )}
                   </View>
                   
                   <View style={styles.cleanerActions}>
@@ -632,6 +974,22 @@ export default function CleanersScreen() {
                     placeholderTextColor={colors.textSecondary}
                   />
 
+                  <Text style={styles.inputLabel}>Default Hourly Rate ($)</Text>
+                  <View style={styles.hourlyRateInputContainer}>
+                    <Icon name="cash" size={20} style={{ color: colors.success }} />
+                    <TextInput
+                      style={[styles.input, styles.hourlyRateInput]}
+                      placeholder="15.00"
+                      value={formData.defaultHourlyRate}
+                      onChangeText={(text) => setFormData(prev => ({ ...prev, defaultHourlyRate: text }))}
+                      keyboardType="decimal-pad"
+                      placeholderTextColor={colors.textSecondary}
+                    />
+                  </View>
+                  <Text style={styles.inputHint}>
+                    This rate will be used by default when scheduling hourly shifts
+                  </Text>
+
                   <Text style={styles.inputLabel}>Specialties</Text>
                   <TouchableOpacity
                     style={styles.input}
@@ -693,6 +1051,102 @@ export default function CleanersScreen() {
                   />
                 </View>
 
+                {/* Vacation Management - Only show in edit mode */}
+                {showEditModal && selectedCleaner && config.useSupabase && syncStatus.isOnline && (
+                  <View style={styles.formSection}>
+                    <View style={styles.sectionHeader}>
+                      <Text style={styles.sectionTitle}>Vacation Management</Text>
+                      <TouchableOpacity
+                        style={styles.addVacationButton}
+                        onPress={() => openVacationModal()}
+                      >
+                        <Icon name="add-circle" size={20} style={{ color: colors.primary }} />
+                        <Text style={styles.addVacationButtonText}>Add Vacation</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {isLoadingVacations ? (
+                      <View style={styles.loadingVacationsContainer}>
+                        <LoadingSpinner />
+                        <Text style={styles.loadingVacationsText}>Loading vacations...</Text>
+                      </View>
+                    ) : cleanerVacations.length > 0 ? (
+                      <View style={styles.vacationsList}>
+                        {cleanerVacations.map((vacation) => {
+                          const status = getVacationStatus(vacation);
+                          const statusColor = getVacationStatusColor(status);
+                          
+                          return (
+                            <View key={vacation.id} style={styles.vacationCard}>
+                              <View style={styles.vacationHeader}>
+                                <View style={[styles.vacationStatusBadge, { backgroundColor: statusColor + '20' }]}>
+                                  <Text style={[styles.vacationStatusText, { color: statusColor }]}>
+                                    {status}
+                                  </Text>
+                                </View>
+                                <View style={styles.vacationActions}>
+                                  <TouchableOpacity
+                                    onPress={() => openVacationModal(vacation)}
+                                    style={styles.vacationActionButton}
+                                  >
+                                    <Icon name="create" size={16} style={{ color: colors.primary }} />
+                                  </TouchableOpacity>
+                                  <TouchableOpacity
+                                    onPress={() => handleDeleteVacation(vacation)}
+                                    style={styles.vacationActionButton}
+                                  >
+                                    <Icon name="trash" size={16} style={{ color: colors.danger }} />
+                                  </TouchableOpacity>
+                                </View>
+                              </View>
+                              
+                              <View style={styles.vacationDates}>
+                                <View style={styles.vacationDateItem}>
+                                  <Icon name="calendar-outline" size={14} style={{ color: colors.textSecondary }} />
+                                  <Text style={styles.vacationDateText}>
+                                    {formatDate(vacation.start_date)} - {formatDate(vacation.end_date)}
+                                  </Text>
+                                </View>
+                              </View>
+
+                              {vacation.reason && (
+                                <View style={styles.vacationDetail}>
+                                  <Text style={styles.vacationDetailLabel}>Reason:</Text>
+                                  <Text style={styles.vacationDetailText}>{vacation.reason}</Text>
+                                </View>
+                              )}
+
+                              {vacation.notes && (
+                                <View style={styles.vacationDetail}>
+                                  <Text style={styles.vacationDetailLabel}>Notes:</Text>
+                                  <Text style={styles.vacationDetailText}>{vacation.notes}</Text>
+                                </View>
+                              )}
+                            </View>
+                          );
+                        })}
+                      </View>
+                    ) : (
+                      <View style={styles.noVacationsContainer}>
+                        <Icon name="calendar-outline" size={32} style={{ color: colors.textSecondary }} />
+                        <Text style={styles.noVacationsText}>No vacations scheduled</Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+
+                {/* Show message if Supabase is not available */}
+                {showEditModal && selectedCleaner && (!config.useSupabase || !syncStatus.isOnline) && (
+                  <View style={styles.formSection}>
+                    <View style={styles.offlineNotice}>
+                      <Icon name="cloud-offline" size={24} style={{ color: colors.warning }} />
+                      <Text style={styles.offlineNoticeText}>
+                        Vacation management requires an active connection to the database.
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
                 {/* Modal Actions */}
                 <View style={styles.modalActions}>
                   <Button
@@ -717,6 +1171,172 @@ export default function CleanersScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Vacation Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={showVacationModal}
+        onRequestClose={() => {
+          setShowVacationModal(false);
+          resetVacationForm();
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContainer, { maxHeight: '70%' }]}>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.modalContent}>
+                <Text style={styles.modalTitle}>
+                  {editingVacation ? 'Edit Vacation' : 'Add Vacation'}
+                </Text>
+
+                <View style={styles.formSection}>
+                  <Text style={styles.inputLabel}>Start Date *</Text>
+                  {Platform.OS === 'web' ? (
+                    <input
+                      type="date"
+                      value={vacationStartDate.toISOString().split('T')[0]}
+                      onChange={(e) => {
+                        const date = new Date(e.target.value + 'T12:00:00');
+                        if (!isNaN(date.getTime())) {
+                          setVacationStartDate(date);
+                        }
+                      }}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        borderRadius: 8,
+                        padding: spacing.md,
+                        fontSize: 16,
+                        backgroundColor: colors.background,
+                        color: colors.text,
+                        marginBottom: spacing.md,
+                        width: '100%',
+                      }}
+                    />
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.input}
+                      onPress={() => setShowStartDatePicker(true)}
+                    >
+                      <View style={styles.inputRow}>
+                        <Icon name="calendar" size={20} style={{ color: colors.primary }} />
+                        <Text style={styles.inputText}>
+                          {vacationStartDate.toLocaleDateString('en-US', { 
+                            month: 'short', 
+                            day: 'numeric', 
+                            year: 'numeric' 
+                          })}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  )}
+
+                  <Text style={styles.inputLabel}>End Date *</Text>
+                  {Platform.OS === 'web' ? (
+                    <input
+                      type="date"
+                      value={vacationEndDate.toISOString().split('T')[0]}
+                      onChange={(e) => {
+                        const date = new Date(e.target.value + 'T12:00:00');
+                        if (!isNaN(date.getTime())) {
+                          setVacationEndDate(date);
+                        }
+                      }}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        borderRadius: 8,
+                        padding: spacing.md,
+                        fontSize: 16,
+                        backgroundColor: colors.background,
+                        color: colors.text,
+                        marginBottom: spacing.md,
+                        width: '100%',
+                      }}
+                    />
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.input}
+                      onPress={() => setShowEndDatePicker(true)}
+                    >
+                      <View style={styles.inputRow}>
+                        <Icon name="calendar" size={20} style={{ color: colors.primary }} />
+                        <Text style={styles.inputText}>
+                          {vacationEndDate.toLocaleDateString('en-US', { 
+                            month: 'short', 
+                            day: 'numeric', 
+                            year: 'numeric' 
+                          })}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  )}
+
+                  <Text style={styles.inputLabel}>Reason</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g., Annual Leave, Sick Leave"
+                    value={vacationReason}
+                    onChangeText={setVacationReason}
+                    placeholderTextColor={colors.textSecondary}
+                  />
+
+                  <Text style={styles.inputLabel}>Notes</Text>
+                  <TextInput
+                    style={[styles.input, styles.textArea]}
+                    placeholder="Additional notes..."
+                    value={vacationNotes}
+                    onChangeText={setVacationNotes}
+                    multiline
+                    numberOfLines={3}
+                    placeholderTextColor={colors.textSecondary}
+                  />
+                </View>
+
+                <View style={styles.modalActions}>
+                  <Button
+                    text="Cancel"
+                    onPress={() => {
+                      setShowVacationModal(false);
+                      resetVacationForm();
+                    }}
+                    variant="secondary"
+                    style={styles.actionButton}
+                  />
+                  <Button
+                    text={editingVacation ? 'Update' : 'Add'}
+                    onPress={editingVacation ? handleUpdateVacation : handleAddVacation}
+                    variant="primary"
+                    style={styles.actionButton}
+                  />
+                </View>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Date Pickers - Only for iOS and Android */}
+      {Platform.OS !== 'web' && showStartDatePicker && (
+        <DateTimePicker
+          value={vacationStartDate}
+          mode="date"
+          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          onChange={handleStartDateChange}
+          minimumDate={new Date()}
+        />
+      )}
+
+      {Platform.OS !== 'web' && showEndDatePicker && (
+        <DateTimePicker
+          value={vacationEndDate}
+          mode="date"
+          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          onChange={handleEndDateChange}
+          minimumDate={vacationStartDate}
+        />
+      )}
 
       {/* Specialties Selection Modal */}
       <Modal
@@ -888,6 +1508,22 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.textSecondary,
   },
+  hourlyRateBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.success + '20',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: 12,
+    marginTop: spacing.xs,
+    alignSelf: 'flex-start',
+    gap: spacing.xs,
+  },
+  hourlyRateText: {
+    ...typography.small,
+    color: colors.success,
+    fontWeight: '600',
+  },
   cleanerActions: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1016,6 +1652,12 @@ const styles = StyleSheet.create({
   formSection: {
     marginBottom: spacing.lg,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
   sectionTitle: {
     ...typography.h3,
     color: colors.text,
@@ -1039,6 +1681,10 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: spacing.md,
   },
+  textArea: {
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1051,6 +1697,30 @@ const styles = StyleSheet.create({
   },
   placeholderText: {
     color: colors.textSecondary,
+  },
+  hourlyRateInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingHorizontal: spacing.lg,
+    backgroundColor: colors.background,
+    marginBottom: spacing.xs,
+  },
+  hourlyRateInput: {
+    flex: 1,
+    borderWidth: 0,
+    marginBottom: 0,
+    paddingHorizontal: 0,
+  },
+  inputHint: {
+    ...typography.small,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
+    marginBottom: spacing.md,
+    marginTop: -spacing.sm,
   },
   dropdown: {
     borderWidth: 1,
@@ -1127,6 +1797,110 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
   },
   actionButton: {
+    flex: 1,
+  },
+  addVacationButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderRadius: 8,
+    backgroundColor: colors.primary + '20',
+  },
+  addVacationButtonText: {
+    ...typography.body,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  loadingVacationsContainer: {
+    alignItems: 'center',
+    paddingVertical: spacing.xl,
+  },
+  loadingVacationsText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
+  },
+  vacationsList: {
+    gap: spacing.md,
+  },
+  vacationCard: {
+    backgroundColor: colors.background,
+    borderRadius: 8,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  vacationHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  vacationStatusBadge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: 12,
+  },
+  vacationStatusText: {
+    ...typography.small,
+    fontWeight: '600',
+  },
+  vacationActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  vacationActionButton: {
+    padding: spacing.xs,
+  },
+  vacationDates: {
+    marginBottom: spacing.sm,
+  },
+  vacationDateItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  vacationDateText: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '500',
+  },
+  vacationDetail: {
+    marginTop: spacing.xs,
+  },
+  vacationDetailLabel: {
+    ...typography.small,
+    color: colors.textSecondary,
+    marginBottom: 2,
+  },
+  vacationDetailText: {
+    ...typography.body,
+    color: colors.text,
+  },
+  noVacationsContainer: {
+    alignItems: 'center',
+    paddingVertical: spacing.xl,
+  },
+  noVacationsText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
+  },
+  offlineNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.md,
+    backgroundColor: colors.warning + '20',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.warning,
+  },
+  offlineNoticeText: {
+    ...typography.body,
+    color: colors.warning,
     flex: 1,
   },
 });

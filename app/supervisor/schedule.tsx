@@ -12,7 +12,6 @@ import CompanyLogo from '../../components/CompanyLogo';
 import DragDropScheduleGrid from '../../components/schedule/DragDropScheduleGrid';
 import Toast from '../../components/Toast';
 import ScheduleModal from '../../components/schedule/ScheduleModal';
-import ConflictResolutionPanel from '../../components/schedule/ConflictResolutionPanel';
 import ErrorBoundary from '../../components/ErrorBoundary';
 import BulkActionsBottomSheet from '../../components/schedule/BulkActionsBottomSheet';
 import RecurringTaskModal from '../../components/schedule/RecurringTaskModal';
@@ -22,12 +21,12 @@ import Icon from '../../components/Icon';
 // Hooks and utilities
 import { useScheduleStorage, type ScheduleEntry } from '../../hooks/useScheduleStorage';
 import { useClientData, type Client, type ClientBuilding, type Cleaner } from '../../hooks/useClientData';
-import { useConflictDetection } from '../../hooks/useConflictDetection';
 import { useToast } from '../../hooks/useToast';
 import { commonStyles, colors, spacing, typography, buttonStyles } from '../../styles/commonStyles';
 
 type ModalType = 'add' | 'edit' | 'add-client' | 'add-building' | 'add-cleaner' | 'details' | 'edit-client' | 'edit-building' | null;
 type ViewType = 'daily' | 'weekly' | 'monthly';
+type ScheduleViewMode = 'building' | 'user';
 
 const ScheduleView = () => {
   console.log('ScheduleView component rendered');
@@ -61,15 +60,16 @@ const ScheduleView = () => {
   // State management
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewType, setViewType] = useState<ViewType>('weekly');
+  const [scheduleViewMode, setScheduleViewMode] = useState<ScheduleViewMode>('building');
   const [modalType, setModalType] = useState<ModalType>(null);
   const [selectedEntry, setSelectedEntry] = useState<ScheduleEntry | null>(null);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [selectedClientBuilding, setSelectedClientBuilding] = useState<ClientBuilding | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showConflictPanel, setShowConflictPanel] = useState(false);
   const [bulkMode, setBulkMode] = useState(false);
   const [selectedEntries, setSelectedEntries] = useState<string[]>([]);
   const [showRecurringModal, setShowRecurringModal] = useState(false);
+  const [selectedDay, setSelectedDay] = useState<string>('monday');
 
   // Form states
   const [cleanerName, setCleanerName] = useState('');
@@ -87,28 +87,20 @@ const ScheduleView = () => {
   const [showClientDropdown, setShowClientDropdown] = useState(false);
   const [showCleanerDropdown, setShowCleanerDropdown] = useState(false);
   const [showSecurityLevelDropdown, setShowSecurityLevelDropdown] = useState(false);
+  const [showBuildingDropdown, setShowBuildingDropdown] = useState(false);
 
-  // Get current week schedule with force refresh capability
-  const [scheduleRefreshKey, setScheduleRefreshKey] = useState(0);
-  const currentWeekId = getCurrentWeekId();
-  const currentWeekSchedule = getWeekSchedule(currentWeekId, scheduleRefreshKey > 0);
+  // FIXED: Get current week ID based on currentDate
+  const currentWeekId = getWeekIdFromDate(currentDate);
+  const currentWeekSchedule = getWeekSchedule(currentWeekId);
 
-  // Conflict detection with safe defaults
-  const { 
-    conflicts = [], 
-    hasCriticalConflicts = false, 
-    validateScheduleChange 
-  } = useConflictDetection(currentWeekSchedule || [], cleaners || [], clientBuildings || []);
+  console.log('Current date:', currentDate.toISOString());
+  console.log('Current week ID:', currentWeekId);
+  console.log('Current week schedule entries:', currentWeekSchedule.length);
 
   // Force refresh schedule grid with better state management
   const forceRefreshSchedule = useCallback(() => {
     console.log('=== FORCING SCHEDULE REFRESH ===');
     clearCaches();
-    setScheduleRefreshKey(prev => {
-      const newKey = prev + 1;
-      console.log('Schedule refresh key updated to:', newKey);
-      return newKey;
-    });
   }, [clearCaches]);
 
   // Load current week schedule on mount and when date changes
@@ -126,14 +118,6 @@ const ScheduleView = () => {
   useEffect(() => {
     loadCurrentWeekSchedule();
   }, [loadCurrentWeekSchedule]);
-
-  // Show conflict panel when critical conflicts are detected
-  useEffect(() => {
-    if (hasCriticalConflicts && !showConflictPanel) {
-      console.log('Critical conflicts detected, showing conflict panel');
-      setShowConflictPanel(true);
-    }
-  }, [hasCriticalConflicts, showConflictPanel]);
 
   // Helper functions
   const resetFormStates = useCallback(() => {
@@ -153,6 +137,8 @@ const ScheduleView = () => {
     setShowClientDropdown(false);
     setShowCleanerDropdown(false);
     setShowSecurityLevelDropdown(false);
+    setShowBuildingDropdown(false);
+    setSelectedDay('monday');
   }, []);
 
   const closeModal = useCallback(() => {
@@ -181,7 +167,7 @@ const ScheduleView = () => {
       : (entry.cleanerName ? [entry.cleanerName] : []);
     
     console.log('Setting cleaners:', entryCleaners);
-    setSelectedCleaners([...entryCleaners]); // Create new array to trigger re-render
+    setSelectedCleaners([...entryCleaners]);
     
     // Set other form fields
     setHours(entry.hours.toString());
@@ -207,6 +193,8 @@ const ScheduleView = () => {
       console.log('Hours:', hours);
       console.log('Start time:', startTime);
       console.log('Selected entry:', selectedEntry?.id);
+      console.log('Selected building:', selectedClientBuilding?.buildingName);
+      console.log('Selected day:', selectedDay);
 
       if (!selectedClientBuilding) {
         showToast('Please select a building', 'error');
@@ -223,7 +211,7 @@ const ScheduleView = () => {
         return;
       }
 
-      const weekId = getCurrentWeekId();
+      const weekId = currentWeekId;
       const parsedHours = parseFloat(hours);
 
       if (modalType === 'add') {
@@ -233,10 +221,10 @@ const ScheduleView = () => {
           id: `entry-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           clientName: selectedClientBuilding.clientName,
           buildingName: selectedClientBuilding.buildingName,
-          cleanerName: selectedCleaners[0], // For backward compatibility
+          cleanerName: selectedCleaners[0],
           cleanerNames: selectedCleaners,
           hours: parsedHours,
-          day: 'monday' as const, // This should be set based on the selected day
+          day: selectedDay.toLowerCase() as any,
           date: weekId,
           startTime: startTime || '09:00',
           endTime: startTime ? addHoursToTime(startTime, parsedHours) : '17:00',
@@ -255,7 +243,7 @@ const ScheduleView = () => {
         console.log('Updating existing schedule entry...');
         
         const updates: Partial<ScheduleEntry> = {
-          cleanerName: selectedCleaners[0], // For backward compatibility
+          cleanerName: selectedCleaners[0],
           cleanerNames: selectedCleaners,
           hours: parsedHours,
           startTime: startTime || selectedEntry.startTime,
@@ -280,7 +268,7 @@ const ScheduleView = () => {
       console.error('=== ENHANCED SAVE OPERATION FAILED ===');
       console.error('Error saving schedule entry:', error);
       showToast('Failed to save schedule entry', 'error');
-      throw error; // Re-throw to let the modal handle the error state
+      throw error;
     }
   }, [
     modalType,
@@ -289,7 +277,8 @@ const ScheduleView = () => {
     hours,
     startTime,
     selectedEntry,
-    getCurrentWeekId,
+    selectedDay,
+    currentWeekId,
     addScheduleEntry,
     updateScheduleEntry,
     showToast,
@@ -308,7 +297,7 @@ const ScheduleView = () => {
         return;
       }
 
-      const weekId = getCurrentWeekId();
+      const weekId = currentWeekId;
       console.log('Deleting from week:', weekId);
       
       await deleteScheduleEntry(weekId, selectedEntry.id);
@@ -328,7 +317,7 @@ const ScheduleView = () => {
       console.error('Error deleting schedule entry:', error);
       showToast('Failed to delete schedule entry', 'error');
     }
-  }, [selectedEntry, getCurrentWeekId, deleteScheduleEntry, showToast, forceRefreshSchedule, closeModal]);
+  }, [selectedEntry, currentWeekId, deleteScheduleEntry, showToast, forceRefreshSchedule, closeModal]);
 
   // Helper function to add hours to time
   const addHoursToTime = (time: string, hours: number): string => {
@@ -365,7 +354,7 @@ const ScheduleView = () => {
       console.log('Task data:', taskData);
 
       const { clientBuilding, cleanerNames, hours, startTime, pattern, notes } = taskData;
-      const weekId = getCurrentWeekId();
+      const weekId = currentWeekId;
 
       // Generate recurring entries based on pattern
       const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -380,7 +369,7 @@ const ScheduleView = () => {
             id: `entry-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             clientName: clientBuilding.clientName,
             buildingName: clientBuilding.buildingName,
-            cleanerName: cleanerNames[0], // For backward compatibility
+            cleanerName: cleanerNames[0],
             cleanerNames: cleanerNames,
             hours: hours,
             day: dayName as any,
@@ -435,13 +424,13 @@ const ScheduleView = () => {
       console.error('Error saving recurring task:', error);
       showToast('Failed to create recurring task', 'error');
     }
-  }, [getCurrentWeekId, addScheduleEntry, showToast, forceRefreshSchedule, handleCloseRecurringModal]);
+  }, [currentWeekId, addScheduleEntry, showToast, forceRefreshSchedule, handleCloseRecurringModal]);
 
   // Cell press handlers
   const handleCellPress = useCallback((clientBuilding: ClientBuilding, day: string) => {
     console.log('Cell pressed:', clientBuilding.buildingName, day);
     
-    const weekId = getCurrentWeekId();
+    const weekId = currentWeekId;
     const existingEntry = currentWeekSchedule.find(entry => 
       entry.buildingName === clientBuilding.buildingName && 
       entry.day.toLowerCase() === day.toLowerCase()
@@ -458,13 +447,34 @@ const ScheduleView = () => {
       setSelectedCleaners([]);
       setHours('8');
       setStartTime('09:00');
+      setSelectedDay(day.toLowerCase());
       setModalType('add');
     }
-  }, [getCurrentWeekId, currentWeekSchedule]);
+  }, [currentWeekId, currentWeekSchedule]);
+
+  // NEW: Handle add shift to cleaner from user view
+  const handleAddShiftToCleaner = useCallback((cleaner: Cleaner, day: string) => {
+    console.log('Adding shift to cleaner:', cleaner.name, 'on', day);
+    
+    // Pre-select the cleaner
+    setSelectedCleaners([cleaner.name]);
+    setCleanerName(cleaner.name);
+    
+    // Set default values
+    setHours('8');
+    setStartTime('09:00');
+    setSelectedDay(day.toLowerCase());
+    
+    // Don't pre-select a building - user needs to choose
+    setSelectedClientBuilding(null);
+    setShowBuildingDropdown(false);
+    setModalType('add');
+    
+    showToast(`Adding shift for ${cleaner.name} on ${day}`, 'info');
+  }, [showToast]);
 
   const handleCellLongPress = useCallback((clientBuilding: ClientBuilding, day: string) => {
     console.log('Cell long pressed:', clientBuilding.buildingName, day);
-    // Could implement quick actions here
   }, []);
 
   const handleClientLongPress = useCallback((client: Client) => {
@@ -489,7 +499,7 @@ const ScheduleView = () => {
     try {
       console.log('Moving entry:', entryId, 'to', newBuilding.buildingName, newDay);
       
-      const weekId = getCurrentWeekId();
+      const weekId = currentWeekId;
       const updates: Partial<ScheduleEntry> = {
         clientName: newBuilding.clientName,
         buildingName: newBuilding.buildingName,
@@ -505,7 +515,7 @@ const ScheduleView = () => {
       console.error('Error moving entry:', error);
       showToast('Failed to move entry', 'error');
     }
-  }, [getCurrentWeekId, updateScheduleEntry, showToast, forceRefreshSchedule]);
+  }, [currentWeekId, updateScheduleEntry, showToast, forceRefreshSchedule]);
 
   const handleBulkSelect = useCallback((entries: ScheduleEntry[]) => {
     console.log('Bulk select:', entries.length, 'entries');
@@ -708,6 +718,33 @@ const ScheduleView = () => {
     return currentDate.toLocaleDateString('en-US', options);
   };
 
+  // Check if we're viewing the current period (week/month/day)
+  const isViewingCurrentPeriod = () => {
+    const today = new Date();
+    
+    if (viewType === 'daily') {
+      return currentDate.toDateString() === today.toDateString();
+    } else if (viewType === 'weekly') {
+      const weekStart = new Date(currentDate);
+      const dayOfWeek = weekStart.getDay();
+      const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+      weekStart.setDate(weekStart.getDate() + diff);
+      weekStart.setHours(0, 0, 0, 0);
+      
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekEnd.getDate() + 6);
+      weekEnd.setHours(23, 59, 59, 999);
+      
+      const todayTime = today.getTime();
+      return todayTime >= weekStart.getTime() && todayTime <= weekEnd.getTime();
+    } else if (viewType === 'monthly') {
+      return currentDate.getMonth() === today.getMonth() && 
+             currentDate.getFullYear() === today.getFullYear();
+    }
+    
+    return false;
+  };
+
   const onDateChange = (event: any, selectedDate?: Date) => {
     setShowDatePicker(false);
     if (selectedDate) {
@@ -715,16 +752,112 @@ const ScheduleView = () => {
     }
   };
 
-  // Render functions
-  const renderDailyView = () => (
-    <View style={styles.dailyView}>
-      <Text style={styles.comingSoon}>Daily view coming soon</Text>
-    </View>
-  );
+  // FIXED: Render daily view with actual schedule data
+  const renderDailyView = () => {
+    // Get the day name for the current date
+    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayName = dayNames[currentDate.getDay()];
+    
+    // Filter schedule for the current day
+    const dailySchedule = currentWeekSchedule.filter(entry => 
+      entry.day.toLowerCase() === dayName.toLowerCase()
+    );
+
+    console.log('Daily view for:', dayName, 'entries:', dailySchedule.length);
+
+    return (
+      <ScrollView style={styles.dailyView}>
+        <View style={styles.dailyHeader}>
+          <Text style={styles.dailyHeaderText}>
+            {currentDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+          </Text>
+          <Text style={styles.dailyHeaderSubtext}>
+            {dailySchedule.length} {dailySchedule.length === 1 ? 'shift' : 'shifts'} scheduled
+          </Text>
+        </View>
+
+        {dailySchedule.length > 0 ? (
+          <View style={styles.dailyScheduleList}>
+            {dailySchedule.map(entry => {
+              const statusColor = entry.status === 'completed' ? colors.success :
+                                 entry.status === 'in-progress' ? colors.warning :
+                                 entry.status === 'cancelled' ? colors.danger :
+                                 colors.primary;
+              
+              return (
+                <TouchableOpacity
+                  key={entry.id}
+                  style={[styles.dailyEntryCard, { borderLeftColor: statusColor }]}
+                  onPress={() => {
+                    const building = clientBuildings.find(b => b.buildingName === entry.buildingName);
+                    if (building) {
+                      handleCellPress(building, dayName);
+                    }
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.dailyEntryHeader}>
+                    <View style={styles.dailyEntryTime}>
+                      <Icon name="time-outline" size={20} style={{ color: statusColor }} />
+                      <Text style={[styles.dailyEntryTimeText, { color: statusColor }]}>
+                        {entry.startTime || '09:00'} - {entry.endTime || '17:00'}
+                      </Text>
+                    </View>
+                    <View style={[styles.dailyEntryStatus, { backgroundColor: statusColor + '20' }]}>
+                      <Text style={[styles.dailyEntryStatusText, { color: statusColor }]}>
+                        {entry.status}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <Text style={styles.dailyEntryClient}>{entry.clientName}</Text>
+                  <Text style={styles.dailyEntryBuilding}>{entry.buildingName}</Text>
+
+                  <View style={styles.dailyEntryFooter}>
+                    <View style={styles.dailyEntryCleaners}>
+                      <Icon name="people-outline" size={16} style={{ color: colors.textSecondary }} />
+                      <Text style={styles.dailyEntryCleanersText}>
+                        {entry.cleanerNames && entry.cleanerNames.length > 0 
+                          ? entry.cleanerNames.join(', ')
+                          : entry.cleanerName
+                        }
+                      </Text>
+                    </View>
+                    <View style={styles.dailyEntryHours}>
+                      <Icon name="time-outline" size={16} style={{ color: colors.textSecondary }} />
+                      <Text style={styles.dailyEntryHoursText}>{entry.hours}h</Text>
+                    </View>
+                  </View>
+
+                  {entry.notes && (
+                    <View style={styles.dailyEntryNotes}>
+                      <Icon name="document-text-outline" size={14} style={{ color: colors.textSecondary }} />
+                      <Text style={styles.dailyEntryNotesText} numberOfLines={2}>{entry.notes}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        ) : (
+          <View style={styles.dailyEmptyState}>
+            <Icon name="calendar-outline" size={64} style={{ color: colors.textSecondary }} />
+            <Text style={styles.dailyEmptyStateText}>No shifts scheduled for this day</Text>
+            <TouchableOpacity
+              style={styles.dailyEmptyStateButton}
+              onPress={() => setModalType('add')}
+            >
+              <Icon name="add-circle-outline" size={20} style={{ color: colors.primary }} />
+              <Text style={styles.dailyEmptyStateButtonText}>Add Shift</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </ScrollView>
+    );
+  };
 
   const renderWeeklyView = () => {
     try {
-      // Safety check for data
       if (!Array.isArray(clientBuildings) || !Array.isArray(clients) || !Array.isArray(cleaners) || !Array.isArray(currentWeekSchedule)) {
         console.log('Data not ready for weekly view:', {
           clientBuildings: Array.isArray(clientBuildings) ? clientBuildings.length : 'not array',
@@ -741,6 +874,7 @@ const ScheduleView = () => {
           clients={clients}
           cleaners={cleaners}
           schedule={currentWeekSchedule}
+          currentWeekId={currentWeekId}
           onCellPress={handleCellPress}
           onCellLongPress={handleCellLongPress}
           onClientLongPress={handleClientLongPress}
@@ -749,6 +883,8 @@ const ScheduleView = () => {
           onBulkSelect={handleBulkSelect}
           bulkMode={bulkMode}
           selectedEntries={selectedEntries}
+          viewMode={scheduleViewMode}
+          onAddShiftToCleaner={handleAddShiftToCleaner}
         />
       );
     } catch (error) {
@@ -872,33 +1008,55 @@ const ScheduleView = () => {
             <TouchableOpacity onPress={() => changeDate(-1)} style={styles.navButton}>
               <Icon name="chevron-back" size={24} color={colors.text} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => setCurrentDate(new Date())} style={styles.todayButton}>
-              <Text style={styles.todayButtonText}>Today</Text>
+            <TouchableOpacity 
+              onPress={() => setCurrentDate(new Date())} 
+              style={[styles.todayButton, isViewingCurrentPeriod() && styles.todayButtonActive]}
+            >
+              <Text style={[styles.todayButtonText, isViewingCurrentPeriod() && styles.todayButtonTextActive]}>
+                {isViewingCurrentPeriod() ? 'Today' : 'Go to Today'}
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => changeDate(1)} style={styles.navButton}>
               <Icon name="chevron-forward" size={24} color={colors.text} />
             </TouchableOpacity>
           </View>
 
+          {/* View Mode Toggle */}
+          {viewType === 'weekly' && (
+            <View style={styles.viewModeToggle}>
+              <TouchableOpacity
+                style={[styles.viewModeButton, scheduleViewMode === 'building' && styles.viewModeButtonActive]}
+                onPress={() => setScheduleViewMode('building')}
+              >
+                <Icon 
+                  name="business" 
+                  size={18} 
+                  style={{ color: scheduleViewMode === 'building' ? colors.background : colors.text }} 
+                />
+                <Text style={[styles.viewModeButtonText, scheduleViewMode === 'building' && styles.viewModeButtonTextActive]}>
+                  Building View
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.viewModeButton, scheduleViewMode === 'user' && styles.viewModeButtonActive]}
+                onPress={() => setScheduleViewMode('user')}
+              >
+                <Icon 
+                  name="person" 
+                  size={18} 
+                  style={{ color: scheduleViewMode === 'user' ? colors.background : colors.text }} 
+                />
+                <Text style={[styles.viewModeButtonText, scheduleViewMode === 'user' && styles.viewModeButtonTextActive]}>
+                  User View
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
           {/* Main Content */}
           <View style={styles.content}>
             {renderMainContent()}
           </View>
-
-          {/* Conflict Panel */}
-          {showConflictPanel && (
-            <ConflictResolutionPanel
-              conflicts={conflicts}
-              onApplyResolution={async (conflictId, resolution) => {
-                console.log('Applying resolution:', conflictId, resolution);
-                // Implementation for applying resolutions
-              }}
-              onDismissConflict={(conflictId) => {
-                console.log('Dismissing conflict:', conflictId);
-                setShowConflictPanel(false);
-              }}
-            />
-          )}
 
           {/* Schedule Modal */}
           <ScheduleModal
@@ -909,6 +1067,7 @@ const ScheduleView = () => {
             selectedClientBuilding={selectedClientBuilding}
             cleaners={cleaners}
             clients={clients}
+            clientBuildings={clientBuildings}
             cleanerName={cleanerName}
             selectedCleaners={selectedCleaners}
             hours={hours}
@@ -924,6 +1083,7 @@ const ScheduleView = () => {
             showClientDropdown={showClientDropdown}
             showCleanerDropdown={showCleanerDropdown}
             showSecurityLevelDropdown={showSecurityLevelDropdown}
+            showBuildingDropdown={showBuildingDropdown}
             setCleanerName={setCleanerName}
             setSelectedCleaners={setSelectedCleaners}
             setHours={setHours}
@@ -939,6 +1099,8 @@ const ScheduleView = () => {
             setShowClientDropdown={setShowClientDropdown}
             setShowCleanerDropdown={setShowCleanerDropdown}
             setShowSecurityLevelDropdown={setShowSecurityLevelDropdown}
+            setShowBuildingDropdown={setShowBuildingDropdown}
+            setSelectedClientBuilding={setSelectedClientBuilding}
             onClose={closeModal}
             onSave={handleSave}
             onDelete={handleDelete}
@@ -970,11 +1132,9 @@ const ScheduleView = () => {
               }}
               onBulkDelete={async () => {
                 console.log('Bulk deleting entries:', selectedEntries);
-                // Implementation for bulk delete
               }}
               onBulkUpdate={async (updates) => {
                 console.log('Bulk updating entries:', selectedEntries, updates);
-                // Implementation for bulk update
               }}
             />
           )}
@@ -1067,10 +1227,51 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
     borderRadius: 8,
+    backgroundColor: colors.backgroundAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  todayButtonActive: {
     backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   todayButtonText: {
     ...typography.body,
+    color: colors.text,
+    fontWeight: '600',
+  },
+  todayButtonTextActive: {
+    color: colors.background,
+  },
+  viewModeToggle: {
+    flexDirection: 'row',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    gap: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.background,
+  },
+  viewModeButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: 8,
+    backgroundColor: colors.backgroundAlt,
+    gap: spacing.xs,
+  },
+  viewModeButtonActive: {
+    backgroundColor: colors.primary,
+  },
+  viewModeButtonText: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '500',
+  },
+  viewModeButtonTextActive: {
     color: colors.background,
     fontWeight: '600',
   },
@@ -1079,8 +1280,140 @@ const styles = StyleSheet.create({
   },
   dailyView: {
     flex: 1,
+    backgroundColor: colors.background,
+  },
+  dailyHeader: {
+    padding: spacing.lg,
+    backgroundColor: colors.backgroundAlt,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  dailyHeaderText: {
+    ...typography.h2,
+    color: colors.text,
+    fontWeight: '600',
+    marginBottom: spacing.xs,
+  },
+  dailyHeaderSubtext: {
+    ...typography.body,
+    color: colors.textSecondary,
+  },
+  dailyScheduleList: {
+    padding: spacing.md,
+    gap: spacing.md,
+  },
+  dailyEntryCard: {
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 12,
+    padding: spacing.md,
+    borderLeftWidth: 4,
+    ...commonStyles.shadow,
+  },
+  dailyEntryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
+  dailyEntryTime: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  dailyEntryTimeText: {
+    ...typography.body,
+    fontWeight: '600',
+  },
+  dailyEntryStatus: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: 6,
+  },
+  dailyEntryStatusText: {
+    ...typography.small,
+    fontWeight: '600',
+    textTransform: 'capitalize',
+  },
+  dailyEntryClient: {
+    ...typography.h3,
+    color: colors.text,
+    fontWeight: '600',
+    marginBottom: spacing.xs,
+  },
+  dailyEntryBuilding: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+  },
+  dailyEntryFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  dailyEntryCleaners: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    flex: 1,
+  },
+  dailyEntryCleanersText: {
+    ...typography.body,
+    color: colors.text,
+    flex: 1,
+  },
+  dailyEntryHours: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  dailyEntryHoursText: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '600',
+  },
+  dailyEntryNotes: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  dailyEntryNotesText: {
+    ...typography.small,
+    color: colors.textSecondary,
+    flex: 1,
+  },
+  dailyEmptyState: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    padding: spacing.xxl,
+  },
+  dailyEmptyStateText: {
+    ...typography.h3,
+    color: colors.textSecondary,
+    marginTop: spacing.md,
+    marginBottom: spacing.lg,
+    textAlign: 'center',
+  },
+  dailyEmptyStateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.primary,
+    borderRadius: 8,
+  },
+  dailyEmptyStateButtonText: {
+    ...typography.body,
+    color: colors.background,
+    fontWeight: '600',
   },
   monthlyView: {
     flex: 1,

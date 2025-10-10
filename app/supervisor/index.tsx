@@ -486,6 +486,14 @@ const SupervisorDashboard = () => {
             <Icon name="camera" size={24} style={{ color: colors.primary }} />
             <Text style={styles.actionButtonText}>Photos</Text>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => router.push('/supervisor/projects')}
+          >
+            <Icon name="briefcase" size={24} style={{ color: colors.primary }} />
+            <Text style={styles.actionButtonText}>Projects</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
 

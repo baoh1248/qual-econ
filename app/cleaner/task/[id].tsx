@@ -1,5 +1,5 @@
 
-import { Text, View, ScrollView, TouchableOpacity, Alert, TextInput, Image, Modal, StyleSheet, Platform } from 'react-native';
+import { Text, View, ScrollView, TouchableOpacity, Alert, TextInput, Image, Modal, StyleSheet, Platform, Linking } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState, useEffect } from 'react';
 import { commonStyles, colors, spacing, typography, statusColors } from '../../../styles/commonStyles';
@@ -22,6 +22,7 @@ interface TaskInfo {
   id: string;
   title: string;
   location: string;
+  address: string;
   status: 'pending' | 'in-progress' | 'completed' | 'overdue';
   priority: 'low' | 'medium' | 'high';
   estimatedTime: number;
@@ -47,6 +48,7 @@ export default function TaskDetail() {
     id: id || '1',
     title: 'Office Building A - Floor 3',
     location: '123 Business St, Suite 300',
+    address: '123 Business St, Suite 300, New York, NY 10001',
     status: 'pending',
     priority: 'high',
     estimatedTime: 120,
@@ -86,6 +88,80 @@ export default function TaskDetail() {
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const handleAddressClick = (address: string) => {
+    console.log('Address clicked:', address);
+    
+    Alert.alert(
+      'Get Directions',
+      `Do you want to open maps and get directions to:\n\n${address}`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+          onPress: () => console.log('Navigation cancelled')
+        },
+        {
+          text: 'Open Maps',
+          onPress: async () => {
+            try {
+              console.log('Opening maps for address:', address);
+              
+              // Encode the address for URL
+              const encodedAddress = encodeURIComponent(address);
+              
+              // Try different map URLs based on platform
+              let mapUrl = '';
+              
+              if (Platform.OS === 'ios') {
+                // iOS: Try Apple Maps first, fallback to Google Maps
+                mapUrl = `maps://maps.apple.com/?q=${encodedAddress}`;
+                const canOpen = await Linking.canOpenURL(mapUrl);
+                
+                if (!canOpen) {
+                  // Fallback to Google Maps on iOS
+                  mapUrl = `comgooglemaps://?q=${encodedAddress}`;
+                  const canOpenGoogle = await Linking.canOpenURL(mapUrl);
+                  
+                  if (!canOpenGoogle) {
+                    // Final fallback to web Google Maps
+                    mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`;
+                  }
+                }
+              } else if (Platform.OS === 'android') {
+                // Android: Use geo: URI which opens default maps app
+                mapUrl = `geo:0,0?q=${encodedAddress}`;
+              } else {
+                // Web: Use Google Maps web URL
+                mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`;
+              }
+              
+              console.log('Opening URL:', mapUrl);
+              
+              const supported = await Linking.canOpenURL(mapUrl);
+              
+              if (supported) {
+                await Linking.openURL(mapUrl);
+                console.log('Maps opened successfully');
+              } else {
+                // Final fallback to web Google Maps
+                const webMapUrl = `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`;
+                await Linking.openURL(webMapUrl);
+                console.log('Opened web maps as fallback');
+              }
+            } catch (error) {
+              console.error('Error opening maps:', error);
+              Alert.alert(
+                'Error',
+                'Unable to open maps. Please check if you have a maps application installed.',
+                [{ text: 'OK' }]
+              );
+            }
+          }
+        }
+      ]
+    );
   };
 
   const startTask = async () => {
@@ -285,12 +361,22 @@ export default function TaskDetail() {
             </View>
           </View>
 
-          <View style={[commonStyles.row, { marginBottom: spacing.sm }]}>
-            <Icon name="location" size={16} style={{ color: colors.textSecondary, marginRight: spacing.sm }} />
-            <Text style={[typography.body, { color: colors.textSecondary, flex: 1 }]}>{task.location}</Text>
-          </View>
+          {/* Clickable Address */}
+          <TouchableOpacity 
+            style={styles.addressContainer}
+            onPress={() => handleAddressClick(task.address)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.addressContent}>
+              <Icon name="location" size={20} style={{ color: colors.primary, marginRight: spacing.sm }} />
+              <Text style={styles.addressText}>{task.address}</Text>
+            </View>
+            <View style={styles.navigationButton}>
+              <Icon name="navigate" size={18} style={{ color: colors.primary }} />
+            </View>
+          </TouchableOpacity>
 
-          <View style={[commonStyles.row, commonStyles.spaceBetween, { marginBottom: spacing.md }]}>
+          <View style={[commonStyles.row, commonStyles.spaceBetween, { marginTop: spacing.md, marginBottom: spacing.md }]}>
             <View style={commonStyles.row}>
               <Icon name="time" size={16} style={{ color: colors.textSecondary, marginRight: spacing.sm }} />
               <Text style={[typography.body, { color: colors.textSecondary }]}>
@@ -630,6 +716,36 @@ export default function TaskDetail() {
 }
 
 const styles = StyleSheet.create({
+  addressContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.primary + '10',
+    padding: spacing.md,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
+  },
+  addressContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  addressText: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '500',
+    flex: 1,
+  },
+  navigationButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.primary + '20',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: spacing.sm,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
