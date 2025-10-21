@@ -37,23 +37,46 @@ export interface ClientBuilding {
   updatedAt?: Date;
 }
 
+export interface EmploymentHistory {
+  id: string;
+  employee_id: string;
+  cleaner_id: string;
+  start_date: string;
+  end_date?: string;
+  termination_reason?: string;
+  position?: string;
+  notes?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface Cleaner {
   id: string;
   name: string;
+  legal_name?: string;
+  go_by?: string;
+  dob?: string;
   isActive: boolean;
   avatar?: string;
+  photo_url?: string;
   specialties: string[];
   employeeId: string;
   securityLevel: 'low' | 'medium' | 'high';
   phoneNumber: string;
   email?: string;
   hireDate?: string;
+  term_date?: string;
+  rehire_date?: string;
+  employment_status?: 'active' | 'terminated' | 'on-leave' | 'suspended';
+  notes?: string;
+  pay_type?: 'hourly' | 'salary' | 'contract';
   defaultHourlyRate?: number;
   emergencyContact?: {
     name: string;
     phone: string;
     relationship?: string;
   };
+  employment_history?: EmploymentHistory[];
   createdAt?: Date;
   updatedAt?: Date;
   user_id?: string;
@@ -231,7 +254,10 @@ export const useClientData = () => {
     const mockCleaners: Cleaner[] = [
       { 
         id: '1', 
-        name: 'John Doe', 
+        name: 'John Doe',
+        legal_name: 'Jonathan Michael Doe',
+        go_by: 'John',
+        dob: '1990-05-15',
         isActive: true, 
         specialties: ['Office Cleaning', 'Deep Cleaning'],
         employeeId: 'EMP-001',
@@ -239,7 +265,10 @@ export const useClientData = () => {
         phoneNumber: '+1 (555) 123-4567',
         email: 'john.doe@cleaningcompany.com',
         hireDate: '2023-01-15',
+        employment_status: 'active',
+        pay_type: 'hourly',
         defaultHourlyRate: 18.00,
+        notes: 'Excellent performance, reliable and punctual.',
         emergencyContact: {
           name: 'Jane Doe',
           phone: '+1 (555) 987-6543',
@@ -250,7 +279,10 @@ export const useClientData = () => {
       },
       { 
         id: '2', 
-        name: 'Jane Smith', 
+        name: 'Jane Smith',
+        legal_name: 'Jane Elizabeth Smith',
+        go_by: 'Jane',
+        dob: '1988-08-22',
         isActive: true, 
         specialties: ['Medical Facilities', 'Sanitization'],
         employeeId: 'EMP-002',
@@ -258,7 +290,10 @@ export const useClientData = () => {
         phoneNumber: '+1 (555) 234-5678',
         email: 'jane.smith@cleaningcompany.com',
         hireDate: '2023-03-20',
+        employment_status: 'active',
+        pay_type: 'hourly',
         defaultHourlyRate: 16.50,
+        notes: 'Specialized in medical facility cleaning.',
         emergencyContact: {
           name: 'Bob Smith',
           phone: '+1 (555) 876-5432',
@@ -269,7 +304,10 @@ export const useClientData = () => {
       },
       { 
         id: '3', 
-        name: 'Johnson Smith', 
+        name: 'Johnson Smith',
+        legal_name: 'Johnson Robert Smith',
+        go_by: 'Johnson',
+        dob: '1992-11-10',
         isActive: true, 
         specialties: ['Industrial', 'Equipment Maintenance'],
         employeeId: 'EMP-003',
@@ -277,6 +315,8 @@ export const useClientData = () => {
         phoneNumber: '+1 (555) 345-6789',
         email: 'johnson.smith@cleaningcompany.com',
         hireDate: '2023-05-10',
+        employment_status: 'active',
+        pay_type: 'hourly',
         defaultHourlyRate: 15.00,
         createdAt: new Date(),
         updatedAt: new Date()
@@ -311,12 +351,21 @@ export const useClientData = () => {
       const cleaners: Cleaner[] = data.map(row => ({
         id: row.id,
         name: row.name,
+        legal_name: row.legal_name || undefined,
+        go_by: row.go_by || undefined,
+        dob: row.dob || undefined,
         employeeId: row.employee_id || `EMP-${row.id.slice(-6)}`,
         securityLevel: row.security_level as 'low' | 'medium' | 'high',
         phoneNumber: row.phone_number || '',
         email: row.email || undefined,
         specialties: row.specialties || [],
         hireDate: row.hire_date || undefined,
+        term_date: row.term_date || undefined,
+        rehire_date: row.rehire_date || undefined,
+        employment_status: row.employment_status as 'active' | 'terminated' | 'on-leave' | 'suspended' || 'active',
+        notes: row.notes || undefined,
+        photo_url: row.photo_url || undefined,
+        pay_type: row.pay_type as 'hourly' | 'salary' | 'contract' || 'hourly',
         defaultHourlyRate: row.default_hourly_rate || 15.00,
         emergencyContact: row.emergency_contact_name ? {
           name: row.emergency_contact_name,
@@ -465,12 +514,21 @@ export const useClientData = () => {
         .insert({
           id: newCleaner.id,
           name: newCleaner.name,
+          legal_name: newCleaner.legal_name || null,
+          go_by: newCleaner.go_by || null,
+          dob: newCleaner.dob || null,
           employee_id: newCleaner.employeeId,
           security_level: newCleaner.securityLevel,
           phone_number: newCleaner.phoneNumber,
           email: newCleaner.email || null,
           specialties: newCleaner.specialties || [],
           hire_date: newCleaner.hireDate || null,
+          term_date: newCleaner.term_date || null,
+          rehire_date: newCleaner.rehire_date || null,
+          employment_status: newCleaner.employment_status || 'active',
+          notes: newCleaner.notes || null,
+          photo_url: newCleaner.photo_url || null,
+          pay_type: newCleaner.pay_type || 'hourly',
           default_hourly_rate: newCleaner.defaultHourlyRate || 15.00,
           emergency_contact_name: newCleaner.emergencyContact?.name || null,
           emergency_contact_phone: newCleaner.emergencyContact?.phone || null,
@@ -499,12 +557,21 @@ export const useClientData = () => {
       // Try to update in Supabase first
       const updateData: any = {};
       if (updates.name !== undefined) updateData.name = updates.name;
+      if (updates.legal_name !== undefined) updateData.legal_name = updates.legal_name || null;
+      if (updates.go_by !== undefined) updateData.go_by = updates.go_by || null;
+      if (updates.dob !== undefined) updateData.dob = updates.dob || null;
       if (updates.employeeId !== undefined) updateData.employee_id = updates.employeeId;
       if (updates.securityLevel !== undefined) updateData.security_level = updates.securityLevel;
       if (updates.phoneNumber !== undefined) updateData.phone_number = updates.phoneNumber;
       if (updates.email !== undefined) updateData.email = updates.email || null;
       if (updates.specialties !== undefined) updateData.specialties = updates.specialties;
       if (updates.hireDate !== undefined) updateData.hire_date = updates.hireDate || null;
+      if (updates.term_date !== undefined) updateData.term_date = updates.term_date || null;
+      if (updates.rehire_date !== undefined) updateData.rehire_date = updates.rehire_date || null;
+      if (updates.employment_status !== undefined) updateData.employment_status = updates.employment_status;
+      if (updates.notes !== undefined) updateData.notes = updates.notes || null;
+      if (updates.photo_url !== undefined) updateData.photo_url = updates.photo_url || null;
+      if (updates.pay_type !== undefined) updateData.pay_type = updates.pay_type;
       if (updates.defaultHourlyRate !== undefined) updateData.default_hourly_rate = updates.defaultHourlyRate;
       if (updates.emergencyContact !== undefined) {
         updateData.emergency_contact_name = updates.emergencyContact?.name || null;

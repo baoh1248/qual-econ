@@ -7,6 +7,7 @@ import CompanyLogo from '../../components/CompanyLogo';
 import Icon from '../../components/Icon';
 import Button from '../../components/Button';
 import IconButton from '../../components/IconButton';
+import { useTheme } from '../../hooks/useTheme';
 
 interface InventoryItem {
   id: string;
@@ -113,6 +114,7 @@ const styles = StyleSheet.create({
 });
 
 export default function InventoryScreen() {
+  const { themeColor } = useTheme();
   console.log('InventoryScreen rendered');
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -172,11 +174,9 @@ export default function InventoryScreen() {
     },
   ]);
 
-  // Store the original inventory state when component mounts
   const originalInventory = useRef<InventoryItem[]>([]);
 
   useEffect(() => {
-    // Store the original inventory state on mount
     originalInventory.current = inventory.map(item => ({ ...item }));
     console.log('Original inventory stored:', originalInventory.current);
   }, [inventory]);
@@ -194,7 +194,6 @@ export default function InventoryScreen() {
     return matchesSearch && matchesCategory;
   });
 
-  // Calculate inventory changes
   const getInventoryChanges = (): InventoryChange[] => {
     const changes: InventoryChange[] = [];
     
@@ -368,7 +367,7 @@ export default function InventoryScreen() {
 
   return (
     <View style={commonStyles.container}>
-      <View style={commonStyles.header}>
+      <View style={[commonStyles.header, { backgroundColor: themeColor }]}>
         <IconButton 
           icon="arrow-back" 
           onPress={handleBackPress} 
@@ -386,7 +385,6 @@ export default function InventoryScreen() {
       </View>
 
       <View style={commonStyles.content}>
-        {/* Search */}
         <View style={{ marginBottom: spacing.md }}>
           <View style={[commonStyles.row, { position: 'relative' }]}>
             <Icon 
@@ -413,7 +411,6 @@ export default function InventoryScreen() {
           </View>
         </View>
 
-        {/* Category Filter */}
         <ScrollView 
           horizontal 
           showsHorizontalScrollIndicator={false}
@@ -424,7 +421,9 @@ export default function InventoryScreen() {
               <TouchableOpacity
                 key={category.id}
                 style={[
-                  selectedCategory === category.id ? buttonStyles.filterButtonActive : buttonStyles.filterButton
+                  selectedCategory === category.id 
+                    ? [buttonStyles.filterButtonActive, { backgroundColor: themeColor }]
+                    : buttonStyles.filterButton
                 ]}
                 onPress={() => setSelectedCategory(category.id)}
               >
@@ -456,7 +455,6 @@ export default function InventoryScreen() {
           </View>
         </ScrollView>
 
-        {/* Changes Indicator */}
         {hasChanges() && (
           <View style={[
             commonStyles.card,
@@ -484,7 +482,6 @@ export default function InventoryScreen() {
           </View>
         )}
 
-        {/* Inventory List */}
         <ScrollView showsVerticalScrollIndicator={false}>
           {filteredInventory.map(item => {
             const stockStatus = getStockStatus(item);
@@ -495,7 +492,7 @@ export default function InventoryScreen() {
                     <Icon 
                       name={getCategoryIcon(item.category) as any} 
                       size={24} 
-                      style={{ color: colors.primary, marginRight: spacing.md }} 
+                      style={{ color: themeColor, marginRight: spacing.md }} 
                     />
                     <View style={{ flex: 1 }}>
                       <Text style={[typography.body, { color: colors.text, fontWeight: '600' }]}>

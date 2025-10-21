@@ -5,6 +5,7 @@ import { router } from 'expo-router';
 import { commonStyles, colors, spacing, typography } from '../../styles/commonStyles';
 import CompanyLogo from '../../components/CompanyLogo';
 import { useToast } from '../../hooks/useToast';
+import { useTheme } from '../../hooks/useTheme';
 import Icon from '../../components/Icon';
 import AnimatedCard from '../../components/AnimatedCard';
 import Toast from '../../components/Toast';
@@ -42,6 +43,7 @@ export default function PhotosScreen() {
   console.log('PhotosScreen rendered');
   
   const { toast, showToast, hideToast } = useToast();
+  const { themeColor } = useTheme();
   
   const [photos, setPhotos] = useState<PhotoDoc[]>([]);
   const [stats, setStats] = useState<PhotoStats | null>(null);
@@ -221,7 +223,7 @@ export default function PhotosScreen() {
       <Toast {...toast} onHide={hideToast} />
       
       {/* Header */}
-      <View style={commonStyles.header}>
+      <View style={[commonStyles.header, { backgroundColor: themeColor }]}>
         <TouchableOpacity onPress={() => router.back()}>
           <Icon name="arrow-back" size={24} style={{ color: colors.background }} />
         </TouchableOpacity>
@@ -249,7 +251,7 @@ export default function PhotosScreen() {
                 <Text style={styles.statLabel}>Today</Text>
               </View>
               <View style={styles.statItem}>
-                <Text style={[styles.statNumber, { color: colors.primary }]}>{stats.weekPhotos}</Text>
+                <Text style={[styles.statNumber, { color: themeColor }]}>{stats.weekPhotos}</Text>
                 <Text style={styles.statLabel}>This Week</Text>
               </View>
               <View style={styles.statItem}>
@@ -265,7 +267,7 @@ export default function PhotosScreen() {
           <Text style={styles.sectionTitle}>Filter by Category</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryFilter}>
             <TouchableOpacity
-              style={[styles.categoryButton, selectedCategory === 'all' && styles.categoryButtonActive]}
+              style={[styles.categoryButton, selectedCategory === 'all' && { backgroundColor: themeColor }]}
               onPress={() => setSelectedCategory('all')}
             >
               <Icon name="grid" size={16} style={{ color: selectedCategory === 'all' ? colors.background : colors.textSecondary }} />
@@ -277,7 +279,7 @@ export default function PhotosScreen() {
             {(['before', 'after'] as PhotoDoc['category'][]).map(category => (
               <TouchableOpacity
                 key={category}
-                style={[styles.categoryButton, selectedCategory === category && styles.categoryButtonActive]}
+                style={[styles.categoryButton, selectedCategory === category && { backgroundColor: themeColor }]}
                 onPress={() => setSelectedCategory(category)}
               >
                 <Icon 
@@ -347,7 +349,7 @@ export default function PhotosScreen() {
                     <Text style={styles.photoMeta}>
                       {photo.cleanerName} • {photo.buildingName}
                     </Text>
-                    <Text style={styles.photoTime}>
+                    <Text style={[styles.photoTime, { color: themeColor }]}>
                       {photo.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </Text>
                   </View>
@@ -406,7 +408,7 @@ export default function PhotosScreen() {
                 
                 <View style={styles.modalActions}>
                   <TouchableOpacity
-                    style={[styles.modalActionButton, { backgroundColor: colors.success }]}
+                    style={[styles.modalActionButton, { backgroundColor: themeColor }]}
                     onPress={() => {
                       handleApprovePhoto(selectedPhoto.id);
                       setSelectedPhoto(null);
@@ -548,7 +550,6 @@ const styles = StyleSheet.create({
   },
   photoTime: {
     ...typography.small,
-    color: colors.primary,
     fontWeight: '500',
   },
   emptyState: {

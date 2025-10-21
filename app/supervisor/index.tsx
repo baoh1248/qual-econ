@@ -17,6 +17,7 @@ import { useInventoryAlerts } from '../../hooks/useInventoryAlerts';
 import { useDatabase } from '../../hooks/useDatabase';
 import { useScheduleStorage } from '../../hooks/useScheduleStorage';
 import { useClientData } from '../../hooks/useClientData';
+import { useTheme } from '../../hooks/useTheme';
 
 interface TeamMember {
   id: string;
@@ -45,6 +46,7 @@ interface Client {
 }
 
 const SupervisorDashboard = () => {
+  const { themeColor } = useTheme();
   const { showToast } = useToast();
   const { config, syncStatus } = useDatabase();
   const { lowStockCount, criticalStockCount } = useInventoryAlerts();
@@ -209,10 +211,18 @@ const SupervisorDashboard = () => {
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { backgroundColor: themeColor }]}>
         <CompanyLogo />
         <Text style={styles.title}>Supervisor Dashboard</Text>
         <View style={styles.headerActions}>
+          {/* Settings button */}
+          <TouchableOpacity
+            onPress={() => router.push('/supervisor/settings')}
+            style={styles.settingsButton}
+          >
+            <Icon name="settings" size={20} style={{ color: colors.background }} />
+          </TouchableOpacity>
+          
           {/* Database status indicator */}
           <TouchableOpacity
             onPress={() => setShowDatabaseSetup(true)}
@@ -245,7 +255,7 @@ const SupervisorDashboard = () => {
         <View style={styles.statsContainer}>
           <AnimatedCard style={styles.statCard}>
             <View style={styles.statContent}>
-              <Icon name="people" size={24} style={{ color: colors.primary }} />
+              <Icon name="people" size={24} style={{ color: themeColor }} />
               <View style={styles.statText}>
                 <Text style={styles.statValue}>{teamMembers.length}</Text>
                 <Text style={styles.statLabel}>Team Members</Text>
@@ -291,7 +301,7 @@ const SupervisorDashboard = () => {
             onPress={() => setShowLiveMap(true)}
           >
             <View style={styles.liveMapTitleRow}>
-              <Icon name="map" size={24} style={{ color: colors.primary }} />
+              <Icon name="map" size={24} style={{ color: themeColor }} />
               <Text style={styles.cardTitle}>Live Cleaner Tracking</Text>
             </View>
             <Icon name="chevron-forward" size={20} style={{ color: colors.textSecondary }} />
@@ -301,19 +311,19 @@ const SupervisorDashboard = () => {
           </Text>
           <View style={styles.liveMapStats}>
             <View style={styles.liveMapStat}>
-              <Text style={styles.liveMapStatValue}>
+              <Text style={[styles.liveMapStatValue, { color: themeColor }]}>
                 {teamMembers.filter(m => m.status === 'on-duty').length}
               </Text>
               <Text style={styles.liveMapStatLabel}>On Duty</Text>
             </View>
             <View style={styles.liveMapStat}>
-              <Text style={styles.liveMapStatValue}>
+              <Text style={[styles.liveMapStatValue, { color: themeColor }]}>
                 {teamMembers.filter(m => m.status === 'break').length}
               </Text>
               <Text style={styles.liveMapStatLabel}>On Break</Text>
             </View>
             <View style={styles.liveMapStat}>
-              <Text style={styles.liveMapStatValue}>
+              <Text style={[styles.liveMapStatValue, { color: themeColor }]}>
                 {teamMembers.filter(m => m.status === 'off-duty').length}
               </Text>
               <Text style={styles.liveMapStatLabel}>Off Duty</Text>
@@ -328,7 +338,7 @@ const SupervisorDashboard = () => {
             onPress={() => router.push('/supervisor/cleaners')}
           >
             <View style={styles.cleanersTitleRow}>
-              <Icon name="people" size={24} style={{ color: colors.primary }} />
+              <Icon name="people" size={24} style={{ color: themeColor }} />
               <Text style={styles.cardTitle}>Cleaners Management</Text>
             </View>
             <Icon name="chevron-forward" size={20} style={{ color: colors.textSecondary }} />
@@ -338,7 +348,7 @@ const SupervisorDashboard = () => {
           </Text>
           <View style={styles.cleanersStats}>
             <View style={styles.cleanersStat}>
-              <Text style={styles.cleanersStatValue}>
+              <Text style={[styles.cleanersStatValue, { color: themeColor }]}>
                 {teamMembers.length}
               </Text>
               <Text style={styles.cleanersStatLabel}>Total Cleaners</Text>
@@ -356,7 +366,7 @@ const SupervisorDashboard = () => {
         <AnimatedCard style={styles.progressCard}>
           <View style={styles.progressHeader}>
             <Text style={styles.cardTitle}>Today&apos;s Progress</Text>
-            <Text style={styles.progressPercentage}>
+            <Text style={[styles.progressPercentage, { color: themeColor }]}>
               {taskSummary.total > 0 ? Math.round((taskSummary.completed / taskSummary.total) * 100) : 0}%
             </Text>
           </View>
@@ -365,7 +375,7 @@ const SupervisorDashboard = () => {
               progress={taskSummary.total > 0 ? (taskSummary.completed / taskSummary.total) * 100 : 0}
               size={80}
               strokeWidth={8}
-              color={colors.primary}
+              color={themeColor}
             />
             <View style={styles.progressStats}>
               <View style={styles.progressStat}>
@@ -389,7 +399,7 @@ const SupervisorDashboard = () => {
           <View style={styles.cardHeader}>
             <Text style={styles.cardTitle}>Team Status</Text>
             <TouchableOpacity onPress={() => router.push('/supervisor/cleaners')}>
-              <Text style={styles.viewAllText}>View All</Text>
+              <Text style={[styles.viewAllText, { color: themeColor }]}>View All</Text>
             </TouchableOpacity>
           </View>
           {teamMembers.slice(0, 5).map((member) => (
@@ -422,8 +432,8 @@ const SupervisorDashboard = () => {
         <AnimatedCard style={styles.clientCard}>
           <View style={styles.cardHeader}>
             <Text style={styles.cardTitle}>Client Status</Text>
-            <TouchableOpacity onPress={() => router.push('/supervisor/schedule')}>
-              <Text style={styles.viewAllText}>View Schedule</Text>
+            <TouchableOpacity onPress={() => router.push('/supervisor/clients-list')}>
+              <Text style={[styles.viewAllText, { color: themeColor }]}>View All Clients</Text>
             </TouchableOpacity>
           </View>
           {clients.slice(0, 5).map((client) => (
@@ -451,7 +461,7 @@ const SupervisorDashboard = () => {
             style={styles.actionButton}
             onPress={() => router.push('/supervisor/schedule')}
           >
-            <Icon name="calendar" size={24} style={{ color: colors.primary }} />
+            <Icon name="calendar" size={24} style={{ color: themeColor }} />
             <Text style={styles.actionButtonText}>Schedule</Text>
           </TouchableOpacity>
 
@@ -459,7 +469,7 @@ const SupervisorDashboard = () => {
             style={styles.actionButton}
             onPress={() => router.push('/supervisor/cleaners')}
           >
-            <Icon name="people" size={24} style={{ color: colors.primary }} />
+            <Icon name="people" size={24} style={{ color: themeColor }} />
             <Text style={styles.actionButtonText}>Cleaners</Text>
           </TouchableOpacity>
 
@@ -467,7 +477,7 @@ const SupervisorDashboard = () => {
             style={styles.actionButton}
             onPress={() => router.push('/supervisor/inventory')}
           >
-            <Icon name="cube" size={24} style={{ color: colors.primary }} />
+            <Icon name="cube" size={24} style={{ color: themeColor }} />
             <Text style={styles.actionButtonText}>Inventory</Text>
           </TouchableOpacity>
 
@@ -475,7 +485,7 @@ const SupervisorDashboard = () => {
             style={styles.actionButton}
             onPress={() => router.push('/supervisor/payroll')}
           >
-            <Icon name="card" size={24} style={{ color: colors.primary }} />
+            <Icon name="card" size={24} style={{ color: themeColor }} />
             <Text style={styles.actionButtonText}>Payroll</Text>
           </TouchableOpacity>
 
@@ -483,7 +493,7 @@ const SupervisorDashboard = () => {
             style={styles.actionButton}
             onPress={() => router.push('/supervisor/photos')}
           >
-            <Icon name="camera" size={24} style={{ color: colors.primary }} />
+            <Icon name="camera" size={24} style={{ color: themeColor }} />
             <Text style={styles.actionButtonText}>Photos</Text>
           </TouchableOpacity>
 
@@ -491,7 +501,7 @@ const SupervisorDashboard = () => {
             style={styles.actionButton}
             onPress={() => router.push('/supervisor/projects')}
           >
-            <Icon name="briefcase" size={24} style={{ color: colors.primary }} />
+            <Icon name="briefcase" size={24} style={{ color: themeColor }} />
             <Text style={styles.actionButtonText}>Projects</Text>
           </TouchableOpacity>
         </View>
@@ -544,13 +554,21 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.h2,
-    color: colors.text,
+    color: colors.textInverse,
     fontWeight: '600',
   },
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+  },
+  settingsButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
   },
   databaseStatus: {
     width: 32,
@@ -623,7 +641,6 @@ const styles = StyleSheet.create({
   },
   liveMapStatValue: {
     ...typography.h2,
-    color: colors.primary,
     fontWeight: '700',
     marginBottom: 4,
   },
@@ -663,7 +680,6 @@ const styles = StyleSheet.create({
   },
   cleanersStatValue: {
     ...typography.h2,
-    color: colors.primary,
     fontWeight: '700',
     marginBottom: 4,
   },
@@ -688,7 +704,6 @@ const styles = StyleSheet.create({
   },
   progressPercentage: {
     ...typography.h2,
-    color: colors.primary,
     fontWeight: '700',
   },
   progressContent: {
@@ -726,7 +741,6 @@ const styles = StyleSheet.create({
   },
   viewAllText: {
     ...typography.small,
-    color: colors.primary,
     fontWeight: '600',
   },
   teamMember: {

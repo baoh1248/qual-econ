@@ -1,88 +1,81 @@
 
 import React from 'react';
-import { TouchableOpacity, Text, StyleSheet, ViewStyle, TextStyle } from 'react-native';
-import { colors, spacing, typography } from '../styles/commonStyles';
+import { TouchableOpacity, Text, StyleSheet, ViewStyle, TextStyle, ActivityIndicator } from 'react-native';
+import { colors, spacing, typography, borderRadius, shadows } from '../styles/commonStyles';
+import { useTheme } from '../hooks/useTheme';
 import Icon from './Icon';
 
 interface ButtonProps {
   text?: string;
-  title?: string; // Keep for backward compatibility
+  title?: string;
   onPress: () => void;
   style?: ViewStyle;
   textStyle?: TextStyle;
   disabled?: boolean;
-  variant?: 'primary' | 'secondary' | 'danger' | 'success' | 'warning';
+  loading?: boolean;
+  variant?: 'primary' | 'secondary' | 'danger' | 'success' | 'warning' | 'outline' | 'ghost';
   size?: 'small' | 'medium' | 'large';
   icon?: string;
   iconSize?: number;
+  iconPosition?: 'left' | 'right';
+  fullWidth?: boolean;
 }
 
 export default function Button({
   text,
-  title, // Keep for backward compatibility
+  title,
   onPress,
   style,
   textStyle,
   disabled = false,
+  loading = false,
   variant = 'primary',
   size = 'medium',
   icon,
-  iconSize = 16,
+  iconSize,
+  iconPosition = 'left',
+  fullWidth = false,
 }: ButtonProps) {
+  const { themeColor } = useTheme();
   const buttonText = text || title || '';
-  console.log('Button rendered:', buttonText);
 
   const getVariantStyles = () => {
     switch (variant) {
       case 'secondary':
         return {
-          backgroundColor: colors.primary, // Blue background for consistency
-          borderWidth: 0,
-          shadowColor: colors.primary,
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.3,
-          shadowRadius: 8,
-          elevation: 6,
+          backgroundColor: colors.backgroundAlt,
+          borderWidth: 1,
+          borderColor: colors.border,
         };
       case 'danger':
         return {
           backgroundColor: colors.danger,
-          borderWidth: 0,
-          shadowColor: colors.danger,
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.3,
-          shadowRadius: 8,
-          elevation: 6,
+          ...shadows.sm,
         };
       case 'success':
         return {
           backgroundColor: colors.success,
-          borderWidth: 0,
-          shadowColor: colors.success,
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.3,
-          shadowRadius: 8,
-          elevation: 6,
+          ...shadows.sm,
         };
       case 'warning':
         return {
           backgroundColor: colors.warning,
-          borderWidth: 0,
-          shadowColor: colors.warning,
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.3,
-          shadowRadius: 8,
-          elevation: 6,
+          ...shadows.sm,
+        };
+      case 'outline':
+        return {
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          borderColor: themeColor,
+        };
+      case 'ghost':
+        return {
+          backgroundColor: 'transparent',
         };
       default:
         return {
-          backgroundColor: colors.primary, // Blue background
-          borderWidth: 0,
-          shadowColor: colors.primary,
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.3,
-          shadowRadius: 8,
-          elevation: 6,
+          backgroundColor: themeColor,
+          ...shadows.sm,
         };
     }
   };
@@ -92,27 +85,91 @@ export default function Button({
       case 'small':
         return {
           paddingVertical: spacing.sm,
-          paddingHorizontal: spacing.md,
+          paddingHorizontal: spacing.lg,
           minHeight: 36,
         };
       case 'large':
         return {
           paddingVertical: spacing.lg,
-          paddingHorizontal: spacing.xl,
+          paddingHorizontal: spacing.xxl,
           minHeight: 52,
         };
       default:
         return {
           paddingVertical: spacing.md,
-          paddingHorizontal: spacing.lg,
+          paddingHorizontal: spacing.xl,
           minHeight: 44,
         };
     }
   };
 
-  const getContrastingColor = () => {
-    // Always return white text for all button variants for better contrast
-    return colors.background; // White text
+  const getTextColor = () => {
+    if (variant === 'secondary' || variant === 'ghost') {
+      return colors.text;
+    }
+    if (variant === 'outline') {
+      return themeColor;
+    }
+    return colors.textInverse;
+  };
+
+  const getIconSize = () => {
+    if (iconSize) return iconSize;
+    switch (size) {
+      case 'small':
+        return 16;
+      case 'large':
+        return 24;
+      default:
+        return 20;
+    }
+  };
+
+  const renderContent = () => {
+    if (loading) {
+      return (
+        <ActivityIndicator 
+          size="small" 
+          color={getTextColor()} 
+        />
+      );
+    }
+
+    return (
+      <>
+        {icon && iconPosition === 'left' && (
+          <Icon 
+            name={icon as any} 
+            size={getIconSize()} 
+            style={{ 
+              color: getTextColor(), 
+              marginRight: spacing.sm 
+            }} 
+          />
+        )}
+        <Text
+          style={[
+            styles.text,
+            { color: getTextColor() },
+            size === 'small' && styles.smallText,
+            size === 'large' && styles.largeText,
+            textStyle,
+          ]}
+        >
+          {buttonText}
+        </Text>
+        {icon && iconPosition === 'right' && (
+          <Icon 
+            name={icon as any} 
+            size={getIconSize()} 
+            style={{ 
+              color: getTextColor(), 
+              marginLeft: spacing.sm 
+            }} 
+          />
+        )}
+      </>
+    );
   };
 
   return (
@@ -121,66 +178,43 @@ export default function Button({
         styles.button,
         getVariantStyles(),
         getSizeStyles(),
+        fullWidth && styles.fullWidth,
         disabled && styles.disabled,
         style,
       ]}
       onPress={onPress}
-      disabled={disabled}
-      activeOpacity={0.8}
+      disabled={disabled || loading}
+      activeOpacity={0.7}
     >
-      {icon && (
-        <Icon 
-          name={icon as any} 
-          size={iconSize} 
-          style={{ 
-            color: getContrastingColor(), 
-            marginRight: spacing.sm 
-          }} 
-        />
-      )}
-      <Text
-        style={[
-          styles.text,
-          { color: getContrastingColor() },
-          size === 'small' && styles.smallText,
-          size === 'large' && styles.largeText,
-          disabled && styles.disabledText,
-          textStyle,
-        ]}
-      >
-        {buttonText}
-      </Text>
+      {renderContent()}
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
   button: {
-    borderRadius: 10,
+    borderRadius: borderRadius.md,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
-    minHeight: 44,
+  },
+  fullWidth: {
+    width: '100%',
   },
   text: {
-    ...typography.body,
-    fontWeight: '700',
+    ...typography.bodyMedium,
+    fontWeight: '600',
     textAlign: 'center',
   },
   smallText: {
-    ...typography.caption,
-    fontWeight: '700',
+    ...typography.captionMedium,
+    fontWeight: '600',
   },
   largeText: {
-    ...typography.h3,
-    fontWeight: '700',
+    ...typography.h4,
+    fontWeight: '600',
   },
   disabled: {
-    opacity: 0.6,
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-  disabledText: {
-    opacity: 0.8,
+    opacity: 0.5,
   },
 });

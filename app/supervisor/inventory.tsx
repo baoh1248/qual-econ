@@ -12,6 +12,7 @@ import SendItemsModal from '../../components/inventory/SendItemsModal';
 import Toast from '../../components/Toast';
 import { useToast } from '../../hooks/useToast';
 import { useDatabase } from '../../hooks/useDatabase';
+import { useTheme } from '../../hooks/useTheme';
 import { commonStyles, colors, spacing, typography, buttonStyles, getContrastColor } from '../../styles/commonStyles';
 
 interface InventoryItem {
@@ -76,6 +77,7 @@ interface EditItemForm {
 const SupervisorInventoryScreen = () => {
   const { showToast } = useToast();
   const { executeQuery, config, syncStatus, error: dbError, syncToSupabase } = useDatabase();
+  const { themeColor } = useTheme();
 
   // State management
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
@@ -453,7 +455,7 @@ const SupervisorInventoryScreen = () => {
     }
   }, [inventory, executeQuery, showToast]);
 
-  // FIXED: Delete item handler - simplified and more robust
+  // Delete item handler
   const handleDeleteItem = useCallback((item: InventoryItem) => {
     console.log('╔════════════════════════════════════════╗');
     console.log('║   DELETE ITEM BUTTON PRESSED          ║');
@@ -641,7 +643,7 @@ const SupervisorInventoryScreen = () => {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'pending': return colors.warning;
-      case 'approved': return colors.primary;
+      case 'approved': return themeColor;
       case 'ordered': return colors.info;
       case 'delivered': return colors.success;
       default: return colors.textSecondary;
@@ -667,7 +669,7 @@ const SupervisorInventoryScreen = () => {
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { backgroundColor: themeColor }]}>
         <TouchableOpacity onPress={() => router.back()}>
           <Icon name="arrow-back" size={24} style={{ color: colors.background }} />
         </TouchableOpacity>
@@ -709,7 +711,7 @@ const SupervisorInventoryScreen = () => {
         
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtersContainer}>
           <TouchableOpacity
-            style={[styles.filterButton, selectedCategory === 'all' && styles.filterButtonActive]}
+            style={[styles.filterButton, selectedCategory === 'all' && { backgroundColor: themeColor }]}
             onPress={() => setSelectedCategory('all')}
           >
             <Text style={[styles.filterButtonText, selectedCategory === 'all' && styles.filterButtonTextActive]}>
@@ -718,7 +720,7 @@ const SupervisorInventoryScreen = () => {
           </TouchableOpacity>
           
           <TouchableOpacity
-            style={[styles.filterButton, selectedCategory === 'cleaning-supplies' && styles.filterButtonActive]}
+            style={[styles.filterButton, selectedCategory === 'cleaning-supplies' && { backgroundColor: themeColor }]}
             onPress={() => setSelectedCategory('cleaning-supplies')}
           >
             <Text style={[styles.filterButtonText, selectedCategory === 'cleaning-supplies' && styles.filterButtonTextActive]}>
@@ -727,16 +729,16 @@ const SupervisorInventoryScreen = () => {
           </TouchableOpacity>
           
           <TouchableOpacity
-            style={[styles.filterButton, selectedCategory === 'equipment' && styles.filterButtonActive]}
+            style={[styles.filterButton, selectedCategory === 'equipment' && { backgroundColor: themeColor }]}
             onPress={() => setSelectedCategory('equipment')}
           >
-            <Text style={[styles.filterButtonText, selectedCategory === 'equipment' && styles.filterButtonActive]}>
+            <Text style={[styles.filterButtonText, selectedCategory === 'equipment' && styles.filterButtonTextActive]}>
               Equipment
             </Text>
           </TouchableOpacity>
           
           <TouchableOpacity
-            style={[styles.filterButton, selectedCategory === 'safety' && styles.filterButtonActive]}
+            style={[styles.filterButton, selectedCategory === 'safety' && { backgroundColor: themeColor }]}
             onPress={() => setSelectedCategory('safety')}
           >
             <Text style={[styles.filterButtonText, selectedCategory === 'safety' && styles.filterButtonTextActive]}>
@@ -745,7 +747,7 @@ const SupervisorInventoryScreen = () => {
           </TouchableOpacity>
           
           <TouchableOpacity
-            style={[styles.filterButton, showLowStock && styles.filterButtonActive]}
+            style={[styles.filterButton, showLowStock && { backgroundColor: themeColor }]}
             onPress={() => setShowLowStock(!showLowStock)}
           >
             <Text style={[styles.filterButtonText, showLowStock && styles.filterButtonTextActive]}>
@@ -760,12 +762,14 @@ const SupervisorInventoryScreen = () => {
         <Button
           title="Send Items"
           onPress={() => setShowSendItemsModal(true)}
-          style={[buttonStyles.secondary, { flex: 1, marginRight: spacing.sm }]}
+          variant="secondary"
+          style={{ flex: 1, marginRight: spacing.sm }}
         />
         <Button
           title="Transfer History"
           onPress={() => setShowTransferModal(true)}
-          style={[buttonStyles.outline, { flex: 1 }]}
+          variant="outline"
+          style={{ flex: 1 }}
         />
       </View>
 
@@ -775,6 +779,7 @@ const SupervisorInventoryScreen = () => {
           {filteredInventory.map((item) => {
             const stockStatus = getStockStatus(item);
             const pendingRequests = restockRequests.filter(r => r.item_id === item.id && r.status === 'pending');
+            const contrastColor = getContrastColor(themeColor);
             
             return (
               <View key={item.id} style={styles.gridItem}>
@@ -783,24 +788,32 @@ const SupervisorInventoryScreen = () => {
                     <Icon 
                       name={getCategoryIcon(item.category)} 
                       size={20} 
-                      style={{ color: colors.primary }} 
+                      style={{ color: themeColor }} 
                     />
                     <View style={styles.compactActions}>
-                      <IconButton
-                        icon="create"
+                      <TouchableOpacity
                         onPress={() => openEditModal(item)}
-                        size={18}
-                        color={colors.textSecondary}
-                      />
-                      <IconButton
-                        icon="trash"
+                        style={[styles.actionIconButton, { backgroundColor: themeColor }]}
+                      >
+                        <Icon
+                          name="create"
+                          size={18}
+                          style={{ color: contrastColor }}
+                        />
+                      </TouchableOpacity>
+                      <TouchableOpacity
                         onPress={() => {
                           console.log('Trash icon pressed for item:', item.name);
                           handleDeleteItem(item);
                         }}
-                        size={18}
-                        color={colors.danger}
-                      />
+                        style={[styles.actionIconButton, { backgroundColor: colors.danger }]}
+                      >
+                        <Icon
+                          name="trash"
+                          size={18}
+                          style={{ color: colors.background }}
+                        />
+                      </TouchableOpacity>
                     </View>
                   </View>
 
@@ -880,7 +893,8 @@ const SupervisorInventoryScreen = () => {
                     key={category}
                     style={[
                       styles.categoryButton,
-                      newItemForm.category === category && styles.categoryButtonActive
+                      { borderColor: themeColor },
+                      newItemForm.category === category && { backgroundColor: themeColor }
                     ]}
                     onPress={() => setNewItemForm(prev => ({ ...prev, category }))}
                   >
@@ -888,12 +902,13 @@ const SupervisorInventoryScreen = () => {
                       name={getCategoryIcon(category)} 
                       size={16} 
                       style={{ 
-                        color: newItemForm.category === category ? colors.background : colors.primary,
+                        color: newItemForm.category === category ? getContrastColor(themeColor) : themeColor,
                         marginRight: spacing.xs 
                       }} 
                     />
                     <Text style={[
                       styles.categoryButtonText,
+                      { color: newItemForm.category === category ? getContrastColor(themeColor) : themeColor },
                       newItemForm.category === category && styles.categoryButtonTextActive
                     ]}>
                       {category === 'cleaning-supplies' ? 'Supplies' : 
@@ -1007,7 +1022,7 @@ const SupervisorInventoryScreen = () => {
               <View style={styles.switchRow}>
                 <Text style={styles.formLabel}>Auto-reorder enabled</Text>
                 <TouchableOpacity
-                  style={[styles.switch, newItemForm.auto_reorder_enabled && styles.switchActive]}
+                  style={[styles.switch, newItemForm.auto_reorder_enabled && { backgroundColor: colors.success }]}
                   onPress={() => setNewItemForm(prev => ({ ...prev, auto_reorder_enabled: !prev.auto_reorder_enabled }))}
                 >
                   <View style={[styles.switchThumb, newItemForm.auto_reorder_enabled && styles.switchThumbActive]} />
@@ -1020,12 +1035,14 @@ const SupervisorInventoryScreen = () => {
             <Button
               title="Cancel"
               onPress={() => setShowAddModal(false)}
-              style={[buttonStyles.outline, { flex: 1, marginRight: spacing.sm }]}
+              variant="outline"
+              style={{ flex: 1, marginRight: spacing.sm }}
             />
             <Button
               title="Add Item"
               onPress={addNewItem}
-              style={[buttonStyles.primary, { flex: 1 }]}
+              variant="primary"
+              style={{ flex: 1 }}
             />
           </View>
         </View>
@@ -1064,7 +1081,8 @@ const SupervisorInventoryScreen = () => {
                     key={category}
                     style={[
                       styles.categoryButton,
-                      editItemForm.category === category && styles.categoryButtonActive
+                      { borderColor: themeColor },
+                      editItemForm.category === category && { backgroundColor: themeColor }
                     ]}
                     onPress={() => setEditItemForm(prev => ({ ...prev, category }))}
                   >
@@ -1072,12 +1090,13 @@ const SupervisorInventoryScreen = () => {
                       name={getCategoryIcon(category)} 
                       size={16} 
                       style={{ 
-                        color: editItemForm.category === category ? colors.background : colors.primary,
+                        color: editItemForm.category === category ? getContrastColor(themeColor) : themeColor,
                         marginRight: spacing.xs 
                       }} 
                     />
                     <Text style={[
                       styles.categoryButtonText,
+                      { color: editItemForm.category === category ? getContrastColor(themeColor) : themeColor },
                       editItemForm.category === category && styles.categoryButtonTextActive
                     ]}>
                       {category === 'cleaning-supplies' ? 'Supplies' : 
@@ -1191,7 +1210,7 @@ const SupervisorInventoryScreen = () => {
               <View style={styles.switchRow}>
                 <Text style={styles.formLabel}>Auto-reorder enabled</Text>
                 <TouchableOpacity
-                  style={[styles.switch, editItemForm.auto_reorder_enabled && styles.switchActive]}
+                  style={[styles.switch, editItemForm.auto_reorder_enabled && { backgroundColor: colors.success }]}
                   onPress={() => setEditItemForm(prev => ({ ...prev, auto_reorder_enabled: !prev.auto_reorder_enabled }))}
                 >
                   <View style={[styles.switchThumb, editItemForm.auto_reorder_enabled && styles.switchThumbActive]} />
@@ -1204,12 +1223,14 @@ const SupervisorInventoryScreen = () => {
             <Button
               title="Cancel"
               onPress={() => setShowEditModal(false)}
-              style={[buttonStyles.outline, { flex: 1, marginRight: spacing.sm }]}
+              variant="outline"
+              style={{ flex: 1, marginRight: spacing.sm }}
             />
             <Button
               title="Save Changes"
               onPress={saveEditedItem}
-              style={[buttonStyles.primary, { flex: 1 }]}
+              variant="primary"
+              style={{ flex: 1 }}
             />
           </View>
         </View>
@@ -1244,12 +1265,14 @@ const SupervisorInventoryScreen = () => {
                 <Button
                   title="Cancel"
                   onPress={() => setRequestToReject(null)}
-                  style={[buttonStyles.outline, { flex: 1, marginRight: spacing.sm }]}
+                  variant="outline"
+                  style={{ flex: 1, marginRight: spacing.sm }}
                 />
                 <Button
                   title="Reject"
                   onPress={confirmRejectRequest}
-                  style={[buttonStyles.danger, { flex: 1 }]}
+                  variant="danger"
+                  style={{ flex: 1 }}
                 />
               </View>
             </View>
@@ -1284,7 +1307,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    backgroundColor: colors.primary,
   },
   headerActions: {
     flexDirection: 'row',
@@ -1327,9 +1349,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: colors.backgroundAlt,
     marginRight: spacing.sm,
-  },
-  filterButtonActive: {
-    backgroundColor: colors.primary,
   },
   filterButtonText: {
     ...typography.small,
@@ -1374,6 +1393,13 @@ const styles = StyleSheet.create({
   compactActions: {
     flexDirection: 'row',
     gap: spacing.xs,
+  },
+  actionIconButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   compactItemName: {
     ...typography.body,
@@ -1524,19 +1550,13 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: colors.primary,
     backgroundColor: colors.background,
-  },
-  categoryButtonActive: {
-    backgroundColor: colors.primary,
   },
   categoryButtonText: {
     ...typography.small,
-    color: colors.primary,
     fontWeight: '500',
   },
   categoryButtonTextActive: {
-    color: colors.background,
     fontWeight: '600',
   },
   switchRow: {
@@ -1551,9 +1571,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.border,
     padding: 2,
     justifyContent: 'center',
-  },
-  switchActive: {
-    backgroundColor: colors.success,
   },
   switchThumb: {
     width: 26,

@@ -4,6 +4,7 @@ import { View, TouchableOpacity, Text, StyleSheet } from 'react-native';
 import { router, usePathname } from 'expo-router';
 import Icon from './Icon';
 import { colors, spacing, typography } from '../styles/commonStyles';
+import { useTheme } from '../hooks/useTheme';
 
 interface NavItem {
   name: string;
@@ -18,6 +19,7 @@ interface BottomNavigationProps {
 
 export default function BottomNavigation({ role }: BottomNavigationProps) {
   const pathname = usePathname();
+  const { themeColor } = useTheme();
   console.log('BottomNavigation rendered for role:', role, 'current path:', pathname);
 
   const cleanerNavItems: NavItem[] = [
@@ -52,7 +54,7 @@ export default function BottomNavigation({ role }: BottomNavigationProps) {
             key={item.name}
             style={[
               styles.navItem, 
-              isActive ? styles.activeNavItem : styles.inactiveNavItem
+              isActive && { backgroundColor: themeColor }
             ]}
             onPress={() => handleNavPress(item.path)}
             activeOpacity={0.7}
@@ -61,13 +63,13 @@ export default function BottomNavigation({ role }: BottomNavigationProps) {
               name={item.icon} 
               size={24} 
               style={{ 
-                tintColor: isActive ? colors.background : colors.background,
+                tintColor: isActive ? colors.background : colors.textSecondary,
                 marginBottom: spacing.xs 
               }} 
             />
             <Text style={[
               styles.navLabel,
-              { color: isActive ? colors.background : colors.background }
+              { color: isActive ? colors.background : colors.textSecondary }
             ]}>
               {item.label}
             </Text>
@@ -95,12 +97,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: spacing.sm,
     borderRadius: 8,
-  },
-  activeNavItem: {
-    backgroundColor: colors.primary,
-  },
-  inactiveNavItem: {
-    backgroundColor: colors.primary,
   },
   navLabel: {
     ...typography.small,

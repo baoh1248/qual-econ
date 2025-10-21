@@ -1,9 +1,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase, isSupabaseConfigured, TABLES, type DatabaseClient, type DatabaseClientBuilding, type DatabaseCleaner, type DatabaseScheduleEntry, type DatabaseInventoryItem, type DatabaseInventoryTransaction, type DatabaseRestockRequest } from '../utils/supabase';
-import type { Client, ClientBuilding, Cleaner } from './useClientData';
-import type { ScheduleEntry } from './useScheduleStorage';
+import { supabase, isSupabaseConfigured, TABLES } from '../utils/supabase';
 
 interface DatabaseConfig {
   useSupabase: boolean;
@@ -32,7 +30,6 @@ export const useDatabase = () => {
 
   const [error, setError] = useState<string | null>(null);
 
-  // Check Supabase connection
   const checkConnection = useCallback(async (): Promise<boolean> => {
     if (!config.useSupabase) return false;
     
@@ -48,7 +45,6 @@ export const useDatabase = () => {
     }
   }, [config.useSupabase]);
 
-  // Initialize database connection
   useEffect(() => {
     const initializeDatabase = async () => {
       console.log('Initializing database...');
@@ -73,79 +69,6 @@ export const useDatabase = () => {
     initializeDatabase();
   }, [checkConnection]);
 
-  // Generic database operations
-  const executeQuery = useCallback(async <T>(
-    operation: 'select' | 'insert' | 'update' | 'delete',
-    table: string,
-    data?: any,
-    filters?: any
-  ): Promise<T[]> => {
-    try {
-      if (config.useSupabase && syncStatus.isOnline) {
-        console.log(`Executing ${operation} on ${table} via Supabase`);
-        
-        let query = supabase.from(table);
-        
-        switch (operation) {
-          case 'select':
-            if (filters) {
-              Object.entries(filters).forEach(([key, value]) => {
-                query = query.eq(key, value);
-              });
-            }
-            const { data: selectData, error: selectError } = await query.select('*');
-            if (selectError) throw selectError;
-            return selectData || [];
-            
-          case 'insert':
-            const { data: insertData, error: insertError } = await query.insert(data).select();
-            if (insertError) throw insertError;
-            return insertData || [];
-            
-          case 'update':
-            let updateQuery = query.update(data);
-            if (filters) {
-              Object.entries(filters).forEach(([key, value]) => {
-                updateQuery = updateQuery.eq(key, value);
-              });
-            }
-            const { data: updateData, error: updateError } = await updateQuery.select();
-            if (updateError) throw updateError;
-            return updateData || [];
-            
-          case 'delete':
-            let deleteQuery = query.delete();
-            if (filters) {
-              Object.entries(filters).forEach(([key, value]) => {
-                deleteQuery = deleteQuery.eq(key, value);
-              });
-            }
-            const { data: deleteData, error: deleteError } = await deleteQuery.select();
-            if (deleteError) throw deleteError;
-            return deleteData || [];
-            
-          default:
-            throw new Error(`Unsupported operation: ${operation}`);
-        }
-      } else {
-        // Fallback to AsyncStorage
-        console.log(`Executing ${operation} on ${table} via AsyncStorage`);
-        return await executeLocalQuery<T>(operation, table, data, filters);
-      }
-    } catch (err) {
-      console.error(`Database operation failed:`, err);
-      setError(`Database operation failed: ${err}`);
-      
-      if (config.fallbackToLocal && config.useSupabase) {
-        console.log('Falling back to local storage...');
-        return await executeLocalQuery<T>(operation, table, data, filters);
-      }
-      
-      throw err;
-    }
-  }, [config, syncStatus.isOnline]);
-
-  // Local storage operations (fallback)
   const executeLocalQuery = useCallback(async <T>(
     operation: 'select' | 'insert' | 'update' | 'delete',
     table: string,
@@ -205,7 +128,102 @@ export const useDatabase = () => {
     }
   }, []);
 
-  // Sync operations
+  const executeQuery = useCallback(async <T>(
+    operation: 'select' | 'insert' | 'update' | 'delete',
+    table: string,
+    data?: any,
+    filters?: any
+  ): Promise<T[]> => {
+    try {
+      if (config.useSupabase && syncStatus.isOnline) {
+        console.log(`╔════════════════════════════════════════╗`);
+        console.log(`║ SUPABASE ${operation.toUpperCase().padEnd(6)} OPERATION`);
+        console.log(`╚════════════════════════════════════════╝`);
+        console.log(`Table: ${table}`);
+        console.log(`Filters:`, filters);
+        console.log(`Data:`, data);
+        
+        let query = supabase.from(table);
+        
+        switch (operation) {
+          case 'select':
+            if (filters) {
+              Object.entries(filters).forEach(([key, value]) => {
+                query = query.eq(key, value);
+              });
+            }
+            const { data: selectData, error: selectError } = await query.select('*');
+            if (selectError) {
+              console.error('SELECT ERROR:', selectError);
+              throw selectError;
+            }
+            console.log(`✓ SELECT returned ${selectData?.length || 0} rows`);
+            return selectData || [];
+            
+          case 'insert':
+            const { data: insertData, error: insertError } = await query.insert(data).select();
+            if (insertError) {
+              console.error('INSERT ERROR:', insertError);
+              throw insertError;
+            }
+            console.log(`✓ INSERT successful, returned ${insertData?.length || 0} rows`);
+            return insertData || [];
+            
+          case 'update':
+            let updateQuery = query.update(data);
+            if (filters) {
+              Object.entries(filters).forEach(([key, value]) => {
+                updateQuery = updateQuery.eq(key, value);
+              });
+            }
+            const { data: updateData, error: updateError } = await updateQuery.select();
+            if (updateError) {
+              console.error('UPDATE ERROR:', updateError);
+              throw updateError;
+            }
+            console.log(`✓ UPDATE successful, returned ${updateData?.length || 0} rows`);
+            return updateData || [];
+            
+          case 'delete':
+            let deleteQuery = query.delete();
+            if (filters) {
+              Object.entries(filters).forEach(([key, value]) => {
+                deleteQuery = deleteQuery.eq(key, value);
+              });
+            }
+            const { data: deleteData, error: deleteError } = await deleteQuery.select();
+            if (deleteError) {
+              console.error('DELETE ERROR:', deleteError);
+              throw deleteError;
+            }
+            console.log(`✓ DELETE successful, returned ${deleteData?.length || 0} rows`);
+            return deleteData || [];
+            
+          default:
+            throw new Error(`Unsupported operation: ${operation}`);
+        }
+      } else {
+        console.log(`Executing ${operation} on ${table} via AsyncStorage`);
+        return await executeLocalQuery<T>(operation, table, data, filters);
+      }
+    } catch (err) {
+      console.error(`╔════════════════════════════════════════╗`);
+      console.error(`║ DATABASE OPERATION FAILED             ║`);
+      console.error(`╚════════════════════════════════════════╝`);
+      console.error(`Operation: ${operation}`);
+      console.error(`Table: ${table}`);
+      console.error('Error:', err);
+      setError(`Database operation failed: ${err}`);
+      
+      if (config.fallbackToLocal && config.useSupabase) {
+        console.log('Falling back to local storage...');
+        return await executeLocalQuery<T>(operation, table, data, filters);
+      }
+      
+      throw err;
+    }
+  }, [config, syncStatus.isOnline, executeLocalQuery]);
+
   const syncToSupabase = useCallback(async () => {
     if (!config.useSupabase || !syncStatus.isOnline) {
       console.log('Sync skipped: Supabase not available');
@@ -217,7 +235,6 @@ export const useDatabase = () => {
     try {
       console.log('Starting sync to Supabase...');
       
-      // Get all local data
       const tables = [TABLES.CLIENTS, TABLES.CLIENT_BUILDINGS, TABLES.CLEANERS, TABLES.SCHEDULE_ENTRIES];
       
       for (const table of tables) {
@@ -226,7 +243,6 @@ export const useDatabase = () => {
         if (localData.length > 0) {
           console.log(`Syncing ${localData.length} records from ${table}`);
           
-          // For simplicity, we'll do an upsert operation
           const { error } = await supabase.from(table).upsert(localData);
           
           if (error) {
@@ -285,7 +301,6 @@ export const useDatabase = () => {
     }
   }, [config.useSupabase, syncStatus.isOnline]);
 
-  // Auto-sync when coming online
   useEffect(() => {
     if (syncStatus.isOnline && syncStatus.pendingChanges > 0) {
       console.log('Auto-syncing pending changes...');
@@ -306,7 +321,7 @@ export const useDatabase = () => {
     const isConnected = await checkConnection();
     if (isConnected) {
       setConfig(prev => ({ ...prev, useSupabase: true }));
-      await syncFromSupabase(); // Initial sync from Supabase
+      await syncFromSupabase();
       return true;
     } else {
       setError('Failed to connect to Supabase');
@@ -320,25 +335,16 @@ export const useDatabase = () => {
   }, []);
 
   return {
-    // Configuration
     config,
     syncStatus,
     error,
-    
-    // Database operations
     executeQuery,
     executeLocalQuery,
-    
-    // Sync operations
     syncToSupabase,
     syncFromSupabase,
-    
-    // Connection management
     checkConnection,
     enableSupabase,
     disableSupabase,
-    
-    // Utilities
     clearError,
     isSupabaseConfigured: isSupabaseConfigured(),
   };
