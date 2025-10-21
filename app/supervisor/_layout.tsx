@@ -20,6 +20,9 @@ export default function SupervisorLayout() {
         <Stack.Screen name="inventory" />
         <Stack.Screen name="photos" />
         <Stack.Screen name="projects" />
+        <Stack.Screen name="cleaners" />
+        <Stack.Screen name="payroll" />
+        <Stack.Screen name="settings" />
       </Stack>
       <BottomNavigation role="supervisor" />
     </View>

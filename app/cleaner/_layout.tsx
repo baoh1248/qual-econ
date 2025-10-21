@@ -19,6 +19,7 @@ export default function CleanerLayout() {
         <Stack.Screen name="chat" />
         <Stack.Screen name="inventory" />
         <Stack.Screen name="task/[id]" />
+        <Stack.Screen name="settings" />
       </Stack>
       <BottomNavigation role="cleaner" />
     </View>

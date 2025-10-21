@@ -1,9 +1,9 @@
 
 import React, { memo } from 'react';
-import { View, ViewStyle } from 'react-native';
+import { ViewStyle } from 'react-native';
 import Animated, { 
-  FadeIn,
-  SlideInUp
+  FadeInDown,
+  FadeInUp,
 } from 'react-native-reanimated';
 import { commonStyles } from '../styles/commonStyles';
 
@@ -12,17 +12,22 @@ interface AnimatedCardProps {
   style?: ViewStyle;
   delay?: number;
   index?: number;
+  elevated?: boolean;
 }
 
-const AnimatedCard = memo(({ children, style, delay = 0, index = 0 }: AnimatedCardProps) => {
-  console.log('AnimatedCard rendered');
-  
-  const animationDelay = delay + (index * 50); // Reduced delay for faster animations
+const AnimatedCard = memo(({ 
+  children, 
+  style, 
+  delay = 0, 
+  index = 0,
+  elevated = false 
+}: AnimatedCardProps) => {
+  const animationDelay = delay + (index * 30);
 
   return (
     <Animated.View
-      entering={SlideInUp.delay(animationDelay).duration(300).springify()} // Faster animation
-      style={[commonStyles.card, style]}
+      entering={FadeInUp.delay(animationDelay).duration(400).springify()}
+      style={[elevated ? commonStyles.cardElevated : commonStyles.card, style]}
     >
       {children}
     </Animated.View>

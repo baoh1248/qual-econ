@@ -24,11 +24,13 @@ export interface ClientBuilding {
   id: string;
   clientName: string;
   buildingName: string;
+  name: string;
   address?: string;
   security?: string;
   securityLevel: 'low' | 'medium' | 'high';
   securityInfo?: string;
   isActive?: boolean;
+  priority?: 'low' | 'medium' | 'high';
   contactInfo?: {
     email: string;
     phone: string;
@@ -37,23 +39,62 @@ export interface ClientBuilding {
   updatedAt?: Date;
 }
 
+export interface EmploymentHistory {
+  id: string;
+  employee_id: string;
+  cleaner_id: string;
+  start_date: string;
+  end_date?: string;
+  termination_reason?: string;
+  position?: string;
+  notes?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface CompensationRecord {
+  id: string;
+  employee_id: string;
+  cleaner_id: string;
+  pay_type: 'hourly' | 'salary' | 'contract';
+  rate: number;
+  effective_date: string;
+  end_date?: string;
+  notes?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface Cleaner {
   id: string;
   name: string;
+  legal_name?: string;
+  go_by?: string;
+  dob?: string;
   isActive: boolean;
   avatar?: string;
+  photo_url?: string;
   specialties: string[];
   employeeId: string;
   securityLevel: 'low' | 'medium' | 'high';
   phoneNumber: string;
+  phone?: string;
   email?: string;
   hireDate?: string;
+  term_date?: string;
+  rehire_date?: string;
+  employment_status?: 'active' | 'terminated' | 'on-leave' | 'suspended';
+  notes?: string;
+  pay_type?: 'hourly' | 'salary' | 'contract';
   defaultHourlyRate?: number;
+  default_hourly_rate?: number;
   emergencyContact?: {
     name: string;
     phone: string;
     relationship?: string;
   };
+  employment_history?: EmploymentHistory[];
+  compensation_history?: CompensationRecord[];
   createdAt?: Date;
   updatedAt?: Date;
   user_id?: string;
@@ -65,11 +106,6 @@ const STORAGE_KEYS = {
   CLEANERS: 'cleaners_v3',
 };
 
-// Cache for frequently accessed data
-const clientsCache = new Map<string, Client[]>();
-const buildingsCache = new Map<string, ClientBuilding[]>();
-const cleanersCache = new Map<string, Cleaner[]>();
-
 export const useClientData = () => {
   const [clients, setClients] = useState<Client[]>([]);
   const [clientBuildings, setClientBuildings] = useState<ClientBuilding[]>([]);
@@ -80,7 +116,6 @@ export const useClientData = () => {
   const loadingRef = useRef(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Debounced save operations
   const debouncedSave = useCallback(async (key: string, data: any) => {
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
@@ -89,235 +124,148 @@ export const useClientData = () => {
     saveTimeoutRef.current = setTimeout(async () => {
       try {
         await AsyncStorage.setItem(key, JSON.stringify(data));
-        console.log(`Saved ${key} successfully`);
+        console.log(`✅ Saved ${key} successfully`);
       } catch (err) {
-        console.error(`Error saving ${key}:`, err);
+        console.error(`❌ Error saving ${key}:`, err);
         setError(`Failed to save ${key}`);
       }
     }, 300);
   }, []);
 
-  // Optimized mock data initialization
-  const initializeMockClients = useCallback(async (): Promise<Client[]> => {
-    const mockClients: Client[] = [
-      { 
-        id: '1', 
-        name: 'TechCorp Inc.', 
-        isActive: true, 
-        color: '#3B82F6', 
-        security: 'Badge required',
-        securityLevel: 'high',
-        securityInfo: 'Badge required at main entrance',
-        contactInfo: {
-          email: 'contact@techcorp.com',
-          phone: '+1 (555) 123-4567',
-          address: '123 Tech Street'
-        },
-        createdAt: new Date(),
-        updatedAt: new Date()
-      },
-      { 
-        id: '2', 
-        name: 'MedCenter Hospital', 
-        isActive: true, 
-        color: '#10B981', 
-        security: 'ID check required',
-        securityLevel: 'high',
-        securityInfo: 'ID check and escort required',
-        contactInfo: {
-          email: 'admin@medcenter.com',
-          phone: '+1 (555) 234-5678',
-          address: '789 Health Blvd'
-        },
-        createdAt: new Date(),
-        updatedAt: new Date()
-      },
-      { 
-        id: '3', 
-        name: 'Downtown Mall', 
-        isActive: true, 
-        color: '#F59E0B', 
-        security: 'Security desk check-in',
-        securityLevel: 'medium',
-        securityInfo: 'Security desk check-in required',
-        contactInfo: {
-          email: 'management@downtownmall.com',
-          phone: '+1 (555) 345-6789',
-          address: '321 Shopping St'
-        },
-        createdAt: new Date(),
-        updatedAt: new Date()
-      },
-    ];
-    
-    // Save asynchronously without blocking
-    debouncedSave(STORAGE_KEYS.CLIENTS, mockClients);
-    return mockClients;
-  }, [debouncedSave]);
+  const loadClientsFromSupabase = useCallback(async (): Promise<Client[]> => {
+    try {
+      console.log('🔄 Loading clients from Supabase...');
+      
+      const { data, error: supabaseError } = await supabase
+        .from('clients')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-  const initializeMockBuildings = useCallback(async (): Promise<ClientBuilding[]> => {
-    const mockBuildings: ClientBuilding[] = [
-      { 
-        id: '1', 
-        clientName: 'TechCorp Inc.', 
-        buildingName: 'Main Office', 
-        address: '123 Tech Street',
-        security: 'Badge required at main entrance',
-        securityLevel: 'high',
-        securityInfo: 'Badge required at main entrance',
-        isActive: true,
-        contactInfo: {
-          email: 'mainoffice@techcorp.com',
-          phone: '+1 (555) 123-4567'
-        },
-        createdAt: new Date(),
-        updatedAt: new Date()
-      },
-      { 
-        id: '2', 
-        clientName: 'TechCorp Inc.', 
-        buildingName: 'Warehouse', 
-        address: '456 Storage Ave',
-        security: 'Key code: 1234',
-        securityLevel: 'medium',
-        securityInfo: 'Key code access required',
-        isActive: true,
-        contactInfo: {
-          email: 'warehouse@techcorp.com',
-          phone: '+1 (555) 123-4568'
-        },
-        createdAt: new Date(),
-        updatedAt: new Date()
-      },
-      { 
-        id: '3', 
-        clientName: 'MedCenter Hospital', 
-        buildingName: 'Emergency Wing', 
-        address: '789 Health Blvd',
-        security: 'ID check and escort required',
-        securityLevel: 'high',
-        securityInfo: 'ID check and escort required',
-        isActive: true,
-        contactInfo: {
-          email: 'emergency@medcenter.com',
-          phone: '+1 (555) 234-5678'
-        },
-        createdAt: new Date(),
-        updatedAt: new Date()
-      },
-      { 
-        id: '4', 
-        clientName: 'Downtown Mall', 
-        buildingName: 'Food Court', 
-        address: '321 Shopping St',
-        security: 'Security desk check-in',
-        securityLevel: 'medium',
-        securityInfo: 'Security desk check-in required',
-        isActive: true,
-        contactInfo: {
-          email: 'foodcourt@downtownmall.com',
-          phone: '+1 (555) 345-6789'
-        },
-        createdAt: new Date(),
-        updatedAt: new Date()
-      },
-    ];
-    
-    debouncedSave(STORAGE_KEYS.BUILDINGS, mockBuildings);
-    return mockBuildings;
-  }, [debouncedSave]);
+      if (supabaseError) {
+        console.error('❌ Error loading clients from Supabase:', supabaseError);
+        throw supabaseError;
+      }
 
-  const initializeMockCleaners = useCallback(async (): Promise<Cleaner[]> => {
-    const mockCleaners: Cleaner[] = [
-      { 
-        id: '1', 
-        name: 'John Doe', 
-        isActive: true, 
-        specialties: ['Office Cleaning', 'Deep Cleaning'],
-        employeeId: 'EMP-001',
-        securityLevel: 'high',
-        phoneNumber: '+1 (555) 123-4567',
-        email: 'john.doe@cleaningcompany.com',
-        hireDate: '2023-01-15',
-        defaultHourlyRate: 18.00,
-        emergencyContact: {
-          name: 'Jane Doe',
-          phone: '+1 (555) 987-6543',
-          relationship: 'Spouse'
-        },
-        createdAt: new Date(),
-        updatedAt: new Date()
-      },
-      { 
-        id: '2', 
-        name: 'Jane Smith', 
-        isActive: true, 
-        specialties: ['Medical Facilities', 'Sanitization'],
-        employeeId: 'EMP-002',
-        securityLevel: 'medium',
-        phoneNumber: '+1 (555) 234-5678',
-        email: 'jane.smith@cleaningcompany.com',
-        hireDate: '2023-03-20',
-        defaultHourlyRate: 16.50,
-        emergencyContact: {
-          name: 'Bob Smith',
-          phone: '+1 (555) 876-5432',
-          relationship: 'Brother'
-        },
-        createdAt: new Date(),
-        updatedAt: new Date()
-      },
-      { 
-        id: '3', 
-        name: 'Johnson Smith', 
-        isActive: true, 
-        specialties: ['Industrial', 'Equipment Maintenance'],
-        employeeId: 'EMP-003',
-        securityLevel: 'low',
-        phoneNumber: '+1 (555) 345-6789',
-        email: 'johnson.smith@cleaningcompany.com',
-        hireDate: '2023-05-10',
-        defaultHourlyRate: 15.00,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      },
-    ];
-    
-    debouncedSave(STORAGE_KEYS.CLEANERS, mockCleaners);
-    return mockCleaners;
-  }, [debouncedSave]);
+      if (!data || data.length === 0) {
+        console.log('⚠️ No clients found in Supabase');
+        return [];
+      }
 
-  // Load cleaners from Supabase
+      const clients: Client[] = data.map(row => ({
+        id: row.id,
+        name: row.name,
+        securityLevel: (row.security_level || 'medium') as 'low' | 'medium' | 'high',
+        securityInfo: row.security || undefined,
+        security: row.security || undefined,
+        isActive: row.is_active !== false,
+        color: row.color || '#3B82F6',
+        createdAt: row.created_at ? new Date(row.created_at) : undefined,
+        updatedAt: row.updated_at ? new Date(row.updated_at) : undefined,
+      }));
+
+      console.log(`✅ Loaded ${clients.length} clients from Supabase`);
+      
+      await AsyncStorage.setItem(STORAGE_KEYS.CLIENTS, JSON.stringify(clients));
+      
+      return clients;
+    } catch (error) {
+      console.error('❌ Failed to load clients from Supabase:', error);
+      const localData = await AsyncStorage.getItem(STORAGE_KEYS.CLIENTS);
+      if (localData) {
+        return JSON.parse(localData);
+      }
+      return [];
+    }
+  }, []);
+
+  const loadBuildingsFromSupabase = useCallback(async (): Promise<ClientBuilding[]> => {
+    try {
+      console.log('🔄 Loading buildings from Supabase...');
+      
+      const { data, error: supabaseError } = await supabase
+        .from('client_buildings')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (supabaseError) {
+        console.error('❌ Error loading buildings from Supabase:', supabaseError);
+        throw supabaseError;
+      }
+
+      if (!data || data.length === 0) {
+        console.log('⚠️ No buildings found in Supabase');
+        return [];
+      }
+
+      const buildings: ClientBuilding[] = data.map(row => ({
+        id: row.id,
+        clientName: row.client_name,
+        buildingName: row.building_name,
+        name: row.building_name,
+        address: row.address || undefined,
+        security: row.security || undefined,
+        securityLevel: (row.security_level || 'medium') as 'low' | 'medium' | 'high',
+        securityInfo: row.security || undefined,
+        isActive: true,
+        priority: 'medium',
+        createdAt: row.created_at ? new Date(row.created_at) : undefined,
+        updatedAt: row.updated_at ? new Date(row.updated_at) : undefined,
+      }));
+
+      console.log(`✅ Loaded ${buildings.length} buildings from Supabase`);
+      
+      await AsyncStorage.setItem(STORAGE_KEYS.BUILDINGS, JSON.stringify(buildings));
+      
+      return buildings;
+    } catch (error) {
+      console.error('❌ Failed to load buildings from Supabase:', error);
+      const localData = await AsyncStorage.getItem(STORAGE_KEYS.BUILDINGS);
+      if (localData) {
+        return JSON.parse(localData);
+      }
+      return [];
+    }
+  }, []);
+
   const loadCleanersFromSupabase = useCallback(async (): Promise<Cleaner[]> => {
     try {
-      console.log('Loading cleaners from Supabase...');
+      console.log('🔄 Loading cleaners from Supabase...');
       
-      const { data, error } = await supabase
+      const { data, error: supabaseError } = await supabase
         .from('cleaners')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('Error loading cleaners from Supabase:', error);
-        throw error;
+      if (supabaseError) {
+        console.error('❌ Error loading cleaners from Supabase:', supabaseError);
+        throw supabaseError;
       }
 
       if (!data || data.length === 0) {
-        console.log('No cleaners found in Supabase, using mock data');
-        return await initializeMockCleaners();
+        console.log('⚠️ No cleaners found in Supabase');
+        return [];
       }
 
-      // Transform Supabase data to match our Cleaner interface
       const cleaners: Cleaner[] = data.map(row => ({
         id: row.id,
         name: row.name,
+        legal_name: row.legal_name || undefined,
+        go_by: row.go_by || undefined,
+        dob: row.dob || undefined,
         employeeId: row.employee_id || `EMP-${row.id.slice(-6)}`,
-        securityLevel: row.security_level as 'low' | 'medium' | 'high',
+        securityLevel: (row.security_level || 'low') as 'low' | 'medium' | 'high',
         phoneNumber: row.phone_number || '',
         email: row.email || undefined,
-        specialties: row.specialties || [],
+        specialties: Array.isArray(row.specialties) ? row.specialties : [],
         hireDate: row.hire_date || undefined,
+        term_date: row.term_date || undefined,
+        rehire_date: row.rehire_date || undefined,
+        employment_status: (row.employment_status || 'active') as 'active' | 'terminated' | 'on-leave' | 'suspended',
+        notes: row.notes || undefined,
+        photo_url: row.photo_url || undefined,
+        pay_type: (row.pay_type || 'hourly') as 'hourly' | 'salary' | 'contract',
         defaultHourlyRate: row.default_hourly_rate || 15.00,
+        default_hourly_rate: row.default_hourly_rate || 15.00,
         emergencyContact: row.emergency_contact_name ? {
           name: row.emergency_contact_name,
           phone: row.emergency_contact_phone || '',
@@ -329,108 +277,150 @@ export const useClientData = () => {
         user_id: row.user_id || undefined,
       }));
 
-      console.log(`Loaded ${cleaners.length} cleaners from Supabase`);
+      console.log(`✅ Loaded ${cleaners.length} cleaners from Supabase`);
       
-      // Save to local storage as backup
-      debouncedSave(STORAGE_KEYS.CLEANERS, cleaners);
+      await AsyncStorage.setItem(STORAGE_KEYS.CLEANERS, JSON.stringify(cleaners));
       
       return cleaners;
     } catch (error) {
-      console.error('Failed to load cleaners from Supabase:', error);
-      // Fall back to local storage or mock data
+      console.error('❌ Failed to load cleaners from Supabase:', error);
       const localData = await AsyncStorage.getItem(STORAGE_KEYS.CLEANERS);
       if (localData) {
         return JSON.parse(localData);
       }
-      return await initializeMockCleaners();
+      return [];
     }
-  }, [debouncedSave, initializeMockCleaners]);
+  }, []);
 
-  // Optimized data loading with parallel operations
   const loadData = useCallback(async () => {
-    if (loadingRef.current) return;
+    if (loadingRef.current) {
+      console.log('⚠️ Load already in progress, skipping...');
+      return;
+    }
     
     try {
-      console.log('Loading client data...');
+      console.log('🔄 === LOADING ALL CLIENT DATA ===');
       loadingRef.current = true;
       setIsLoading(true);
       setError(null);
 
-      // Load all data in parallel for better performance
-      const [clientsData, buildingsData] = await Promise.all([
-        AsyncStorage.getItem(STORAGE_KEYS.CLIENTS),
-        AsyncStorage.getItem(STORAGE_KEYS.BUILDINGS),
+      const [clientsData, buildingsData, cleanersData] = await Promise.all([
+        loadClientsFromSupabase(),
+        loadBuildingsFromSupabase(),
+        loadCleanersFromSupabase(),
       ]);
 
-      // Process clients
-      if (clientsData) {
-        const parsedClients = JSON.parse(clientsData);
-        setClients(parsedClients);
-        clientsCache.set('all', parsedClients);
-      } else {
-        const mockClients = await initializeMockClients();
-        setClients(mockClients);
-        clientsCache.set('all', mockClients);
-      }
+      setClients(clientsData);
+      setClientBuildings(buildingsData);
+      setCleaners(cleanersData);
 
-      // Process buildings
-      if (buildingsData) {
-        const parsedBuildings = JSON.parse(buildingsData);
-        setClientBuildings(parsedBuildings);
-        buildingsCache.set('all', parsedBuildings);
-      } else {
-        const mockBuildings = await initializeMockBuildings();
-        setClientBuildings(mockBuildings);
-        buildingsCache.set('all', mockBuildings);
-      }
-
-      // Load cleaners from Supabase (this will handle fallback to local/mock data)
-      const loadedCleaners = await loadCleanersFromSupabase();
-      setCleaners(loadedCleaners);
-      cleanersCache.set('all', loadedCleaners);
-
-      console.log('Client data loaded successfully');
+      console.log('✅ === ALL CLIENT DATA LOADED SUCCESSFULLY ===');
+      console.log(`   - Clients: ${clientsData.length}`);
+      console.log(`   - Buildings: ${buildingsData.length}`);
+      console.log(`   - Cleaners: ${cleanersData.length}`);
     } catch (err) {
-      console.error('Error loading client data:', err);
+      console.error('❌ Error loading client data:', err);
       setError('Failed to load client data');
     } finally {
       setIsLoading(false);
       loadingRef.current = false;
     }
-  }, [initializeMockBuildings, initializeMockClients, loadCleanersFromSupabase]);
+  }, [loadClientsFromSupabase, loadBuildingsFromSupabase, loadCleanersFromSupabase]);
 
-  // Optimized save functions with caching
+  const refreshData = useCallback(async () => {
+    console.log('🔄 === REFRESHING ALL CLIENT DATA ===');
+    loadingRef.current = false;
+    await loadData();
+  }, [loadData]);
+
   const saveClients = useCallback(async (newClients: Client[]) => {
+    console.log('💾 Saving clients to state and storage');
     setClients(newClients);
-    clientsCache.set('all', newClients);
-    debouncedSave(STORAGE_KEYS.CLIENTS, newClients);
-  }, [debouncedSave]);
+    await AsyncStorage.setItem(STORAGE_KEYS.CLIENTS, JSON.stringify(newClients));
+  }, []);
 
   const saveBuildings = useCallback(async (newBuildings: ClientBuilding[]) => {
+    console.log('💾 Saving buildings to state and storage');
     setClientBuildings(newBuildings);
-    buildingsCache.set('all', newBuildings);
-    debouncedSave(STORAGE_KEYS.BUILDINGS, newBuildings);
-  }, [debouncedSave]);
+    await AsyncStorage.setItem(STORAGE_KEYS.BUILDINGS, JSON.stringify(newBuildings));
+  }, []);
 
   const saveCleaners = useCallback(async (newCleaners: Cleaner[]) => {
+    console.log('💾 Saving cleaners to state and storage');
     setCleaners(newCleaners);
-    cleanersCache.set('all', newCleaners);
-    debouncedSave(STORAGE_KEYS.CLEANERS, newCleaners);
-  }, [debouncedSave]);
+    await AsyncStorage.setItem(STORAGE_KEYS.CLEANERS, JSON.stringify(newCleaners));
+  }, []);
 
-  // Optimized CRUD operations
   const addClient = useCallback(async (client: Omit<Client, 'id'> | Client) => {
-    const newClient = 'id' in client ? client : { ...client, id: `client-${Date.now()}` };
-    const updatedClients = [...clients, newClient];
-    await saveClients(updatedClients);
-  }, [clients, saveClients]);
+    try {
+      const newClient = 'id' in client ? client : { ...client, id: `client-${Date.now()}` };
+      
+      console.log('🔄 Adding client to Supabase:', newClient.name);
+      
+      const { error: supabaseError } = await supabase
+        .from('clients')
+        .insert({
+          id: newClient.id,
+          name: newClient.name,
+          security_level: newClient.securityLevel,
+          security: newClient.securityInfo || newClient.security || null,
+          is_active: newClient.isActive !== false,
+          color: newClient.color || '#3B82F6',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+
+      if (supabaseError) {
+        console.error('❌ Error adding client to Supabase:', supabaseError);
+        throw supabaseError;
+      }
+
+      console.log('✅ Client added to Supabase successfully');
+      
+      await refreshData();
+    } catch (error) {
+      console.error('❌ Failed to add client to Supabase, saving locally:', error);
+      const newClient = 'id' in client ? client : { ...client, id: `client-${Date.now()}` };
+      const updatedClients = [...clients, newClient];
+      await saveClients(updatedClients);
+    }
+  }, [clients, saveClients, refreshData]);
 
   const updateClient = useCallback(async (clientId: string, updates: Partial<Client>) => {
-    const updatedClients = clients.map(client =>
-      client.id === clientId ? { ...client, ...updates, updatedAt: new Date() } : client
-    );
-    await saveClients(updatedClients);
-  }, [clients, saveClients]);
+    try {
+      console.log('🔄 Updating client in Supabase:', clientId);
+      
+      const updateData: any = {};
+      if (updates.name !== undefined) updateData.name = updates.name;
+      if (updates.securityLevel !== undefined) updateData.security_level = updates.securityLevel;
+      if (updates.securityInfo !== undefined) updateData.security = updates.securityInfo || null;
+      if (updates.security !== undefined) updateData.security = updates.security || null;
+      if (updates.isActive !== undefined) updateData.is_active = updates.isActive;
+      if (updates.color !== undefined) updateData.color = updates.color;
+      
+      updateData.updated_at = new Date().toISOString();
+
+      const { error: supabaseError } = await supabase
+        .from('clients')
+        .update(updateData)
+        .eq('id', clientId);
+
+      if (supabaseError) {
+        console.error('❌ Error updating client in Supabase:', supabaseError);
+        throw supabaseError;
+      }
+
+      console.log('✅ Client updated in Supabase successfully');
+      
+      await refreshData();
+    } catch (error) {
+      console.error('❌ Failed to update client in Supabase, updating locally:', error);
+      const updatedClients = clients.map(client =>
+        client.id === clientId ? { ...client, ...updates, updatedAt: new Date() } : client
+      );
+      await saveClients(updatedClients);
+    }
+  }, [clients, saveClients, refreshData]);
 
   const deleteClient = useCallback(async (clientId: string) => {
     const updatedClients = clients.filter(client => client.id !== clientId);
@@ -438,17 +428,75 @@ export const useClientData = () => {
   }, [clients, saveClients]);
 
   const addClientBuilding = useCallback(async (building: Omit<ClientBuilding, 'id'> | ClientBuilding) => {
-    const newBuilding = 'id' in building ? building : { ...building, id: `building-${Date.now()}` };
-    const updatedBuildings = [...clientBuildings, newBuilding];
-    await saveBuildings(updatedBuildings);
-  }, [clientBuildings, saveBuildings]);
+    try {
+      const newBuilding = 'id' in building ? building : { ...building, id: `building-${Date.now()}` };
+      
+      console.log('🔄 Adding building to Supabase:', newBuilding.buildingName);
+      
+      const { error: supabaseError } = await supabase
+        .from('client_buildings')
+        .insert({
+          id: newBuilding.id,
+          client_name: newBuilding.clientName,
+          building_name: newBuilding.buildingName,
+          security_level: newBuilding.securityLevel,
+          security: newBuilding.securityInfo || newBuilding.security || null,
+          address: newBuilding.address || null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+
+      if (supabaseError) {
+        console.error('❌ Error adding building to Supabase:', supabaseError);
+        throw supabaseError;
+      }
+
+      console.log('✅ Building added to Supabase successfully');
+      
+      await refreshData();
+    } catch (error) {
+      console.error('❌ Failed to add building to Supabase, saving locally:', error);
+      const newBuilding = 'id' in building ? building : { ...building, id: `building-${Date.now()}` };
+      const updatedBuildings = [...clientBuildings, newBuilding];
+      await saveBuildings(updatedBuildings);
+    }
+  }, [clientBuildings, saveBuildings, refreshData]);
 
   const updateClientBuilding = useCallback(async (buildingId: string, updates: Partial<ClientBuilding>) => {
-    const updatedBuildings = clientBuildings.map(building =>
-      building.id === buildingId ? { ...building, ...updates, updatedAt: new Date() } : building
-    );
-    await saveBuildings(updatedBuildings);
-  }, [clientBuildings, saveBuildings]);
+    try {
+      console.log('🔄 Updating building in Supabase:', buildingId);
+      
+      const updateData: any = {};
+      if (updates.buildingName !== undefined) updateData.building_name = updates.buildingName;
+      if (updates.clientName !== undefined) updateData.client_name = updates.clientName;
+      if (updates.securityLevel !== undefined) updateData.security_level = updates.securityLevel;
+      if (updates.securityInfo !== undefined) updateData.security = updates.securityInfo || null;
+      if (updates.security !== undefined) updateData.security = updates.security || null;
+      if (updates.address !== undefined) updateData.address = updates.address || null;
+      
+      updateData.updated_at = new Date().toISOString();
+
+      const { error: supabaseError } = await supabase
+        .from('client_buildings')
+        .update(updateData)
+        .eq('id', buildingId);
+
+      if (supabaseError) {
+        console.error('❌ Error updating building in Supabase:', supabaseError);
+        throw supabaseError;
+      }
+
+      console.log('✅ Building updated in Supabase successfully');
+      
+      await refreshData();
+    } catch (error) {
+      console.error('❌ Failed to update building in Supabase, updating locally:', error);
+      const updatedBuildings = clientBuildings.map(building =>
+        building.id === buildingId ? { ...building, ...updates, updatedAt: new Date() } : building
+      );
+      await saveBuildings(updatedBuildings);
+    }
+  }, [clientBuildings, saveBuildings, refreshData]);
 
   const deleteClientBuilding = useCallback(async (buildingId: string) => {
     const updatedBuildings = clientBuildings.filter(building => building.id !== buildingId);
@@ -456,22 +504,40 @@ export const useClientData = () => {
   }, [clientBuildings, saveBuildings]);
 
   const addCleaner = useCallback(async (cleaner: Omit<Cleaner, 'id'> | Cleaner) => {
-    const newCleaner = 'id' in cleaner ? cleaner : { ...cleaner, id: `cleaner-${Date.now()}` };
+    const newCleaner = 'id' in cleaner ? cleaner : { 
+      ...cleaner, 
+      id: `cleaner-${Date.now()}`,
+      employeeId: cleaner.employeeId || `EMP-${Date.now().toString().slice(-6)}`,
+      phoneNumber: cleaner.phoneNumber || cleaner.phone || '',
+      specialties: cleaner.specialties || [],
+      securityLevel: cleaner.securityLevel || 'low',
+      isActive: cleaner.isActive !== false,
+    };
     
     try {
-      // Try to save to Supabase first
-      const { error } = await supabase
+      console.log('🔄 Adding cleaner to Supabase:', newCleaner.name);
+      
+      const { error: supabaseError } = await supabase
         .from('cleaners')
         .insert({
           id: newCleaner.id,
           name: newCleaner.name,
+          legal_name: newCleaner.legal_name || null,
+          go_by: newCleaner.go_by || null,
+          dob: newCleaner.dob || null,
           employee_id: newCleaner.employeeId,
           security_level: newCleaner.securityLevel,
           phone_number: newCleaner.phoneNumber,
           email: newCleaner.email || null,
           specialties: newCleaner.specialties || [],
           hire_date: newCleaner.hireDate || null,
-          default_hourly_rate: newCleaner.defaultHourlyRate || 15.00,
+          term_date: newCleaner.term_date || null,
+          rehire_date: newCleaner.rehire_date || null,
+          employment_status: newCleaner.employment_status || 'active',
+          notes: newCleaner.notes || null,
+          photo_url: newCleaner.photo_url || null,
+          pay_type: newCleaner.pay_type || 'hourly',
+          default_hourly_rate: newCleaner.defaultHourlyRate || newCleaner.default_hourly_rate || 15.00,
           emergency_contact_name: newCleaner.emergencyContact?.name || null,
           emergency_contact_phone: newCleaner.emergencyContact?.phone || null,
           emergency_contact_relationship: newCleaner.emergencyContact?.relationship || null,
@@ -479,32 +545,42 @@ export const useClientData = () => {
           user_id: newCleaner.user_id || null,
         });
 
-      if (error) {
-        console.error('Error adding cleaner to Supabase:', error);
-        throw error;
+      if (supabaseError) {
+        console.error('❌ Error adding cleaner to Supabase:', supabaseError);
+        throw supabaseError;
       }
 
-      console.log('Cleaner added to Supabase successfully');
+      console.log('✅ Cleaner added to Supabase successfully');
+      
+      await refreshData();
     } catch (error) {
-      console.error('Failed to add cleaner to Supabase, saving locally:', error);
+      console.error('❌ Failed to add cleaner to Supabase, saving locally:', error);
+      const updatedCleaners = [...cleaners, newCleaner];
+      await saveCleaners(updatedCleaners);
     }
-
-    // Update local state
-    const updatedCleaners = [...cleaners, newCleaner];
-    await saveCleaners(updatedCleaners);
-  }, [cleaners, saveCleaners]);
+  }, [cleaners, saveCleaners, refreshData]);
 
   const updateCleaner = useCallback(async (cleanerId: string, updates: Partial<Cleaner>) => {
     try {
-      // Try to update in Supabase first
+      console.log('🔄 Updating cleaner in Supabase:', cleanerId);
+      
       const updateData: any = {};
       if (updates.name !== undefined) updateData.name = updates.name;
+      if (updates.legal_name !== undefined) updateData.legal_name = updates.legal_name || null;
+      if (updates.go_by !== undefined) updateData.go_by = updates.go_by || null;
+      if (updates.dob !== undefined) updateData.dob = updates.dob || null;
       if (updates.employeeId !== undefined) updateData.employee_id = updates.employeeId;
       if (updates.securityLevel !== undefined) updateData.security_level = updates.securityLevel;
       if (updates.phoneNumber !== undefined) updateData.phone_number = updates.phoneNumber;
       if (updates.email !== undefined) updateData.email = updates.email || null;
       if (updates.specialties !== undefined) updateData.specialties = updates.specialties;
       if (updates.hireDate !== undefined) updateData.hire_date = updates.hireDate || null;
+      if (updates.term_date !== undefined) updateData.term_date = updates.term_date || null;
+      if (updates.rehire_date !== undefined) updateData.rehire_date = updates.rehire_date || null;
+      if (updates.employment_status !== undefined) updateData.employment_status = updates.employment_status;
+      if (updates.notes !== undefined) updateData.notes = updates.notes || null;
+      if (updates.photo_url !== undefined) updateData.photo_url = updates.photo_url || null;
+      if (updates.pay_type !== undefined) updateData.pay_type = updates.pay_type;
       if (updates.defaultHourlyRate !== undefined) updateData.default_hourly_rate = updates.defaultHourlyRate;
       if (updates.emergencyContact !== undefined) {
         updateData.emergency_contact_name = updates.emergencyContact?.name || null;
@@ -515,56 +591,56 @@ export const useClientData = () => {
       
       updateData.updated_at = new Date().toISOString();
 
-      const { error } = await supabase
+      const { error: supabaseError } = await supabase
         .from('cleaners')
         .update(updateData)
         .eq('id', cleanerId);
 
-      if (error) {
-        console.error('Error updating cleaner in Supabase:', error);
-        throw error;
+      if (supabaseError) {
+        console.error('❌ Error updating cleaner in Supabase:', supabaseError);
+        throw supabaseError;
       }
 
-      console.log('Cleaner updated in Supabase successfully');
+      console.log('✅ Cleaner updated in Supabase successfully');
+      
+      await refreshData();
     } catch (error) {
-      console.error('Failed to update cleaner in Supabase, updating locally:', error);
+      console.error('❌ Failed to update cleaner in Supabase, updating locally:', error);
+      const updatedCleaners = cleaners.map(cleaner =>
+        cleaner.id === cleanerId ? { ...cleaner, ...updates, updatedAt: new Date() } : cleaner
+      );
+      await saveCleaners(updatedCleaners);
     }
-
-    // Update local state
-    const updatedCleaners = cleaners.map(cleaner =>
-      cleaner.id === cleanerId ? { ...cleaner, ...updates, updatedAt: new Date() } : cleaner
-    );
-    await saveCleaners(updatedCleaners);
-  }, [cleaners, saveCleaners]);
+  }, [cleaners, saveCleaners, refreshData]);
 
   const deleteCleaner = useCallback(async (cleanerId: string) => {
     try {
-      // Try to delete from Supabase first
-      const { error } = await supabase
+      console.log('🔄 Deleting cleaner from Supabase:', cleanerId);
+      
+      const { error: supabaseError } = await supabase
         .from('cleaners')
         .delete()
         .eq('id', cleanerId);
 
-      if (error) {
-        console.error('Error deleting cleaner from Supabase:', error);
-        throw error;
+      if (supabaseError) {
+        console.error('❌ Error deleting cleaner from Supabase:', supabaseError);
+        throw supabaseError;
       }
 
-      console.log('Cleaner deleted from Supabase successfully');
+      console.log('✅ Cleaner deleted from Supabase successfully');
+      
+      await refreshData();
     } catch (error) {
-      console.error('Failed to delete cleaner from Supabase, deleting locally:', error);
+      console.error('❌ Failed to delete cleaner from Supabase, deleting locally:', error);
+      const updatedCleaners = cleaners.filter(cleaner => cleaner.id !== cleanerId);
+      await saveCleaners(updatedCleaners);
     }
-
-    // Update local state
-    const updatedCleaners = cleaners.filter(cleaner => cleaner.id !== cleanerId);
-    await saveCleaners(updatedCleaners);
-  }, [cleaners, saveCleaners]);
+  }, [cleaners, saveCleaners, refreshData]);
 
   const clearError = useCallback(() => {
     setError(null);
   }, []);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (saveTimeoutRef.current) {
@@ -573,7 +649,6 @@ export const useClientData = () => {
     };
   }, []);
 
-  // Initialize data on mount
   useEffect(() => {
     loadData();
   }, [loadData]);
@@ -595,5 +670,6 @@ export const useClientData = () => {
     deleteCleaner,
     clearError,
     loadData,
+    refreshData,
   };
 };

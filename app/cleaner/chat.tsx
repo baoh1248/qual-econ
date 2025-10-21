@@ -5,6 +5,7 @@ import { useState, useRef, useEffect } from 'react';
 import { commonStyles, colors, spacing, typography } from '../../styles/commonStyles';
 import CompanyLogo from '../../components/CompanyLogo';
 import Icon from '../../components/Icon';
+import { useTheme } from '../../hooks/useTheme';
 
 interface Message {
   id: string;
@@ -13,7 +14,7 @@ interface Message {
   senderName: string;
   timestamp: Date;
   type: 'text' | 'image' | 'location' | 'alert';
-  roomId: string; // Added roomId to associate messages with specific chat rooms
+  roomId: string;
 }
 
 interface ChatRoom {
@@ -27,6 +28,7 @@ interface ChatRoom {
 }
 
 export default function ChatScreen() {
+  const { themeColor } = useTheme();
   console.log('ChatScreen rendered');
 
   const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
@@ -39,7 +41,7 @@ export default function ChatScreen() {
       name: 'Supervisor - Sarah Wilson',
       type: 'supervisor',
       lastMessage: 'Great job on the office building today!',
-      lastMessageTime: new Date(Date.now() - 300000), // 5 minutes ago
+      lastMessageTime: new Date(Date.now() - 300000),
       unreadCount: 0,
       isOnline: true,
     },
@@ -48,7 +50,7 @@ export default function ChatScreen() {
       name: 'Team Chat',
       type: 'team',
       lastMessage: 'Mike: Anyone have extra disinfectant?',
-      lastMessageTime: new Date(Date.now() - 900000), // 15 minutes ago
+      lastMessageTime: new Date(Date.now() - 900000),
       unreadCount: 2,
       isOnline: true,
     },
@@ -57,21 +59,19 @@ export default function ChatScreen() {
       name: 'Emergency Support',
       type: 'emergency',
       lastMessage: 'Emergency support is available 24/7',
-      lastMessageTime: new Date(Date.now() - 86400000), // 1 day ago
+      lastMessageTime: new Date(Date.now() - 86400000),
       unreadCount: 0,
       isOnline: true,
     },
   ]);
 
-  // Store all messages with roomId to separate them by chat room
   const [allMessages, setAllMessages] = useState<Message[]>([
-    // Supervisor chat messages (roomId: '1')
     {
       id: '1',
       text: 'Good morning! Your tasks for today have been assigned.',
       sender: 'supervisor',
       senderName: 'Sarah Wilson',
-      timestamp: new Date(Date.now() - 3600000), // 1 hour ago
+      timestamp: new Date(Date.now() - 3600000),
       type: 'text',
       roomId: '1',
     },
@@ -80,7 +80,7 @@ export default function ChatScreen() {
       text: 'Thanks! I&apos;ll start with the office building.',
       sender: 'user',
       senderName: 'You',
-      timestamp: new Date(Date.now() - 3540000), // 59 minutes ago
+      timestamp: new Date(Date.now() - 3540000),
       type: 'text',
       roomId: '1',
     },
@@ -89,7 +89,7 @@ export default function ChatScreen() {
       text: 'Perfect. Remember to take photos for quality control.',
       sender: 'supervisor',
       senderName: 'Sarah Wilson',
-      timestamp: new Date(Date.now() - 3480000), // 58 minutes ago
+      timestamp: new Date(Date.now() - 3480000),
       type: 'text',
       roomId: '1',
     },
@@ -98,7 +98,7 @@ export default function ChatScreen() {
       text: 'Will do! Just finished the first floor.',
       sender: 'user',
       senderName: 'You',
-      timestamp: new Date(Date.now() - 1800000), // 30 minutes ago
+      timestamp: new Date(Date.now() - 1800000),
       type: 'text',
       roomId: '1',
     },
@@ -107,17 +107,16 @@ export default function ChatScreen() {
       text: 'Great job on the office building today!',
       sender: 'supervisor',
       senderName: 'Sarah Wilson',
-      timestamp: new Date(Date.now() - 300000), // 5 minutes ago
+      timestamp: new Date(Date.now() - 300000),
       type: 'text',
       roomId: '1',
     },
-    // Team chat messages (roomId: '2')
     {
       id: '6',
       text: 'Hey everyone! How&apos;s the day going?',
       sender: 'system',
       senderName: 'Mike Johnson',
-      timestamp: new Date(Date.now() - 2700000), // 45 minutes ago
+      timestamp: new Date(Date.now() - 2700000),
       type: 'text',
       roomId: '2',
     },
@@ -126,7 +125,7 @@ export default function ChatScreen() {
       text: 'Going well! Almost done with the mall.',
       sender: 'system',
       senderName: 'Lisa Chen',
-      timestamp: new Date(Date.now() - 2400000), // 40 minutes ago
+      timestamp: new Date(Date.now() - 2400000),
       type: 'text',
       roomId: '2',
     },
@@ -135,23 +134,21 @@ export default function ChatScreen() {
       text: 'Anyone have extra disinfectant?',
       sender: 'system',
       senderName: 'Mike Johnson',
-      timestamp: new Date(Date.now() - 900000), // 15 minutes ago
+      timestamp: new Date(Date.now() - 900000),
       type: 'text',
       roomId: '2',
     },
-    // Emergency chat messages (roomId: '3')
     {
       id: '9',
       text: 'Emergency support is available 24/7',
       sender: 'system',
       senderName: 'Emergency Support',
-      timestamp: new Date(Date.now() - 86400000), // 1 day ago
+      timestamp: new Date(Date.now() - 86400000),
       type: 'text',
       roomId: '3',
     },
   ]);
 
-  // Filter messages for the currently selected room
   const currentRoomMessages = selectedRoom 
     ? allMessages.filter(message => message.roomId === selectedRoom)
     : [];
@@ -165,21 +162,19 @@ export default function ChatScreen() {
         senderName: 'You',
         timestamp: new Date(),
         type: 'text',
-        roomId: selectedRoom, // Associate message with current room
+        roomId: selectedRoom,
       };
       
       setAllMessages(prev => [...prev, newMessage]);
       setMessageText('');
       console.log('Message sent to room', selectedRoom, ':', newMessage.text);
       
-      // Update the last message for the current room
       setChatRooms(prev => prev.map(room => 
         room.id === selectedRoom 
           ? { ...room, lastMessage: newMessage.text, lastMessageTime: newMessage.timestamp }
           : room
       ));
       
-      // Scroll to bottom
       setTimeout(() => {
         scrollViewRef.current?.scrollToEnd({ animated: true });
       }, 100);
@@ -195,13 +190,12 @@ export default function ChatScreen() {
         senderName: 'You',
         timestamp: new Date(),
         type: 'text',
-        roomId: selectedRoom, // Associate message with current room
+        roomId: selectedRoom,
       };
       
       setAllMessages(prev => [...prev, newMessage]);
       console.log('Quick message sent to room', selectedRoom, ':', text);
       
-      // Update the last message for the current room
       setChatRooms(prev => prev.map(room => 
         room.id === selectedRoom 
           ? { ...room, lastMessage: text, lastMessageTime: newMessage.timestamp }
@@ -225,7 +219,7 @@ export default function ChatScreen() {
 
   const getRoomColor = (type: string) => {
     switch (type) {
-      case 'supervisor': return colors.primary;
+      case 'supervisor': return themeColor;
       case 'team': return colors.success;
       case 'emergency': return colors.danger;
       default: return colors.textSecondary;
@@ -235,7 +229,7 @@ export default function ChatScreen() {
   if (!selectedRoom) {
     return (
       <View style={commonStyles.container}>
-        <View style={commonStyles.header}>
+        <View style={[commonStyles.header, { backgroundColor: themeColor }]}>
           <TouchableOpacity onPress={() => router.back()}>
             <Icon name="arrow-back" size={24} style={{ color: colors.background }} />
           </TouchableOpacity>
@@ -302,7 +296,7 @@ export default function ChatScreen() {
                     </Text>
                     {room.unreadCount > 0 && (
                       <View style={{
-                        backgroundColor: colors.primary,
+                        backgroundColor: themeColor,
                         borderRadius: 10,
                         minWidth: 20,
                         height: 20,
@@ -332,7 +326,7 @@ export default function ChatScreen() {
       style={commonStyles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <View style={commonStyles.header}>
+      <View style={[commonStyles.header, { backgroundColor: themeColor }]}>
         <TouchableOpacity onPress={() => {
           console.log('Going back to chat room list');
           setSelectedRoom(null);
@@ -377,7 +371,7 @@ export default function ChatScreen() {
             )}
             <View style={[
               {
-                backgroundColor: message.sender === 'user' ? colors.primary : colors.backgroundAlt,
+                backgroundColor: message.sender === 'user' ? themeColor : colors.backgroundAlt,
                 padding: spacing.md,
                 borderRadius: 16,
                 borderBottomRightRadius: message.sender === 'user' ? 4 : 16,
@@ -405,7 +399,6 @@ export default function ChatScreen() {
         ))}
       </ScrollView>
 
-      {/* Quick Messages */}
       <View style={{ padding: spacing.md, backgroundColor: colors.backgroundAlt }}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           <View style={[commonStyles.row, { gap: spacing.sm }]}>
@@ -437,7 +430,6 @@ export default function ChatScreen() {
         </ScrollView>
       </View>
 
-      {/* Message Input */}
       <View style={[
         {
           flexDirection: 'row',
@@ -470,7 +462,7 @@ export default function ChatScreen() {
               width: 44,
               height: 44,
               borderRadius: 22,
-              backgroundColor: messageText.trim() ? colors.primary : colors.backgroundAlt,
+              backgroundColor: messageText.trim() ? themeColor : colors.backgroundAlt,
               alignItems: 'center',
               justifyContent: 'center',
             }

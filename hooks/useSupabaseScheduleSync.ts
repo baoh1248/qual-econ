@@ -3,15 +3,10 @@ import { useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../app/integrations/supabase/client';
 import type { ScheduleEntry } from './useScheduleStorage';
 
-/**
- * Hook to sync schedule changes to Supabase
- * This should be used on the supervisor side to push changes to the database
- */
 export const useSupabaseScheduleSync = () => {
-  const syncQueueRef = useRef<Array<{ entry: ScheduleEntry; operation: 'insert' | 'update' | 'delete' }>>([]);
+  const syncQueueRef = useRef<{ entry: ScheduleEntry; operation: 'insert' | 'update' | 'delete' }[]>([]);
   const syncInProgressRef = useRef(false);
 
-  // Convert local ScheduleEntry to database format
   const convertToDatabaseEntry = useCallback((entry: ScheduleEntry): any => {
     return {
       id: entry.id,
@@ -41,7 +36,6 @@ export const useSupabaseScheduleSync = () => {
     };
   }, []);
 
-  // Process sync queue
   const processSyncQueue = useCallback(async () => {
     if (syncInProgressRef.current || syncQueueRef.current.length === 0) {
       return;
@@ -111,18 +105,15 @@ export const useSupabaseScheduleSync = () => {
     }
   }, [convertToDatabaseEntry]);
 
-  // Queue a sync operation
   const queueSync = useCallback((entry: ScheduleEntry, operation: 'insert' | 'update' | 'delete') => {
     console.log(`Queueing ${operation} for entry:`, entry.id);
     syncQueueRef.current.push({ entry, operation });
     
-    // Process queue after a short delay to batch operations
     setTimeout(() => {
       processSyncQueue();
     }, 500);
   }, [processSyncQueue]);
 
-  // Public API
   const syncInsert = useCallback((entry: ScheduleEntry) => {
     queueSync(entry, 'insert');
   }, [queueSync]);
@@ -135,7 +126,6 @@ export const useSupabaseScheduleSync = () => {
     queueSync(entry, 'delete');
   }, [queueSync]);
 
-  // Bulk sync operations
   const syncBulkInsert = useCallback((entries: ScheduleEntry[]) => {
     entries.forEach(entry => queueSync(entry, 'insert'));
   }, [queueSync]);

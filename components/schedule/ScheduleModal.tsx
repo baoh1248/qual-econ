@@ -6,6 +6,7 @@ import Button from '../Button';
 import Icon from '../Icon';
 import type { ScheduleEntry } from '../../hooks/useScheduleStorage';
 import type { Client, ClientBuilding, Cleaner } from '../../hooks/useClientData';
+import { useTheme } from '../../hooks/useTheme';
 
 type ModalType = 'add' | 'edit' | 'add-client' | 'add-building' | 'add-cleaner' | 'details' | 'edit-client' | 'edit-building' | null;
 
@@ -121,6 +122,8 @@ const ScheduleModal = memo(({
   onSwitchToEdit,
 }: ScheduleModalProps) => {
   console.log('ScheduleModal rendered with type:', modalType, 'visible:', visible);
+
+  const { themeColor } = useTheme();
 
   // Local state for cleaner search
   const [cleanerSearchQuery, setCleanerSearchQuery] = useState('');
@@ -252,7 +255,7 @@ const ScheduleModal = memo(({
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'scheduled': return colors.primary;
+      case 'scheduled': return themeColor;
       case 'in-progress': return colors.warning;
       case 'completed': return colors.success;
       case 'cancelled': return colors.danger;
@@ -367,7 +370,7 @@ const ScheduleModal = memo(({
     <View style={styles.dropdownContainer}>
       <ScrollView style={styles.dropdown} nestedScrollEnabled>
         <TouchableOpacity
-          style={[styles.dropdownItem, selectedValue === '' && styles.dropdownItemSelected]}
+          style={[styles.dropdownItem, selectedValue === '' && { backgroundColor: themeColor }]}
           onPress={() => onSelect('')}
         >
           <Text style={[styles.dropdownText, selectedValue === '' && styles.dropdownTextSelected]}>
@@ -377,7 +380,7 @@ const ScheduleModal = memo(({
         {items.map((item, index) => (
           <TouchableOpacity
             key={index}
-            style={[styles.dropdownItem, selectedValue === item && styles.dropdownItemSelected]}
+            style={[styles.dropdownItem, selectedValue === item && { backgroundColor: themeColor }]}
             onPress={() => onSelect(item)}
           >
             <Text style={[styles.dropdownText, selectedValue === item && styles.dropdownTextSelected]}>
@@ -409,15 +412,15 @@ const ScheduleModal = memo(({
                   <Text style={styles.detailLabel}>Cleaners:</Text>
                   <View style={styles.cleanersContainer}>
                     {getEntryCleaners(selectedEntry).map((cleanerName, index) => (
-                      <View key={index} style={styles.cleanerChip}>
+                      <View key={index} style={[styles.cleanerChip, { backgroundColor: themeColor }]}>
                         <Text style={styles.cleanerChipText}>{cleanerName}</Text>
                       </View>
                     ))}
                   </View>
                 </View>
-                <View style={styles.cleanerManagementNote}>
-                  <Icon name="information-circle-outline" size={16} style={{ color: colors.primary }} />
-                  <Text style={styles.cleanerManagementNoteText}>
+                <View style={[styles.cleanerManagementNote, { backgroundColor: themeColor + '10' }]}>
+                  <Icon name="information-circle-outline" size={16} style={{ color: themeColor }} />
+                  <Text style={[styles.cleanerManagementNoteText, { color: themeColor }]}>
                     To add or remove cleaners, use the Edit button below
                   </Text>
                 </View>
@@ -435,18 +438,18 @@ const ScheduleModal = memo(({
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Payment Type:</Text>
                   <View style={[styles.paymentTypeBadge, { 
-                    backgroundColor: selectedEntry.paymentType === 'flat_rate' ? colors.success + '20' : colors.primary + '20' 
+                    backgroundColor: selectedEntry.paymentType === 'flat_rate' ? colors.success + '20' : themeColor + '20' 
                   }]}>
                     <Icon 
                       name={selectedEntry.paymentType === 'flat_rate' ? 'cash' : 'time'} 
                       size={12} 
                       style={{ 
-                        color: selectedEntry.paymentType === 'flat_rate' ? colors.success : colors.primary,
+                        color: selectedEntry.paymentType === 'flat_rate' ? colors.success : themeColor,
                         marginRight: spacing.xs 
                       }} 
                     />
                     <Text style={[styles.paymentTypeText, { 
-                      color: selectedEntry.paymentType === 'flat_rate' ? colors.success : colors.primary 
+                      color: selectedEntry.paymentType === 'flat_rate' ? colors.success : themeColor 
                     }]}>
                       {selectedEntry.paymentType === 'flat_rate' ? 'Flat Rate' : 'Hourly'}
                     </Text>
@@ -564,7 +567,7 @@ const ScheduleModal = memo(({
                         )}
                       </ScrollView>
                       <TouchableOpacity
-                        style={styles.closeDropdownButton}
+                        style={[styles.closeDropdownButton, { backgroundColor: themeColor }]}
                         onPress={() => setShowBuildingDropdown(false)}
                       >
                         <Text style={styles.closeDropdownText}>Close</Text>
@@ -576,8 +579,8 @@ const ScheduleModal = memo(({
 
               {/* Show selected building info */}
               {selectedClientBuilding && (
-                <View style={styles.selectedBuildingInfo}>
-                  <Icon name="business" size={16} style={{ color: colors.primary }} />
+                <View style={[styles.selectedBuildingInfo, { backgroundColor: themeColor + '10' }]}>
+                  <Icon name="business" size={16} style={{ color: themeColor }} />
                   <View style={styles.selectedBuildingText}>
                     <Text style={styles.selectedBuildingName}>{selectedClientBuilding.buildingName}</Text>
                     <Text style={styles.selectedBuildingClient}>{selectedClientBuilding.clientName}</Text>
@@ -608,7 +611,7 @@ const ScheduleModal = memo(({
               {selectedCleaners.length > 0 && (
                 <View style={styles.selectedCleanersContainer}>
                   {selectedCleaners.map((cleanerName, index) => (
-                    <View key={index} style={styles.selectedCleanerChip}>
+                    <View key={index} style={[styles.selectedCleanerChip, { backgroundColor: colors.success }]}>
                       <Text style={styles.selectedCleanerText}>{cleanerName}</Text>
                       {selectedCleaners.length > 1 && (
                         <TouchableOpacity
@@ -670,7 +673,7 @@ const ScheduleModal = memo(({
                             key={index}
                             style={[
                               styles.dropdownItem, 
-                              isSelected && styles.dropdownItemSelected,
+                              isSelected && { backgroundColor: themeColor },
                               !canAccess && styles.dropdownItemDisabled
                             ]}
                             onPress={() => {
@@ -732,7 +735,7 @@ const ScheduleModal = memo(({
                     )}
                   </ScrollView>
                   <TouchableOpacity
-                    style={styles.closeDropdownButton}
+                    style={[styles.closeDropdownButton, { backgroundColor: themeColor }]}
                     onPress={() => {
                       setShowCleanerDropdown(false);
                       setCleanerSearchQuery('');
@@ -770,7 +773,7 @@ const ScheduleModal = memo(({
                     <TouchableOpacity
                       style={[
                         styles.paymentTypeButton,
-                        paymentType === 'hourly' && styles.paymentTypeButtonActive
+                        paymentType === 'hourly' && [styles.paymentTypeButtonActive, { backgroundColor: themeColor }]
                       ]}
                       onPress={() => setPaymentType('hourly')}
                     >
@@ -778,7 +781,7 @@ const ScheduleModal = memo(({
                         name="time" 
                         size={16} 
                         style={{ 
-                          color: paymentType === 'hourly' ? colors.background : colors.primary,
+                          color: paymentType === 'hourly' ? colors.background : themeColor,
                           marginRight: spacing.xs 
                         }} 
                       />
@@ -793,7 +796,7 @@ const ScheduleModal = memo(({
                     <TouchableOpacity
                       style={[
                         styles.paymentTypeButton,
-                        paymentType === 'flat_rate' && styles.paymentTypeButtonActive
+                        paymentType === 'flat_rate' && [styles.paymentTypeButtonActive, { backgroundColor: colors.success }]
                       ]}
                       onPress={() => setPaymentType('flat_rate')}
                     >
@@ -1033,9 +1036,9 @@ const ScheduleModal = memo(({
                 onChangeText={setNewCleanerName}
               />
               
-              <View style={styles.quickAddNote}>
-                <Icon name="information-circle-outline" size={16} style={{ color: colors.primary }} />
-                <Text style={styles.quickAddNoteText}>
+              <View style={[styles.quickAddNote, { backgroundColor: themeColor + '10' }]}>
+                <Icon name="information-circle-outline" size={16} style={{ color: themeColor }} />
+                <Text style={[styles.quickAddNoteText, { color: themeColor }]}>
                   This is a quick add. Use the Cleaners section for full details including ID, security level, and contact info.
                 </Text>
               </View>
@@ -1343,9 +1346,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  dropdownItemSelected: {
-    backgroundColor: colors.primary,
-  },
   dropdownText: {
     fontSize: 16,
     color: colors.text,
@@ -1406,7 +1406,6 @@ const styles = StyleSheet.create({
   cleanerChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.primary,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     borderRadius: 16,
@@ -1420,7 +1419,6 @@ const styles = StyleSheet.create({
   cleanerManagementNote: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.primary + '10',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: 8,
@@ -1429,7 +1427,6 @@ const styles = StyleSheet.create({
   },
   cleanerManagementNoteText: {
     ...typography.caption,
-    color: colors.primary,
     fontWeight: '500',
     flex: 1,
   },
@@ -1443,7 +1440,6 @@ const styles = StyleSheet.create({
   selectedCleanerChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.success,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     borderRadius: 16,
@@ -1503,7 +1499,6 @@ const styles = StyleSheet.create({
     color: colors.textSecondary + '50',
   },
   closeDropdownButton: {
-    backgroundColor: colors.primary,
     paddingVertical: spacing.md,
     alignItems: 'center',
     borderBottomLeftRadius: 8,
@@ -1517,7 +1512,6 @@ const styles = StyleSheet.create({
   quickAddNote: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: colors.primary + '10',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: 8,
@@ -1526,7 +1520,6 @@ const styles = StyleSheet.create({
   },
   quickAddNoteText: {
     ...typography.caption,
-    color: colors.primary,
     fontWeight: '500',
     flex: 1,
   },
@@ -1662,7 +1655,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   paymentTypeButtonActive: {
-    backgroundColor: colors.primary,
+    // backgroundColor set dynamically
   },
   paymentTypeButtonText: {
     ...typography.body,
@@ -1742,7 +1735,6 @@ const styles = StyleSheet.create({
   selectedBuildingInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.primary + '10',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: 8,

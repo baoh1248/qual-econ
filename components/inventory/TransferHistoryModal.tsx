@@ -6,6 +6,7 @@ import Icon from '../Icon';
 import Button from '../Button';
 import IconButton from '../IconButton';
 import { getInventoryTransferLogs, deleteInventoryTransferLog, formatTransferSummary, type InventoryTransfer } from '../../utils/inventoryTracking';
+import PropTypes from 'prop-types';
 
 interface TransferHistoryModalProps {
   visible: boolean;
@@ -21,8 +22,6 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
   const [searchQuery, setSearchQuery] = useState('');
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
   const [transferToDelete, setTransferToDelete] = useState<InventoryTransfer | null>(null);
-  
-  // NEW: Building filter state
   const [selectedBuilding, setSelectedBuilding] = useState<string>('all');
 
   useEffect(() => {
@@ -35,7 +34,6 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
     try {
       setLoading(true);
       const logs = await getInventoryTransferLogs();
-      // Sort by timestamp descending (newest first)
       const sortedLogs = logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       setTransfers(sortedLogs);
     } catch (error) {
@@ -45,19 +43,14 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
     }
   };
 
-  // NEW: Get unique buildings from transfers
   const uniqueBuildings = useMemo(() => {
     const buildings = new Set(transfers.map(t => t.destination));
     return Array.from(buildings).sort();
   }, [transfers]);
 
-  // NEW: Filter transfers by building and search query
   const filteredTransfers = useMemo(() => {
     return transfers.filter(transfer => {
-      // Building filter
       const matchesBuilding = selectedBuilding === 'all' || transfer.destination === selectedBuilding;
-      
-      // Search filter
       const matchesSearch = searchQuery === '' || 
         transfer.destination.toLowerCase().includes(searchQuery.toLowerCase()) ||
         transfer.items.some(item => item.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
@@ -71,11 +64,9 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
     console.log('Delete transfer requested:', transfer.id);
     
     if (Platform.OS === 'web') {
-      // Use custom modal for web/computer platforms
       setTransferToDelete(transfer);
       setShowDeleteConfirmModal(true);
     } else {
-      // Use native Alert for mobile platforms
       Alert.alert(
         'Delete Transfer Record',
         'Are you sure you want to delete this transfer record?',
@@ -185,7 +176,6 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
             </View>
 
             <View style={commonStyles.content}>
-              {/* Summary Stats */}
               <View style={[commonStyles.card, { marginBottom: spacing.md }]}>
                 <View style={[commonStyles.row, { justifyContent: 'space-around' }]}>
                   <View style={{ alignItems: 'center' }}>
@@ -207,7 +197,6 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
                 </View>
               </View>
 
-              {/* NEW: Building Filter */}
               <View style={{ marginBottom: spacing.md }}>
                 <Text style={[typography.caption, { 
                   color: colors.textSecondary, 
@@ -312,7 +301,7 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
                         })}
                       </Text>
                       
-                      {groupedTransfers[dateString].map((transfer, index) => (
+                      {groupedTransfers[dateString].map((transfer) => (
                         <View key={transfer.id} style={[commonStyles.card, { marginBottom: spacing.sm }]}>
                           <View style={[commonStyles.row, commonStyles.spaceBetween, { marginBottom: spacing.sm }]}>
                             <View style={[commonStyles.row, { flex: 1 }]}>
@@ -401,7 +390,6 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
         </View>
       </Modal>
 
-      {/* Delete Transfer Confirmation Modal */}
       <Modal
         visible={showDeleteConfirmModal}
         animationType="fade"
@@ -497,6 +485,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+
+TransferHistoryModal.propTypes = {
+  visible: PropTypes.bool.isRequired,
+  onClose: PropTypes.func.isRequired,
+  onRefresh: PropTypes.func,
+};
 
 TransferHistoryModal.displayName = 'TransferHistoryModal';
 

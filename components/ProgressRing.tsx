@@ -2,6 +2,7 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import { colors, typography } from '../styles/commonStyles';
+import { useTheme } from '../hooks/useTheme';
 
 interface ProgressRingProps {
   progress: number;
@@ -11,17 +12,22 @@ interface ProgressRingProps {
   backgroundColor?: string;
   showText?: boolean;
   text?: string;
+  useThemeColor?: boolean;
 }
 
 export default function ProgressRing({
   progress,
   size = 80,
   strokeWidth = 8,
-  color = colors.primary,
+  color,
   backgroundColor = colors.border,
   showText = true,
-  text
+  text,
+  useThemeColor = true,
 }: ProgressRingProps) {
+  const { themeColor } = useTheme();
+  const ringColor = color || (useThemeColor ? themeColor : colors.primary);
+  
   console.log('ProgressRing rendered with progress:', progress);
   
   const animatedProgress = useRef(new Animated.Value(0)).current;
@@ -104,7 +110,7 @@ export default function ProgressRing({
                     outputRange: [0, 0, 1, 1],
                     extrapolate: 'clamp',
                   }),
-                  backgroundColor: color,
+                  backgroundColor: ringColor,
                   transform: [{
                     scale: animatedProgress.interpolate({
                       inputRange: [0, (index / segments) * 100, ((index + 1) / segments) * 100, 100],
@@ -125,7 +131,7 @@ export default function ProgressRing({
             style={[
               styles.progressText, 
               { 
-                color,
+                color: ringColor,
                 opacity: animatedProgress.interpolate({
                   inputRange: [0, 100],
                   outputRange: [0.5, 1],

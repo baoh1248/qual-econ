@@ -1,15 +1,16 @@
 
 import React from 'react';
-import { TouchableOpacity, StyleSheet, ViewStyle } from 'react-native';
-import { colors, spacing } from '../styles/commonStyles';
+import { TouchableOpacity, StyleSheet, ViewStyle, ActivityIndicator } from 'react-native';
+import { colors, spacing, borderRadius, shadows } from '../styles/commonStyles';
 import Icon from './Icon';
 
 interface IconButtonProps {
-  icon?: string; // Made optional since we're using a single image now
+  icon?: string;
   onPress: () => void;
   style?: ViewStyle;
   disabled?: boolean;
-  variant?: 'primary' | 'secondary' | 'white' | 'danger' | 'success' | 'warning';
+  loading?: boolean;
+  variant?: 'primary' | 'secondary' | 'white' | 'danger' | 'success' | 'warning' | 'ghost';
   size?: 'small' | 'medium' | 'large';
   iconSize?: number;
   children?: React.ReactNode;
@@ -20,68 +21,48 @@ export default function IconButton({
   onPress,
   style,
   disabled = false,
+  loading = false,
   variant = 'primary',
   size = 'medium',
   iconSize,
   children,
 }: IconButtonProps) {
-  console.log('IconButton rendered with variant:', variant);
-
   const getVariantStyles = () => {
     switch (variant) {
       case 'white':
         return {
-          backgroundColor: colors.background, // White background
-          shadowColor: colors.text,
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.1,
-          shadowRadius: 4,
-          elevation: 3,
+          backgroundColor: colors.card,
+          ...shadows.sm,
         };
       case 'secondary':
         return {
-          backgroundColor: colors.primary, // Blue background for consistency
-          shadowColor: colors.primary,
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.3,
-          shadowRadius: 4,
-          elevation: 3,
+          backgroundColor: colors.backgroundAlt,
+          borderWidth: 1,
+          borderColor: colors.border,
         };
       case 'danger':
         return {
-          backgroundColor: colors.danger, // Red background
-          shadowColor: colors.danger,
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.3,
-          shadowRadius: 4,
-          elevation: 3,
+          backgroundColor: colors.danger,
+          ...shadows.sm,
         };
       case 'success':
         return {
-          backgroundColor: colors.success, // Green background
-          shadowColor: colors.success,
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.3,
-          shadowRadius: 4,
-          elevation: 3,
+          backgroundColor: colors.success,
+          ...shadows.sm,
         };
       case 'warning':
         return {
-          backgroundColor: colors.warning, // Orange background
-          shadowColor: colors.warning,
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.3,
-          shadowRadius: 4,
-          elevation: 3,
+          backgroundColor: colors.warning,
+          ...shadows.sm,
         };
-      default: // 'primary'
+      case 'ghost':
         return {
-          backgroundColor: colors.primary, // Blue background
-          shadowColor: colors.primary,
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.3,
-          shadowRadius: 4,
-          elevation: 3,
+          backgroundColor: 'transparent',
+        };
+      default:
+        return {
+          backgroundColor: colors.primary,
+          ...shadows.sm,
         };
     }
   };
@@ -91,21 +72,21 @@ export default function IconButton({
       case 'small':
         return {
           padding: spacing.sm,
-          borderRadius: 8,
+          borderRadius: borderRadius.sm,
           minWidth: 36,
           minHeight: 36,
         };
       case 'large':
         return {
           padding: spacing.lg,
-          borderRadius: 12,
+          borderRadius: borderRadius.lg,
           minWidth: 56,
           minHeight: 56,
         };
       default:
         return {
           padding: spacing.md,
-          borderRadius: 10,
+          borderRadius: borderRadius.md,
           minWidth: 44,
           minHeight: 44,
         };
@@ -118,20 +99,20 @@ export default function IconButton({
       case 'small':
         return 16;
       case 'large':
-        return 24;
+        return 28;
       default:
         return 20;
     }
   };
 
   const getIconColor = () => {
-    // If background is white, icon should be black
-    // If background is colored, icon should be white
     switch (variant) {
       case 'white':
-        return colors.text; // Black icon on white background
+      case 'secondary':
+      case 'ghost':
+        return colors.text;
       default:
-        return colors.background; // White icon on colored background
+        return colors.textInverse;
     }
   };
 
@@ -145,19 +126,23 @@ export default function IconButton({
         style,
       ]}
       onPress={onPress}
-      disabled={disabled}
-      activeOpacity={0.8}
+      disabled={disabled || loading}
+      activeOpacity={0.7}
     >
-      {icon && (
-        <Icon 
-          name={icon} 
-          size={getIconSize()} 
-          style={{ 
-            color: getIconColor(),
-          }} 
-        />
+      {loading ? (
+        <ActivityIndicator size="small" color={getIconColor()} />
+      ) : (
+        <>
+          {icon && (
+            <Icon 
+              name={icon} 
+              size={getIconSize()} 
+              style={{ color: getIconColor() }} 
+            />
+          )}
+          {children}
+        </>
       )}
-      {children}
     </TouchableOpacity>
   );
 }
@@ -166,11 +151,8 @@ const styles = StyleSheet.create({
   button: {
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 0,
   },
   disabled: {
-    opacity: 0.6,
-    shadowOpacity: 0,
-    elevation: 0,
+    opacity: 0.5,
   },
 });
