@@ -78,7 +78,6 @@ export interface Cleaner {
   employeeId: string;
   securityLevel: 'low' | 'medium' | 'high';
   phoneNumber: string;
-  phone?: string;
   email?: string;
   hireDate?: string;
   term_date?: string;
@@ -136,14 +135,14 @@ export const useClientData = () => {
     try {
       console.log('🔄 Loading clients from Supabase...');
       
-      const { data, error: supabaseError } = await supabase
+      const { data, error } = await supabase
         .from('clients')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (supabaseError) {
-        console.error('❌ Error loading clients from Supabase:', supabaseError);
-        throw supabaseError;
+      if (error) {
+        console.error('❌ Error loading clients from Supabase:', error);
+        throw error;
       }
 
       if (!data || data.length === 0) {
@@ -154,7 +153,7 @@ export const useClientData = () => {
       const clients: Client[] = data.map(row => ({
         id: row.id,
         name: row.name,
-        securityLevel: (row.security_level || 'medium') as 'low' | 'medium' | 'high',
+        securityLevel: row.security_level as 'low' | 'medium' | 'high',
         securityInfo: row.security || undefined,
         security: row.security || undefined,
         isActive: row.is_active !== false,
@@ -182,14 +181,14 @@ export const useClientData = () => {
     try {
       console.log('🔄 Loading buildings from Supabase...');
       
-      const { data, error: supabaseError } = await supabase
+      const { data, error } = await supabase
         .from('client_buildings')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (supabaseError) {
-        console.error('❌ Error loading buildings from Supabase:', supabaseError);
-        throw supabaseError;
+      if (error) {
+        console.error('❌ Error loading buildings from Supabase:', error);
+        throw error;
       }
 
       if (!data || data.length === 0) {
@@ -204,7 +203,7 @@ export const useClientData = () => {
         name: row.building_name,
         address: row.address || undefined,
         security: row.security || undefined,
-        securityLevel: (row.security_level || 'medium') as 'low' | 'medium' | 'high',
+        securityLevel: row.security_level as 'low' | 'medium' | 'high',
         securityInfo: row.security || undefined,
         isActive: true,
         priority: 'medium',
@@ -231,14 +230,14 @@ export const useClientData = () => {
     try {
       console.log('🔄 Loading cleaners from Supabase...');
       
-      const { data, error: supabaseError } = await supabase
+      const { data, error } = await supabase
         .from('cleaners')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (supabaseError) {
-        console.error('❌ Error loading cleaners from Supabase:', supabaseError);
-        throw supabaseError;
+      if (error) {
+        console.error('❌ Error loading cleaners from Supabase:', error);
+        throw error;
       }
 
       if (!data || data.length === 0) {
@@ -253,17 +252,17 @@ export const useClientData = () => {
         go_by: row.go_by || undefined,
         dob: row.dob || undefined,
         employeeId: row.employee_id || `EMP-${row.id.slice(-6)}`,
-        securityLevel: (row.security_level || 'low') as 'low' | 'medium' | 'high',
+        securityLevel: row.security_level as 'low' | 'medium' | 'high',
         phoneNumber: row.phone_number || '',
         email: row.email || undefined,
-        specialties: Array.isArray(row.specialties) ? row.specialties : [],
+        specialties: row.specialties || [],
         hireDate: row.hire_date || undefined,
         term_date: row.term_date || undefined,
         rehire_date: row.rehire_date || undefined,
-        employment_status: (row.employment_status || 'active') as 'active' | 'terminated' | 'on-leave' | 'suspended',
+        employment_status: row.employment_status as 'active' | 'terminated' | 'on-leave' | 'suspended' || 'active',
         notes: row.notes || undefined,
         photo_url: row.photo_url || undefined,
-        pay_type: (row.pay_type || 'hourly') as 'hourly' | 'salary' | 'contract',
+        pay_type: row.pay_type as 'hourly' | 'salary' | 'contract' || 'hourly',
         defaultHourlyRate: row.default_hourly_rate || 15.00,
         default_hourly_rate: row.default_hourly_rate || 15.00,
         emergencyContact: row.emergency_contact_name ? {
@@ -357,7 +356,7 @@ export const useClientData = () => {
       
       console.log('🔄 Adding client to Supabase:', newClient.name);
       
-      const { error: supabaseError } = await supabase
+      const { error } = await supabase
         .from('clients')
         .insert({
           id: newClient.id,
@@ -370,9 +369,9 @@ export const useClientData = () => {
           updated_at: new Date().toISOString(),
         });
 
-      if (supabaseError) {
-        console.error('❌ Error adding client to Supabase:', supabaseError);
-        throw supabaseError;
+      if (error) {
+        console.error('❌ Error adding client to Supabase:', error);
+        throw error;
       }
 
       console.log('✅ Client added to Supabase successfully');
@@ -380,7 +379,6 @@ export const useClientData = () => {
       await refreshData();
     } catch (error) {
       console.error('❌ Failed to add client to Supabase, saving locally:', error);
-      const newClient = 'id' in client ? client : { ...client, id: `client-${Date.now()}` };
       const updatedClients = [...clients, newClient];
       await saveClients(updatedClients);
     }
@@ -400,14 +398,14 @@ export const useClientData = () => {
       
       updateData.updated_at = new Date().toISOString();
 
-      const { error: supabaseError } = await supabase
+      const { error } = await supabase
         .from('clients')
         .update(updateData)
         .eq('id', clientId);
 
-      if (supabaseError) {
-        console.error('❌ Error updating client in Supabase:', supabaseError);
-        throw supabaseError;
+      if (error) {
+        console.error('❌ Error updating client in Supabase:', error);
+        throw error;
       }
 
       console.log('✅ Client updated in Supabase successfully');
@@ -433,7 +431,7 @@ export const useClientData = () => {
       
       console.log('🔄 Adding building to Supabase:', newBuilding.buildingName);
       
-      const { error: supabaseError } = await supabase
+      const { error } = await supabase
         .from('client_buildings')
         .insert({
           id: newBuilding.id,
@@ -446,9 +444,9 @@ export const useClientData = () => {
           updated_at: new Date().toISOString(),
         });
 
-      if (supabaseError) {
-        console.error('❌ Error adding building to Supabase:', supabaseError);
-        throw supabaseError;
+      if (error) {
+        console.error('❌ Error adding building to Supabase:', error);
+        throw error;
       }
 
       console.log('✅ Building added to Supabase successfully');
@@ -456,7 +454,6 @@ export const useClientData = () => {
       await refreshData();
     } catch (error) {
       console.error('❌ Failed to add building to Supabase, saving locally:', error);
-      const newBuilding = 'id' in building ? building : { ...building, id: `building-${Date.now()}` };
       const updatedBuildings = [...clientBuildings, newBuilding];
       await saveBuildings(updatedBuildings);
     }
@@ -476,14 +473,14 @@ export const useClientData = () => {
       
       updateData.updated_at = new Date().toISOString();
 
-      const { error: supabaseError } = await supabase
+      const { error } = await supabase
         .from('client_buildings')
         .update(updateData)
         .eq('id', buildingId);
 
-      if (supabaseError) {
-        console.error('❌ Error updating building in Supabase:', supabaseError);
-        throw supabaseError;
+      if (error) {
+        console.error('❌ Error updating building in Supabase:', error);
+        throw error;
       }
 
       console.log('✅ Building updated in Supabase successfully');
@@ -504,20 +501,12 @@ export const useClientData = () => {
   }, [clientBuildings, saveBuildings]);
 
   const addCleaner = useCallback(async (cleaner: Omit<Cleaner, 'id'> | Cleaner) => {
-    const newCleaner = 'id' in cleaner ? cleaner : { 
-      ...cleaner, 
-      id: `cleaner-${Date.now()}`,
-      employeeId: cleaner.employeeId || `EMP-${Date.now().toString().slice(-6)}`,
-      phoneNumber: cleaner.phoneNumber || cleaner.phone || '',
-      specialties: cleaner.specialties || [],
-      securityLevel: cleaner.securityLevel || 'low',
-      isActive: cleaner.isActive !== false,
-    };
+    const newCleaner = 'id' in cleaner ? cleaner : { ...cleaner, id: `cleaner-${Date.now()}` };
     
     try {
       console.log('🔄 Adding cleaner to Supabase:', newCleaner.name);
       
-      const { error: supabaseError } = await supabase
+      const { error } = await supabase
         .from('cleaners')
         .insert({
           id: newCleaner.id,
@@ -537,7 +526,7 @@ export const useClientData = () => {
           notes: newCleaner.notes || null,
           photo_url: newCleaner.photo_url || null,
           pay_type: newCleaner.pay_type || 'hourly',
-          default_hourly_rate: newCleaner.defaultHourlyRate || newCleaner.default_hourly_rate || 15.00,
+          default_hourly_rate: newCleaner.defaultHourlyRate || 15.00,
           emergency_contact_name: newCleaner.emergencyContact?.name || null,
           emergency_contact_phone: newCleaner.emergencyContact?.phone || null,
           emergency_contact_relationship: newCleaner.emergencyContact?.relationship || null,
@@ -545,9 +534,9 @@ export const useClientData = () => {
           user_id: newCleaner.user_id || null,
         });
 
-      if (supabaseError) {
-        console.error('❌ Error adding cleaner to Supabase:', supabaseError);
-        throw supabaseError;
+      if (error) {
+        console.error('❌ Error adding cleaner to Supabase:', error);
+        throw error;
       }
 
       console.log('✅ Cleaner added to Supabase successfully');
@@ -591,14 +580,14 @@ export const useClientData = () => {
       
       updateData.updated_at = new Date().toISOString();
 
-      const { error: supabaseError } = await supabase
+      const { error } = await supabase
         .from('cleaners')
         .update(updateData)
         .eq('id', cleanerId);
 
-      if (supabaseError) {
-        console.error('❌ Error updating cleaner in Supabase:', supabaseError);
-        throw supabaseError;
+      if (error) {
+        console.error('❌ Error updating cleaner in Supabase:', error);
+        throw error;
       }
 
       console.log('✅ Cleaner updated in Supabase successfully');
@@ -617,14 +606,14 @@ export const useClientData = () => {
     try {
       console.log('🔄 Deleting cleaner from Supabase:', cleanerId);
       
-      const { error: supabaseError } = await supabase
+      const { error } = await supabase
         .from('cleaners')
         .delete()
         .eq('id', cleanerId);
 
-      if (supabaseError) {
-        console.error('❌ Error deleting cleaner from Supabase:', supabaseError);
-        throw supabaseError;
+      if (error) {
+        console.error('❌ Error deleting cleaner from Supabase:', error);
+        throw error;
       }
 
       console.log('✅ Cleaner deleted from Supabase successfully');

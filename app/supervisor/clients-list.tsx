@@ -75,8 +75,8 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
   },
   headerTitle: {
-    fontSize: typography.h2.fontSize,
-    fontWeight: typography.h2.fontWeight as any,
+    fontSize: typography.sizes.xxl,
+    fontWeight: typography.weights.bold as any,
     color: colors.text,
   },
   searchContainer: {
@@ -87,7 +87,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: 12,
     padding: spacing.md,
-    fontSize: typography.body.fontSize,
+    fontSize: typography.sizes.md,
     color: colors.text,
     borderWidth: 1,
     borderColor: colors.border,
@@ -106,12 +106,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   statValue: {
-    fontSize: typography.h3.fontSize,
-    fontWeight: typography.h3.fontWeight,
+    fontSize: typography.sizes.xl,
+    fontWeight: typography.weights.bold as any,
     color: colors.primary,
   },
   statLabel: {
-    fontSize: typography.small.fontSize,
+    fontSize: typography.sizes.sm,
     color: colors.textSecondary,
     marginTop: spacing.xs,
   },
@@ -133,8 +133,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   clientName: {
-    fontSize: typography.h4.fontSize,
-    fontWeight: typography.h4.fontWeight,
+    fontSize: typography.sizes.lg,
+    fontWeight: typography.weights.semibold as any,
     color: colors.text,
     flex: 1,
   },
@@ -154,7 +154,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   infoText: {
-    fontSize: typography.caption.fontSize,
+    fontSize: typography.sizes.sm,
     color: colors.textSecondary,
   },
   badge: {
@@ -163,8 +163,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   badgeText: {
-    fontSize: typography.tiny.fontSize,
-    fontWeight: typography.tiny.fontWeight,
+    fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.semibold as any,
   },
   modalOverlay: {
     flex: 1,
@@ -180,8 +180,8 @@ const styles = StyleSheet.create({
     maxWidth: 500,
   },
   modalTitle: {
-    fontSize: typography.h3.fontSize,
-    fontWeight: typography.h3.fontWeight,
+    fontSize: typography.sizes.xl,
+    fontWeight: typography.weights.bold as any,
     color: colors.text,
     marginBottom: spacing.lg,
   },
@@ -189,8 +189,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   label: {
-    fontSize: typography.caption.fontSize,
-    fontWeight: typography.captionMedium.fontWeight,
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.semibold as any,
     color: colors.text,
     marginBottom: spacing.xs,
   },
@@ -198,7 +198,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     borderRadius: 8,
     padding: spacing.md,
-    fontSize: typography.body.fontSize,
+    fontSize: typography.sizes.md,
     color: colors.text,
     borderWidth: 1,
     borderColor: colors.border,
@@ -237,7 +237,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xxl,
   },
   emptyStateText: {
-    fontSize: typography.h4.fontSize,
+    fontSize: typography.sizes.lg,
     color: colors.textSecondary,
     marginTop: spacing.md,
   },
@@ -645,7 +645,7 @@ export default function ClientsListScreen() {
                       <TouchableOpacity
                         onPress={() => handleDeleteClient(clientData?.id || '', client.clientName)}
                       >
-                        <Icon name="trash" size={20} color={colors.danger} />
+                        <Icon name="trash" size={20} color={colors.error} />
                       </TouchableOpacity>
                     </View>
                   </View>

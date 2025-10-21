@@ -503,10 +503,7 @@ export default function ScheduleView() {
     try {
       await addCleaner({
         name: newCleanerName.trim(),
-        employeeId: `EMP-${Date.now().toString().slice(-6)}`,
-        phoneNumber: '',
         securityLevel: 'low',
-        specialties: [],
         isActive: true,
         defaultHourlyRate: 15,
       });
