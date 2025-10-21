@@ -14,6 +14,53 @@ import Icon from '../../components/Icon';
 import CompanyLogo from '../../components/CompanyLogo';
 import { commonStyles, colors, spacing, typography, buttonStyles } from '../../styles/commonStyles';
 
+// Predefined options for dropdowns
+const PREDEFINED_LABOR = [
+  'Cleaner - Entry Level',
+  'Cleaner - Experienced',
+  'Cleaner - Senior',
+  'Supervisor',
+  'Team Lead',
+  'Specialist - Floor Care',
+  'Specialist - Window Cleaning',
+  'Specialist - Carpet Cleaning',
+];
+
+const PREDEFINED_EQUIPMENT = [
+  'Vacuum Cleaner - Commercial',
+  'Floor Buffer/Polisher',
+  'Carpet Extractor',
+  'Pressure Washer',
+  'Floor Scrubber',
+  'Window Cleaning Equipment',
+  'Steam Cleaner',
+  'Backpack Vacuum',
+];
+
+const PREDEFINED_VEHICLES = [
+  'Cargo Van',
+  'Box Truck',
+  'Pickup Truck',
+  'Company Car',
+  'Utility Vehicle',
+];
+
+const PREDEFINED_SUPPLIES = [
+  'All-Purpose Cleaner',
+  'Glass Cleaner',
+  'Disinfectant',
+  'Floor Cleaner',
+  'Carpet Cleaner',
+  'Microfiber Cloths',
+  'Mop Heads',
+  'Trash Bags',
+  'Paper Towels',
+  'Toilet Paper',
+  'Hand Soap',
+  'Gloves - Latex',
+  'Gloves - Nitrile',
+];
+
 interface ClientProject {
   id: string;
   client_name: string;
@@ -29,8 +76,21 @@ interface ClientProject {
   notes?: string;
   work_order_number?: string;
   invoice_number?: string;
+  estimated_price?: number;
+  estimated_profitability?: number;
   created_at?: string;
   updated_at?: string;
+}
+
+interface ProjectCompletion {
+  id: string;
+  project_id: string;
+  completed_date: string;
+  completed_by?: string;
+  hours_spent: number;
+  notes?: string;
+  photos_count: number;
+  created_at?: string;
 }
 
 interface ProjectLabor {
@@ -73,17 +133,6 @@ interface ProjectSupply {
   notes?: string;
 }
 
-interface ProjectCompletion {
-  id: string;
-  project_id: string;
-  completed_date: string;
-  completed_by?: string;
-  hours_spent: number;
-  notes?: string;
-  photos_count: number;
-  created_at?: string;
-}
-
 interface ProjectFormData {
   client_name: string;
   building_name: string;
@@ -97,6 +146,36 @@ interface ProjectFormData {
   notes: string;
   work_order_number: string;
   invoice_number: string;
+  estimated_price: string;
+  estimated_profitability: string;
+  labor: Array<{
+    laborer_name: string;
+    skill_level: 'low' | 'medium' | 'high';
+    hours_worked: string;
+    hourly_rate: string;
+    notes: string;
+  }>;
+  equipment: Array<{
+    equipment_type: string;
+    hours_used: string;
+    cost_per_hour: string;
+    notes: string;
+  }>;
+  vehicles: Array<{
+    vehicle_type: string;
+    hours_used: string;
+    mileage: string;
+    cost_per_hour: string;
+    cost_per_mile: string;
+    notes: string;
+  }>;
+  supplies: Array<{
+    supply_type: string;
+    quantity: string;
+    unit: string;
+    cost_per_unit: string;
+    notes: string;
+  }>;
 }
 
 const ProjectsScreen = () => {
@@ -108,22 +187,13 @@ const ProjectsScreen = () => {
   const [projects, setProjects] = useState<ClientProject[]>([]);
   const [filteredProjects, setFilteredProjects] = useState<ClientProject[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [inventoryItems, setInventoryItems] = useState<Array<{id: string; name: string; category: string}>>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [selectedProject, setSelectedProject] = useState<ClientProject | null>(null);
   const [projectCompletions, setProjectCompletions] = useState<ProjectCompletion[]>([]);
-
-  // Resource allocation states for selected project (details view)
-  const [projectLabor, setProjectLabor] = useState<ProjectLabor[]>([]);
-  const [projectEquipment, setProjectEquipment] = useState<ProjectEquipment[]>([]);
-  const [projectVehicles, setProjectVehicles] = useState<ProjectVehicle[]>([]);
-  const [projectSupplies, setProjectSupplies] = useState<ProjectSupply[]>([]);
-
-  // Calculated values for selected project
-  const [estimatedCost, setEstimatedCost] = useState(0);
-  const [estimatedProfit, setEstimatedProfit] = useState(0);
 
   // Filter states
   const [searchQuery, setSearchQuery] = useState('');
@@ -133,6 +203,12 @@ const ProjectsScreen = () => {
   const [showBuildingDropdown, setShowBuildingDropdown] = useState(false);
   const [showFrequencyDropdown, setShowFrequencyDropdown] = useState(false);
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
+
+  // Resource dropdown states
+  const [showLaborDropdown, setShowLaborDropdown] = useState<number | null>(null);
+  const [showEquipmentDropdown, setShowEquipmentDropdown] = useState<number | null>(null);
+  const [showVehicleDropdown, setShowVehicleDropdown] = useState<number | null>(null);
+  const [showSupplyDropdown, setShowSupplyDropdown] = useState<number | null>(null);
 
   // Form states
   const [formData, setFormData] = useState<ProjectFormData>({
@@ -148,6 +224,12 @@ const ProjectsScreen = () => {
     notes: '',
     work_order_number: '',
     invoice_number: '',
+    estimated_price: '0',
+    estimated_profitability: '0',
+    labor: [],
+    equipment: [],
+    vehicles: [],
+    supplies: [],
   });
 
   // Completion form states
@@ -157,43 +239,6 @@ const ProjectsScreen = () => {
     notes: '',
     photos_count: '0',
   });
-
-  // Resource form states for Add/Edit modals
-  const [laborList, setLaborList] = useState<Omit<ProjectLabor, 'id' | 'project_id'>[]>([]);
-  const [equipmentList, setEquipmentList] = useState<Omit<ProjectEquipment, 'id' | 'project_id'>[]>([]);
-  const [vehicleList, setVehicleList] = useState<Omit<ProjectVehicle, 'id' | 'project_id'>[]>([]);
-  const [supplyList, setSupplyList] = useState<Omit<ProjectSupply, 'id' | 'project_id'>[]>([]);
-
-  const [laborForm, setLaborForm] = useState({
-    laborer_name: '',
-    skill_level: 'medium' as 'low' | 'medium' | 'high',
-    hours_worked: '',
-    hourly_rate: '15',
-  });
-
-  const [equipmentForm, setEquipmentForm] = useState({
-    equipment_type: '',
-    hours_used: '',
-    cost_per_hour: '0',
-  });
-
-  const [vehicleForm, setVehicleForm] = useState({
-    vehicle_type: '',
-    hours_used: '',
-    mileage: '',
-    cost_per_hour: '0',
-    cost_per_mile: '0',
-  });
-
-  const [supplyForm, setSupplyForm] = useState({
-    supply_type: '',
-    quantity: '',
-    unit: '',
-    cost_per_unit: '0',
-  });
-
-  const [showLaborerDropdown, setShowLaborerDropdown] = useState(false);
-  const [showSkillLevelDropdown, setShowSkillLevelDropdown] = useState(false);
 
   // Auto-generate work order number
   const generateWorkOrderNumber = useCallback(() => {
@@ -214,45 +259,72 @@ const ProjectsScreen = () => {
     return `INV-${year}${month}-${random}`;
   }, []);
 
-  // Calculate estimated cost and profit
-  const calculateEstimates = useCallback((
-    labor: ProjectLabor[],
-    equipment: ProjectEquipment[],
-    vehicles: ProjectVehicle[],
-    supplies: ProjectSupply[],
-    billingAmount: number
-  ) => {
-    const laborCost = labor.reduce((sum, l) => sum + (l.hours_worked * l.hourly_rate), 0);
-    const equipmentCost = equipment.reduce((sum, e) => sum + (e.hours_used * e.cost_per_hour), 0);
-    const vehicleCost = vehicles.reduce((sum, v) => sum + (v.hours_used * v.cost_per_hour) + (v.mileage * v.cost_per_mile), 0);
-    const supplyCost = supplies.reduce((sum, s) => sum + (s.quantity * s.cost_per_unit), 0);
-
-    const totalCost = laborCost + equipmentCost + vehicleCost + supplyCost;
-    const profit = billingAmount - totalCost;
-
-    console.log('Cost Breakdown:', {
-      laborCost,
-      equipmentCost,
-      vehicleCost,
-      supplyCost,
-      totalCost,
-      billingAmount,
-      profit
+  // Calculate estimated price from resources
+  const calculateEstimatedPrice = useCallback(() => {
+    let total = 0;
+    
+    // Labor costs
+    formData.labor.forEach(labor => {
+      const hours = parseFloat(labor.hours_worked) || 0;
+      const rate = parseFloat(labor.hourly_rate) || 0;
+      total += hours * rate;
     });
+    
+    // Equipment costs
+    formData.equipment.forEach(equip => {
+      const hours = parseFloat(equip.hours_used) || 0;
+      const rate = parseFloat(equip.cost_per_hour) || 0;
+      total += hours * rate;
+    });
+    
+    // Vehicle costs
+    formData.vehicles.forEach(vehicle => {
+      const hours = parseFloat(vehicle.hours_used) || 0;
+      const hourRate = parseFloat(vehicle.cost_per_hour) || 0;
+      const miles = parseFloat(vehicle.mileage) || 0;
+      const mileRate = parseFloat(vehicle.cost_per_mile) || 0;
+      total += (hours * hourRate) + (miles * mileRate);
+    });
+    
+    // Supply costs
+    formData.supplies.forEach(supply => {
+      const qty = parseFloat(supply.quantity) || 0;
+      const cost = parseFloat(supply.cost_per_unit) || 0;
+      total += qty * cost;
+    });
+    
+    return total.toFixed(2);
+  }, [formData.labor, formData.equipment, formData.vehicles, formData.supplies]);
 
-    return { estimatedCost: totalCost, estimatedProfit: profit };
-  }, []);
+  // Calculate estimated profit
+  const calculateEstimatedProfit = useCallback(() => {
+    const price = parseFloat(calculateEstimatedPrice());
+    const billing = parseFloat(formData.billing_amount) || 0;
+    
+    if (billing === 0) return '0.00';
+    
+    const profit = billing - price;
+    const profitability = (profit / billing) * 100;
+    
+    return profitability.toFixed(2);
+  }, [calculateEstimatedPrice, formData.billing_amount]);
 
-  // Load projects from database
+  // Load projects and inventory from database
   const loadProjects = useCallback(async () => {
     try {
       setIsLoading(true);
-      console.log('Loading projects...');
+      console.log('Loading projects and inventory...');
 
+      // Load projects
       const result = await executeQuery<ClientProject>('select', 'client_projects');
       console.log('✓ Loaded projects:', result.length);
       
+      // Load inventory items for equipment and supplies
+      const inventory = await executeQuery<{id: string; name: string; category: string}>('select', 'inventory_items');
+      console.log('✓ Loaded inventory items:', inventory.length);
+      
       setProjects(result);
+      setInventoryItems(inventory);
     } catch (error) {
       console.error('Error loading projects:', error);
       showToast('Failed to load projects', 'error');
@@ -288,48 +360,6 @@ const ProjectsScreen = () => {
     }
   }, [executeQuery, showToast]);
 
-  const loadProjectResources = useCallback(async (projectId: string, billingAmount: number) => {
-    try {
-      console.log('Loading resources for project:', projectId);
-
-      const [labor, equipment, vehicles, supplies] = await Promise.all([
-        executeQuery<ProjectLabor>('select', 'project_labor', undefined, { project_id: projectId }),
-        executeQuery<ProjectEquipment>('select', 'project_equipment', undefined, { project_id: projectId }),
-        executeQuery<ProjectVehicle>('select', 'project_vehicles', undefined, { project_id: projectId }),
-        executeQuery<ProjectSupply>('select', 'project_supplies', undefined, { project_id: projectId }),
-      ]);
-
-      setProjectLabor(labor);
-      setProjectEquipment(equipment);
-      setProjectVehicles(vehicles);
-      setProjectSupplies(supplies);
-
-      // Calculate estimates
-      const { estimatedCost: cost, estimatedProfit: profit } = calculateEstimates(
-        labor,
-        equipment,
-        vehicles,
-        supplies,
-        billingAmount
-      );
-
-      setEstimatedCost(cost);
-      setEstimatedProfit(profit);
-
-      console.log('✓ Loaded resources:', {
-        labor: labor.length,
-        equipment: equipment.length,
-        vehicles: vehicles.length,
-        supplies: supplies.length,
-        estimatedCost: cost,
-        estimatedProfit: profit,
-      });
-    } catch (error) {
-      console.error('Error loading project resources:', error);
-      showToast('Failed to load project resources', 'error');
-    }
-  }, [executeQuery, showToast, calculateEstimates]);
-
   const applyFilters = useCallback(() => {
     let filtered = [...projects];
 
@@ -361,33 +391,6 @@ const ProjectsScreen = () => {
     setFilteredProjects(filtered);
   }, [projects, searchQuery, filterStatus, filterBilling]);
 
-  const resetResourceForms = useCallback(() => {
-    setLaborForm({
-      laborer_name: '',
-      skill_level: 'medium',
-      hours_worked: '',
-      hourly_rate: '15',
-    });
-    setEquipmentForm({
-      equipment_type: '',
-      hours_used: '',
-      cost_per_hour: '0',
-    });
-    setVehicleForm({
-      vehicle_type: '',
-      hours_used: '',
-      mileage: '',
-      cost_per_hour: '0',
-      cost_per_mile: '0',
-    });
-    setSupplyForm({
-      supply_type: '',
-      quantity: '',
-      unit: '',
-      cost_per_unit: '0',
-    });
-  }, []);
-
   const resetForm = useCallback(() => {
     setFormData({
       client_name: '',
@@ -402,126 +405,14 @@ const ProjectsScreen = () => {
       notes: '',
       work_order_number: '',
       invoice_number: '',
+      estimated_price: '0',
+      estimated_profitability: '0',
+      labor: [],
+      equipment: [],
+      vehicles: [],
+      supplies: [],
     });
-    setLaborList([]);
-    setEquipmentList([]);
-    setVehicleList([]);
-    setSupplyList([]);
-    resetResourceForms();
-  }, [resetResourceForms]);
-
-  // Add resource to temporary list (for Add/Edit modals)
-  const addLaborToList = useCallback(() => {
-    if (!laborForm.laborer_name) {
-      showToast('Please enter laborer name', 'error');
-      return;
-    }
-
-    const newLabor = {
-      laborer_name: laborForm.laborer_name,
-      skill_level: laborForm.skill_level,
-      hours_worked: parseFloat(laborForm.hours_worked) || 0,
-      hourly_rate: parseFloat(laborForm.hourly_rate) || 15,
-      notes: undefined,
-    };
-
-    setLaborList([...laborList, newLabor]);
-    setLaborForm({
-      laborer_name: '',
-      skill_level: 'medium',
-      hours_worked: '',
-      hourly_rate: '15',
-    });
-    showToast('Labor added to list', 'success');
-  }, [laborForm, laborList, showToast]);
-
-  const removeLaborFromList = useCallback((index: number) => {
-    setLaborList(laborList.filter((_, i) => i !== index));
-  }, [laborList]);
-
-  const addEquipmentToList = useCallback(() => {
-    if (!equipmentForm.equipment_type) {
-      showToast('Please enter equipment type', 'error');
-      return;
-    }
-
-    const newEquipment = {
-      equipment_type: equipmentForm.equipment_type,
-      hours_used: parseFloat(equipmentForm.hours_used) || 0,
-      cost_per_hour: parseFloat(equipmentForm.cost_per_hour) || 0,
-      notes: undefined,
-    };
-
-    setEquipmentList([...equipmentList, newEquipment]);
-    setEquipmentForm({
-      equipment_type: '',
-      hours_used: '',
-      cost_per_hour: '0',
-    });
-    showToast('Equipment added to list', 'success');
-  }, [equipmentForm, equipmentList, showToast]);
-
-  const removeEquipmentFromList = useCallback((index: number) => {
-    setEquipmentList(equipmentList.filter((_, i) => i !== index));
-  }, [equipmentList]);
-
-  const addVehicleToList = useCallback(() => {
-    if (!vehicleForm.vehicle_type) {
-      showToast('Please enter vehicle type', 'error');
-      return;
-    }
-
-    const newVehicle = {
-      vehicle_type: vehicleForm.vehicle_type,
-      hours_used: parseFloat(vehicleForm.hours_used) || 0,
-      mileage: parseFloat(vehicleForm.mileage) || 0,
-      cost_per_hour: parseFloat(vehicleForm.cost_per_hour) || 0,
-      cost_per_mile: parseFloat(vehicleForm.cost_per_mile) || 0,
-      notes: undefined,
-    };
-
-    setVehicleList([...vehicleList, newVehicle]);
-    setVehicleForm({
-      vehicle_type: '',
-      hours_used: '',
-      mileage: '',
-      cost_per_hour: '0',
-      cost_per_mile: '0',
-    });
-    showToast('Vehicle added to list', 'success');
-  }, [vehicleForm, vehicleList, showToast]);
-
-  const removeVehicleFromList = useCallback((index: number) => {
-    setVehicleList(vehicleList.filter((_, i) => i !== index));
-  }, [vehicleList]);
-
-  const addSupplyToList = useCallback(() => {
-    if (!supplyForm.supply_type) {
-      showToast('Please enter supply type', 'error');
-      return;
-    }
-
-    const newSupply = {
-      supply_type: supplyForm.supply_type,
-      quantity: parseFloat(supplyForm.quantity) || 0,
-      unit: supplyForm.unit,
-      cost_per_unit: parseFloat(supplyForm.cost_per_unit) || 0,
-      notes: undefined,
-    };
-
-    setSupplyList([...supplyList, newSupply]);
-    setSupplyForm({
-      supply_type: '',
-      quantity: '',
-      unit: '',
-      cost_per_unit: '0',
-    });
-    showToast('Supply added to list', 'success');
-  }, [supplyForm, supplyList, showToast]);
-
-  const removeSupplyFromList = useCallback((index: number) => {
-    setSupplyList(supplyList.filter((_, i) => i !== index));
-  }, [supplyList]);
+  }, []);
 
   const handleAddProject = useCallback(async () => {
     try {
@@ -547,50 +438,79 @@ const ProjectsScreen = () => {
         notes: formData.notes || undefined,
         work_order_number: formData.work_order_number || undefined,
         invoice_number: formData.invoice_number || undefined,
+        estimated_price: parseFloat(formData.estimated_price) || 0,
+        estimated_profitability: parseFloat(formData.estimated_profitability) || 0,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
 
       await executeQuery<ClientProject>('insert', 'client_projects', newProject);
 
-      // Insert resources
-      if (laborList.length > 0) {
-        const laborRecords = laborList.map((labor, index) => ({
-          id: `labor-${projectId}-${index}`,
-          project_id: projectId,
-          ...labor,
-        }));
-        await executeQuery<ProjectLabor>('insert', 'project_labor', laborRecords);
+      // Add labor entries
+      for (const labor of formData.labor) {
+        if (labor.laborer_name) {
+          const laborEntry: ProjectLabor = {
+            id: `labor-${Date.now()}-${Math.random()}`,
+            project_id: projectId,
+            laborer_name: labor.laborer_name,
+            skill_level: labor.skill_level,
+            hours_worked: parseFloat(labor.hours_worked) || 0,
+            hourly_rate: parseFloat(labor.hourly_rate) || 15,
+            notes: labor.notes || undefined,
+          };
+          await executeQuery<ProjectLabor>('insert', 'project_labor', laborEntry);
+        }
       }
 
-      if (equipmentList.length > 0) {
-        const equipmentRecords = equipmentList.map((equipment, index) => ({
-          id: `equipment-${projectId}-${index}`,
-          project_id: projectId,
-          ...equipment,
-        }));
-        await executeQuery<ProjectEquipment>('insert', 'project_equipment', equipmentRecords);
+      // Add equipment entries
+      for (const equip of formData.equipment) {
+        if (equip.equipment_type) {
+          const equipEntry: ProjectEquipment = {
+            id: `equipment-${Date.now()}-${Math.random()}`,
+            project_id: projectId,
+            equipment_type: equip.equipment_type,
+            hours_used: parseFloat(equip.hours_used) || 0,
+            cost_per_hour: parseFloat(equip.cost_per_hour) || 0,
+            notes: equip.notes || undefined,
+          };
+          await executeQuery<ProjectEquipment>('insert', 'project_equipment', equipEntry);
+        }
       }
 
-      if (vehicleList.length > 0) {
-        const vehicleRecords = vehicleList.map((vehicle, index) => ({
-          id: `vehicle-${projectId}-${index}`,
-          project_id: projectId,
-          ...vehicle,
-        }));
-        await executeQuery<ProjectVehicle>('insert', 'project_vehicles', vehicleRecords);
+      // Add vehicle entries
+      for (const vehicle of formData.vehicles) {
+        if (vehicle.vehicle_type) {
+          const vehicleEntry: ProjectVehicle = {
+            id: `vehicle-${Date.now()}-${Math.random()}`,
+            project_id: projectId,
+            vehicle_type: vehicle.vehicle_type,
+            hours_used: parseFloat(vehicle.hours_used) || 0,
+            mileage: parseFloat(vehicle.mileage) || 0,
+            cost_per_hour: parseFloat(vehicle.cost_per_hour) || 0,
+            cost_per_mile: parseFloat(vehicle.cost_per_mile) || 0,
+            notes: vehicle.notes || undefined,
+          };
+          await executeQuery<ProjectVehicle>('insert', 'project_vehicles', vehicleEntry);
+        }
       }
 
-      if (supplyList.length > 0) {
-        const supplyRecords = supplyList.map((supply, index) => ({
-          id: `supply-${projectId}-${index}`,
-          project_id: projectId,
-          ...supply,
-        }));
-        await executeQuery<ProjectSupply>('insert', 'project_supplies', supplyRecords);
+      // Add supply entries
+      for (const supply of formData.supplies) {
+        if (supply.supply_type) {
+          const supplyEntry: ProjectSupply = {
+            id: `supply-${Date.now()}-${Math.random()}`,
+            project_id: projectId,
+            supply_type: supply.supply_type,
+            quantity: parseFloat(supply.quantity) || 0,
+            unit: supply.unit,
+            cost_per_unit: parseFloat(supply.cost_per_unit) || 0,
+            notes: supply.notes || undefined,
+          };
+          await executeQuery<ProjectSupply>('insert', 'project_supplies', supplyEntry);
+        }
       }
 
-      console.log('✓ Project added successfully with resources');
+      console.log('✓ Project added successfully');
       showToast('Project added successfully', 'success');
       
       await loadProjects();
@@ -601,7 +521,7 @@ const ProjectsScreen = () => {
       console.error('Error adding project:', error);
       showToast(`Failed to add project: ${error?.message || 'Unknown error'}`, 'error');
     }
-  }, [formData, laborList, equipmentList, vehicleList, supplyList, executeQuery, showToast, loadProjects, resetForm]);
+  }, [formData, executeQuery, showToast, loadProjects, resetForm]);
 
   const handleUpdateProject = useCallback(async () => {
     try {
@@ -625,6 +545,8 @@ const ProjectsScreen = () => {
         notes: formData.notes || undefined,
         work_order_number: formData.work_order_number || undefined,
         invoice_number: formData.invoice_number || undefined,
+        estimated_price: parseFloat(formData.estimated_price) || 0,
+        estimated_profitability: parseFloat(formData.estimated_profitability) || 0,
         updated_at: new Date().toISOString(),
       };
 
@@ -636,46 +558,73 @@ const ProjectsScreen = () => {
       );
 
       // Delete existing resources
-      await executeQuery<ProjectLabor>('delete', 'project_labor', undefined, { project_id: selectedProject.id });
-      await executeQuery<ProjectEquipment>('delete', 'project_equipment', undefined, { project_id: selectedProject.id });
-      await executeQuery<ProjectVehicle>('delete', 'project_vehicles', undefined, { project_id: selectedProject.id });
-      await executeQuery<ProjectSupply>('delete', 'project_supplies', undefined, { project_id: selectedProject.id });
+      await executeQuery('delete', 'project_labor', undefined, { project_id: selectedProject.id });
+      await executeQuery('delete', 'project_equipment', undefined, { project_id: selectedProject.id });
+      await executeQuery('delete', 'project_vehicles', undefined, { project_id: selectedProject.id });
+      await executeQuery('delete', 'project_supplies', undefined, { project_id: selectedProject.id });
 
-      // Insert new resources
-      if (laborList.length > 0) {
-        const laborRecords = laborList.map((labor, index) => ({
-          id: `labor-${selectedProject.id}-${Date.now()}-${index}`,
-          project_id: selectedProject.id,
-          ...labor,
-        }));
-        await executeQuery<ProjectLabor>('insert', 'project_labor', laborRecords);
+      // Add updated labor entries
+      for (const labor of formData.labor) {
+        if (labor.laborer_name) {
+          const laborEntry: ProjectLabor = {
+            id: `labor-${Date.now()}-${Math.random()}`,
+            project_id: selectedProject.id,
+            laborer_name: labor.laborer_name,
+            skill_level: labor.skill_level,
+            hours_worked: parseFloat(labor.hours_worked) || 0,
+            hourly_rate: parseFloat(labor.hourly_rate) || 15,
+            notes: labor.notes || undefined,
+          };
+          await executeQuery<ProjectLabor>('insert', 'project_labor', laborEntry);
+        }
       }
 
-      if (equipmentList.length > 0) {
-        const equipmentRecords = equipmentList.map((equipment, index) => ({
-          id: `equipment-${selectedProject.id}-${Date.now()}-${index}`,
-          project_id: selectedProject.id,
-          ...equipment,
-        }));
-        await executeQuery<ProjectEquipment>('insert', 'project_equipment', equipmentRecords);
+      // Add updated equipment entries
+      for (const equip of formData.equipment) {
+        if (equip.equipment_type) {
+          const equipEntry: ProjectEquipment = {
+            id: `equipment-${Date.now()}-${Math.random()}`,
+            project_id: selectedProject.id,
+            equipment_type: equip.equipment_type,
+            hours_used: parseFloat(equip.hours_used) || 0,
+            cost_per_hour: parseFloat(equip.cost_per_hour) || 0,
+            notes: equip.notes || undefined,
+          };
+          await executeQuery<ProjectEquipment>('insert', 'project_equipment', equipEntry);
+        }
       }
 
-      if (vehicleList.length > 0) {
-        const vehicleRecords = vehicleList.map((vehicle, index) => ({
-          id: `vehicle-${selectedProject.id}-${Date.now()}-${index}`,
-          project_id: selectedProject.id,
-          ...vehicle,
-        }));
-        await executeQuery<ProjectVehicle>('insert', 'project_vehicles', vehicleRecords);
+      // Add updated vehicle entries
+      for (const vehicle of formData.vehicles) {
+        if (vehicle.vehicle_type) {
+          const vehicleEntry: ProjectVehicle = {
+            id: `vehicle-${Date.now()}-${Math.random()}`,
+            project_id: selectedProject.id,
+            vehicle_type: vehicle.vehicle_type,
+            hours_used: parseFloat(vehicle.hours_used) || 0,
+            mileage: parseFloat(vehicle.mileage) || 0,
+            cost_per_hour: parseFloat(vehicle.cost_per_hour) || 0,
+            cost_per_mile: parseFloat(vehicle.cost_per_mile) || 0,
+            notes: vehicle.notes || undefined,
+          };
+          await executeQuery<ProjectVehicle>('insert', 'project_vehicles', vehicleEntry);
+        }
       }
 
-      if (supplyList.length > 0) {
-        const supplyRecords = supplyList.map((supply, index) => ({
-          id: `supply-${selectedProject.id}-${Date.now()}-${index}`,
-          project_id: selectedProject.id,
-          ...supply,
-        }));
-        await executeQuery<ProjectSupply>('insert', 'project_supplies', supplyRecords);
+      // Add updated supply entries
+      for (const supply of formData.supplies) {
+        if (supply.supply_type) {
+          const supplyEntry: ProjectSupply = {
+            id: `supply-${Date.now()}-${Math.random()}`,
+            project_id: selectedProject.id,
+            supply_type: supply.supply_type,
+            quantity: parseFloat(supply.quantity) || 0,
+            unit: supply.unit,
+            cost_per_unit: parseFloat(supply.cost_per_unit) || 0,
+            notes: supply.notes || undefined,
+          };
+          await executeQuery<ProjectSupply>('insert', 'project_supplies', supplyEntry);
+        }
       }
 
       console.log('✓ Project updated successfully');
@@ -690,7 +639,7 @@ const ProjectsScreen = () => {
       console.error('Error updating project:', error);
       showToast(`Failed to update project: ${error?.message || 'Unknown error'}`, 'error');
     }
-  }, [selectedProject, formData, laborList, equipmentList, vehicleList, supplyList, executeQuery, showToast, loadProjects, resetForm]);
+  }, [selectedProject, formData, executeQuery, showToast, loadProjects, resetForm]);
 
   const handleDeleteProject = useCallback(async (projectId: string) => {
     Alert.alert(
@@ -705,13 +654,13 @@ const ProjectsScreen = () => {
             try {
               console.log('Deleting project...');
               
-              // Delete resources first
-              await executeQuery<ProjectLabor>('delete', 'project_labor', undefined, { project_id: projectId });
-              await executeQuery<ProjectEquipment>('delete', 'project_equipment', undefined, { project_id: projectId });
-              await executeQuery<ProjectVehicle>('delete', 'project_vehicles', undefined, { project_id: projectId });
-              await executeQuery<ProjectSupply>('delete', 'project_supplies', undefined, { project_id: projectId });
+              // Delete related resources
+              await executeQuery('delete', 'project_labor', undefined, { project_id: projectId });
+              await executeQuery('delete', 'project_equipment', undefined, { project_id: projectId });
+              await executeQuery('delete', 'project_vehicles', undefined, { project_id: projectId });
+              await executeQuery('delete', 'project_supplies', undefined, { project_id: projectId });
+              await executeQuery('delete', 'project_completions', undefined, { project_id: projectId });
               
-              // Delete project
               await executeQuery<ClientProject>(
                 'delete',
                 'client_projects',
@@ -790,48 +739,71 @@ const ProjectsScreen = () => {
   const openEditModal = useCallback(async (project: ClientProject) => {
     console.log('Opening edit modal for project:', project.id);
     setSelectedProject(project);
-    setFormData({
-      client_name: project.client_name,
-      building_name: project.building_name || '',
-      project_name: project.project_name,
-      description: project.description || '',
-      frequency: project.frequency,
-      is_included_in_contract: project.is_included_in_contract,
-      billing_amount: project.billing_amount.toString(),
-      status: project.status,
-      next_scheduled_date: project.next_scheduled_date || '',
-      notes: project.notes || '',
-      work_order_number: project.work_order_number || '',
-      invoice_number: project.invoice_number || '',
-    });
-
-    // Load existing resources
+    
+    // Load resources
     try {
-      const [labor, equipment, vehicles, supplies] = await Promise.all([
-        executeQuery<ProjectLabor>('select', 'project_labor', undefined, { project_id: project.id }),
-        executeQuery<ProjectEquipment>('select', 'project_equipment', undefined, { project_id: project.id }),
-        executeQuery<ProjectVehicle>('select', 'project_vehicles', undefined, { project_id: project.id }),
-        executeQuery<ProjectSupply>('select', 'project_supplies', undefined, { project_id: project.id }),
-      ]);
-
-      setLaborList(labor.map(({ id, project_id, ...rest }) => rest));
-      setEquipmentList(equipment.map(({ id, project_id, ...rest }) => rest));
-      setVehicleList(vehicles.map(({ id, project_id, ...rest }) => rest));
-      setSupplyList(supplies.map(({ id, project_id, ...rest }) => rest));
+      const laborData = await executeQuery<ProjectLabor>('select', 'project_labor', undefined, { project_id: project.id });
+      const equipmentData = await executeQuery<ProjectEquipment>('select', 'project_equipment', undefined, { project_id: project.id });
+      const vehicleData = await executeQuery<ProjectVehicle>('select', 'project_vehicles', undefined, { project_id: project.id });
+      const supplyData = await executeQuery<ProjectSupply>('select', 'project_supplies', undefined, { project_id: project.id });
+      
+      setFormData({
+        client_name: project.client_name,
+        building_name: project.building_name || '',
+        project_name: project.project_name,
+        description: project.description || '',
+        frequency: project.frequency,
+        is_included_in_contract: project.is_included_in_contract,
+        billing_amount: project.billing_amount.toString(),
+        status: project.status,
+        next_scheduled_date: project.next_scheduled_date || '',
+        notes: project.notes || '',
+        work_order_number: project.work_order_number || '',
+        invoice_number: project.invoice_number || '',
+        estimated_price: (project.estimated_price || 0).toString(),
+        estimated_profitability: (project.estimated_profitability || 0).toString(),
+        labor: laborData.map(l => ({
+          laborer_name: l.laborer_name,
+          skill_level: l.skill_level,
+          hours_worked: l.hours_worked.toString(),
+          hourly_rate: l.hourly_rate.toString(),
+          notes: l.notes || '',
+        })),
+        equipment: equipmentData.map(e => ({
+          equipment_type: e.equipment_type,
+          hours_used: e.hours_used.toString(),
+          cost_per_hour: e.cost_per_hour.toString(),
+          notes: e.notes || '',
+        })),
+        vehicles: vehicleData.map(v => ({
+          vehicle_type: v.vehicle_type,
+          hours_used: v.hours_used.toString(),
+          mileage: v.mileage.toString(),
+          cost_per_hour: v.cost_per_hour.toString(),
+          cost_per_mile: v.cost_per_mile.toString(),
+          notes: v.notes || '',
+        })),
+        supplies: supplyData.map(s => ({
+          supply_type: s.supply_type,
+          quantity: s.quantity.toString(),
+          unit: s.unit,
+          cost_per_unit: s.cost_per_unit.toString(),
+          notes: s.notes || '',
+        })),
+      });
+      setShowEditModal(true);
     } catch (error) {
-      console.error('Error loading resources for edit:', error);
+      console.error('Error loading project resources:', error);
+      showToast('Failed to load project resources', 'error');
     }
-
-    setShowEditModal(true);
-  }, [executeQuery]);
+  }, [executeQuery, showToast]);
 
   const openDetailsModal = useCallback((project: ClientProject) => {
     console.log('Opening details modal for project:', project.id);
     setSelectedProject(project);
     loadProjectCompletions(project.id);
-    loadProjectResources(project.id, project.billing_amount);
     setShowDetailsModal(true);
-  }, [loadProjectCompletions, loadProjectResources]);
+  }, [loadProjectCompletions]);
 
   const openCompletionModal = useCallback((project: ClientProject) => {
     console.log('Opening completion modal for project:', project.id);
@@ -849,19 +821,6 @@ const ProjectsScreen = () => {
         return colors.danger;
       case 'on-hold':
         return colors.warning;
-      default:
-        return colors.textSecondary;
-    }
-  };
-
-  const getSkillLevelColor = (level: string) => {
-    switch (level) {
-      case 'low':
-        return '#90EE90';
-      case 'medium':
-        return '#FFD700';
-      case 'high':
-        return '#FF6B6B';
       default:
         return colors.textSecondary;
     }
@@ -897,6 +856,63 @@ const ProjectsScreen = () => {
     if (!formData.client_name) return [];
     return clientBuildings.filter(b => b.clientName === formData.client_name);
   }, [formData.client_name, clientBuildings]);
+
+  // Add/remove resource functions
+  const addLabor = () => {
+    setFormData({
+      ...formData,
+      labor: [...formData.labor, { laborer_name: '', skill_level: 'medium', hours_worked: '0', hourly_rate: '15', notes: '' }]
+    });
+  };
+
+  const removeLabor = (index: number) => {
+    setFormData({
+      ...formData,
+      labor: formData.labor.filter((_, i) => i !== index)
+    });
+  };
+
+  const addEquipment = () => {
+    setFormData({
+      ...formData,
+      equipment: [...formData.equipment, { equipment_type: '', hours_used: '0', cost_per_hour: '0', notes: '' }]
+    });
+  };
+
+  const removeEquipment = (index: number) => {
+    setFormData({
+      ...formData,
+      equipment: formData.equipment.filter((_, i) => i !== index)
+    });
+  };
+
+  const addVehicle = () => {
+    setFormData({
+      ...formData,
+      vehicles: [...formData.vehicles, { vehicle_type: '', hours_used: '0', mileage: '0', cost_per_hour: '0', cost_per_mile: '0', notes: '' }]
+    });
+  };
+
+  const removeVehicle = (index: number) => {
+    setFormData({
+      ...formData,
+      vehicles: formData.vehicles.filter((_, i) => i !== index)
+    });
+  };
+
+  const addSupply = () => {
+    setFormData({
+      ...formData,
+      supplies: [...formData.supplies, { supply_type: '', quantity: '0', unit: '', cost_per_unit: '0', notes: '' }]
+    });
+  };
+
+  const removeSupply = (index: number) => {
+    setFormData({
+      ...formData,
+      supplies: formData.supplies.filter((_, i) => i !== index)
+    });
+  };
 
   if (isLoading) {
     return <LoadingSpinner message="Loading projects..." />;
@@ -1090,7 +1106,7 @@ const ProjectsScreen = () => {
     modalContainer: {
       width: '100%',
       maxWidth: 500,
-      maxHeight: '90%',
+      maxHeight: '85%',
       backgroundColor: colors.background,
       borderRadius: 16,
       padding: spacing.lg,
@@ -1101,20 +1117,13 @@ const ProjectsScreen = () => {
       color: colors.text,
       fontWeight: '600',
       textAlign: 'center',
-      marginBottom: spacing.sm,
+      marginBottom: spacing.lg,
     },
     modalSubtitle: {
       ...typography.body,
       color: colors.textSecondary,
       textAlign: 'center',
       marginBottom: spacing.lg,
-    },
-    sectionTitle: {
-      ...typography.h3,
-      color: colors.text,
-      fontWeight: '600',
-      marginTop: spacing.lg,
-      marginBottom: spacing.md,
     },
     inputLabel: {
       ...typography.body,
@@ -1127,8 +1136,8 @@ const ProjectsScreen = () => {
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: 8,
-      paddingVertical: spacing.md,
-      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.md,
       fontSize: 16,
       color: colors.text,
       backgroundColor: colors.background,
@@ -1137,8 +1146,8 @@ const ProjectsScreen = () => {
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: 8,
-      paddingVertical: spacing.md,
-      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.md,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
@@ -1162,14 +1171,15 @@ const ProjectsScreen = () => {
       borderColor: colors.border,
       borderRadius: 8,
       backgroundColor: colors.background,
+      marginTop: spacing.xs,
       marginBottom: spacing.sm,
     },
     dropdownScroll: {
       maxHeight: 200,
     },
     dropdownItem: {
-      paddingVertical: spacing.md,
-      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.md,
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
     },
@@ -1181,7 +1191,8 @@ const ProjectsScreen = () => {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      marginVertical: spacing.sm,
+      paddingVertical: spacing.sm,
+      marginTop: spacing.sm,
     },
     modalActions: {
       flexDirection: 'row',
@@ -1249,64 +1260,6 @@ const ProjectsScreen = () => {
       marginTop: spacing.xs,
       fontStyle: 'italic',
     },
-    resourceSection: {
-      marginBottom: spacing.lg,
-      paddingBottom: spacing.lg,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-    },
-    addResourceForm: {
-      backgroundColor: colors.backgroundAlt,
-      borderRadius: 8,
-      padding: spacing.md,
-      marginBottom: spacing.md,
-    },
-    resourceItem: {
-      backgroundColor: colors.backgroundAlt,
-      borderRadius: 8,
-      padding: spacing.md,
-      marginBottom: spacing.sm,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    resourceItemHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: spacing.xs,
-    },
-    resourceItemName: {
-      ...typography.body,
-      color: colors.text,
-      fontWeight: '600',
-      flex: 1,
-    },
-    resourceItemDetails: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: spacing.sm,
-      alignItems: 'center',
-    },
-    resourceItemText: {
-      ...typography.small,
-      color: colors.textSecondary,
-    },
-    resourceItemTotal: {
-      ...typography.body,
-      color: themeColor,
-      fontWeight: '600',
-      marginLeft: 'auto',
-    },
-    skillBadge: {
-      paddingHorizontal: spacing.sm,
-      paddingVertical: 2,
-      borderRadius: 8,
-    },
-    skillBadgeText: {
-      ...typography.small,
-      fontWeight: '700',
-      fontSize: 10,
-    },
     numberInputRow: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -1329,60 +1282,73 @@ const ProjectsScreen = () => {
       color: colors.background,
       fontWeight: '600',
     },
-    costSummary: {
-      backgroundColor: colors.backgroundAlt,
-      borderRadius: 12,
-      padding: spacing.lg,
-      marginTop: spacing.md,
-      borderWidth: 2,
-      borderColor: themeColor,
-    },
-    costSummaryTitle: {
+    sectionHeader: {
       ...typography.h3,
       color: colors.text,
       fontWeight: '600',
-      marginBottom: spacing.md,
-      textAlign: 'center',
+      marginTop: spacing.lg,
+      marginBottom: spacing.sm,
     },
-    costRow: {
+    resourceCard: {
+      backgroundColor: colors.backgroundAlt,
+      borderRadius: 8,
+      padding: spacing.md,
+      marginBottom: spacing.sm,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    resourceHeader: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      paddingVertical: spacing.sm,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
+      marginBottom: spacing.sm,
     },
-    costRowTotal: {
-      borderTopWidth: 2,
-      borderTopColor: themeColor,
-      borderBottomWidth: 0,
-      marginTop: spacing.sm,
-      paddingTop: spacing.md,
-    },
-    costLabel: {
+    resourceTitle: {
       ...typography.body,
       color: colors.text,
-      fontWeight: '500',
+      fontWeight: '600',
     },
-    costLabelTotal: {
-      ...typography.h3,
-      color: colors.text,
-      fontWeight: '700',
+    addButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      paddingVertical: spacing.xs,
+      paddingHorizontal: spacing.sm,
+      backgroundColor: themeColor,
+      borderRadius: 6,
     },
-    costValue: {
+    addButtonText: {
+      ...typography.small,
+      color: colors.background,
+      fontWeight: '600',
+    },
+    removeButton: {
+      padding: spacing.xs,
+    },
+    calculatedField: {
+      backgroundColor: colors.backgroundAlt,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 8,
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.md,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    calculatedValue: {
       ...typography.body,
       color: themeColor,
       fontWeight: '600',
     },
-    costValueTotal: {
-      ...typography.h2,
-      fontWeight: '700',
+    inputWithDropdown: {
+      position: 'relative',
     },
-    profitPositive: {
-      color: colors.success,
-    },
-    profitNegative: {
-      color: colors.danger,
+    dropdownToggle: {
+      position: 'absolute',
+      right: spacing.sm,
+      top: '50%',
+      transform: [{ translateY: -12 }],
     },
   });
 
@@ -1546,6 +1512,13 @@ const ProjectsScreen = () => {
                       {project.is_included_in_contract ? 'Included' : `$${project.billing_amount.toFixed(2)}`}
                     </Text>
                   </View>
+                  
+                  {project.next_scheduled_date && (
+                    <View style={styles.detailItem}>
+                      <Icon name="calendar" size={16} style={{ color: themeColor }} />
+                      <Text style={styles.detailText}>{formatDate(project.next_scheduled_date)}</Text>
+                    </View>
+                  )}
                 </View>
               </TouchableOpacity>
 
@@ -1591,7 +1564,7 @@ const ProjectsScreen = () => {
         )}
       </ScrollView>
 
-      {/* Add/Edit Modal - Simplified for now */}
+      {/* Add/Edit Modal */}
       <Modal
         visible={showAddModal || showEditModal}
         animationType="slide"
@@ -1608,23 +1581,78 @@ const ProjectsScreen = () => {
             </Text>
             
             <ScrollView showsVerticalScrollIndicator={false}>
+              {/* Basic Information */}
               <Text style={styles.inputLabel}>Client Name *</Text>
-              <TextInput
-                style={styles.input}
-                value={formData.client_name}
-                onChangeText={(text) => setFormData({ ...formData, client_name: text })}
-                placeholder="Enter client name"
-                placeholderTextColor={colors.textSecondary}
-              />
+              <TouchableOpacity
+                style={styles.inputTouchable}
+                onPress={() => setShowClientDropdown(!showClientDropdown)}
+              >
+                <Text style={[styles.inputText, !formData.client_name && styles.placeholderText]}>
+                  {formData.client_name || 'Select client'}
+                </Text>
+                <Icon name="chevron-down" size={20} style={{ color: colors.textSecondary }} />
+              </TouchableOpacity>
+              {showClientDropdown && (
+                <View style={styles.dropdown}>
+                  <ScrollView style={styles.dropdownScroll} nestedScrollEnabled={true}>
+                    {clients.map((client) => (
+                      <TouchableOpacity
+                        key={client.id}
+                        style={styles.dropdownItem}
+                        onPress={() => {
+                          setFormData({ ...formData, client_name: client.name, building_name: '' });
+                          setShowClientDropdown(false);
+                        }}
+                      >
+                        <Text style={styles.dropdownText}>{client.name}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
 
               <Text style={styles.inputLabel}>Building Name</Text>
-              <TextInput
-                style={styles.input}
-                value={formData.building_name}
-                onChangeText={(text) => setFormData({ ...formData, building_name: text })}
-                placeholder="Enter building name"
-                placeholderTextColor={colors.textSecondary}
-              />
+              <TouchableOpacity
+                style={styles.inputTouchable}
+                onPress={() => {
+                  if (formData.client_name && availableBuildings.length > 0) {
+                    setShowBuildingDropdown(!showBuildingDropdown);
+                  }
+                }}
+                disabled={!formData.client_name || availableBuildings.length === 0}
+              >
+                <Text style={[styles.inputText, !formData.building_name && styles.placeholderText]}>
+                  {formData.building_name || (formData.client_name ? (availableBuildings.length > 0 ? 'Select building (optional)' : 'No buildings available') : 'Select client first')}
+                </Text>
+                <Icon name="chevron-down" size={20} style={{ color: colors.textSecondary }} />
+              </TouchableOpacity>
+              {showBuildingDropdown && availableBuildings.length > 0 && (
+                <View style={styles.dropdown}>
+                  <ScrollView style={styles.dropdownScroll} nestedScrollEnabled={true}>
+                    <TouchableOpacity
+                      style={styles.dropdownItem}
+                      onPress={() => {
+                        setFormData({ ...formData, building_name: '' });
+                        setShowBuildingDropdown(false);
+                      }}
+                    >
+                      <Text style={[styles.dropdownText, { fontStyle: 'italic' }]}>None</Text>
+                    </TouchableOpacity>
+                    {availableBuildings.map((building) => (
+                      <TouchableOpacity
+                        key={building.id}
+                        style={styles.dropdownItem}
+                        onPress={() => {
+                          setFormData({ ...formData, building_name: building.name });
+                          setShowBuildingDropdown(false);
+                        }}
+                      >
+                        <Text style={styles.dropdownText}>{building.name}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
 
               <Text style={styles.inputLabel}>Project Name *</Text>
               <TextInput
@@ -1645,15 +1673,59 @@ const ProjectsScreen = () => {
                 multiline
               />
 
-              <Text style={styles.inputLabel}>Billing Amount</Text>
-              <TextInput
-                style={styles.input}
-                value={formData.billing_amount}
-                onChangeText={(text) => setFormData({ ...formData, billing_amount: text })}
-                placeholder="0.00"
-                placeholderTextColor={colors.textSecondary}
-                keyboardType="decimal-pad"
-              />
+              <Text style={styles.inputLabel}>Frequency</Text>
+              <TouchableOpacity
+                style={styles.inputTouchable}
+                onPress={() => setShowFrequencyDropdown(!showFrequencyDropdown)}
+              >
+                <Text style={styles.inputText}>{getFrequencyLabel(formData.frequency)}</Text>
+                <Icon name="chevron-down" size={20} style={{ color: colors.textSecondary }} />
+              </TouchableOpacity>
+              {showFrequencyDropdown && (
+                <View style={styles.dropdown}>
+                  <ScrollView style={styles.dropdownScroll} nestedScrollEnabled={true}>
+                    {['one-time', 'weekly', 'bi-weekly', 'monthly', 'quarterly', 'yearly'].map((freq) => (
+                      <TouchableOpacity
+                        key={freq}
+                        style={styles.dropdownItem}
+                        onPress={() => {
+                          setFormData({ ...formData, frequency: freq as any });
+                          setShowFrequencyDropdown(false);
+                        }}
+                      >
+                        <Text style={styles.dropdownText}>{getFrequencyLabel(freq)}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+
+              <Text style={styles.inputLabel}>Status</Text>
+              <TouchableOpacity
+                style={styles.inputTouchable}
+                onPress={() => setShowStatusDropdown(!showStatusDropdown)}
+              >
+                <Text style={styles.inputText}>{formData.status.charAt(0).toUpperCase() + formData.status.slice(1)}</Text>
+                <Icon name="chevron-down" size={20} style={{ color: colors.textSecondary }} />
+              </TouchableOpacity>
+              {showStatusDropdown && (
+                <View style={styles.dropdown}>
+                  <ScrollView style={styles.dropdownScroll} nestedScrollEnabled={true}>
+                    {['active', 'completed', 'cancelled', 'on-hold'].map((status) => (
+                      <TouchableOpacity
+                        key={status}
+                        style={styles.dropdownItem}
+                        onPress={() => {
+                          setFormData({ ...formData, status: status as any });
+                          setShowStatusDropdown(false);
+                        }}
+                      >
+                        <Text style={styles.dropdownText}>{status.charAt(0).toUpperCase() + status.slice(1)}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
 
               <View style={styles.switchRow}>
                 <Text style={styles.inputLabel}>Included in Contract</Text>
@@ -1664,6 +1736,546 @@ const ProjectsScreen = () => {
                   thumbColor={colors.background}
                 />
               </View>
+
+              <Text style={styles.inputLabel}>Billing Amount ($)</Text>
+              <TextInput
+                style={styles.input}
+                value={formData.billing_amount}
+                onChangeText={(text) => setFormData({ ...formData, billing_amount: text })}
+                placeholder="0.00"
+                placeholderTextColor={colors.textSecondary}
+                keyboardType="decimal-pad"
+              />
+
+              <Text style={styles.inputLabel}>Next Scheduled Date</Text>
+              <TextInput
+                style={styles.input}
+                value={formData.next_scheduled_date}
+                onChangeText={(text) => setFormData({ ...formData, next_scheduled_date: text })}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={colors.textSecondary}
+              />
+
+              <Text style={styles.inputLabel}>Work Order Number</Text>
+              <View style={styles.numberInputRow}>
+                <View style={styles.numberInputContainer}>
+                  <TextInput
+                    style={styles.input}
+                    value={formData.work_order_number}
+                    onChangeText={(text) => setFormData({ ...formData, work_order_number: text })}
+                    placeholder="WO-YYYYMMDD-XXX"
+                    placeholderTextColor={colors.textSecondary}
+                  />
+                </View>
+                <TouchableOpacity
+                  style={styles.generateButton}
+                  onPress={() => setFormData({ ...formData, work_order_number: generateWorkOrderNumber() })}
+                >
+                  <Icon name="refresh" size={16} style={{ color: colors.background }} />
+                  <Text style={styles.generateButtonText}>Generate</Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.inputLabel}>Invoice Number</Text>
+              <View style={styles.numberInputRow}>
+                <View style={styles.numberInputContainer}>
+                  <TextInput
+                    style={styles.input}
+                    value={formData.invoice_number}
+                    onChangeText={(text) => setFormData({ ...formData, invoice_number: text })}
+                    placeholder="INV-YYYYMM-XXXX"
+                    placeholderTextColor={colors.textSecondary}
+                  />
+                </View>
+                <TouchableOpacity
+                  style={styles.generateButton}
+                  onPress={() => setFormData({ ...formData, invoice_number: generateInvoiceNumber() })}
+                >
+                  <Icon name="refresh" size={16} style={{ color: colors.background }} />
+                  <Text style={styles.generateButtonText}>Generate</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Labor Section with Dropdown + Manual Input */}
+              <Text style={styles.sectionHeader}>Labor</Text>
+              {formData.labor.map((labor, index) => (
+                <View key={index} style={styles.resourceCard}>
+                  <View style={styles.resourceHeader}>
+                    <Text style={styles.resourceTitle}>Laborer {index + 1}</Text>
+                    <TouchableOpacity style={styles.removeButton} onPress={() => removeLabor(index)}>
+                      <Icon name="close-circle" size={24} style={{ color: colors.danger }} />
+                    </TouchableOpacity>
+                  </View>
+                  
+                  <Text style={styles.inputLabel}>Laborer Name</Text>
+                  <View style={styles.inputWithDropdown}>
+                    <TextInput
+                      style={styles.input}
+                      value={labor.laborer_name}
+                      onChangeText={(text) => {
+                        const newLabor = [...formData.labor];
+                        newLabor[index].laborer_name = text;
+                        setFormData({ ...formData, labor: newLabor });
+                      }}
+                      placeholder="Type or select from dropdown"
+                      placeholderTextColor={colors.textSecondary}
+                    />
+                    <TouchableOpacity
+                      style={styles.dropdownToggle}
+                      onPress={() => setShowLaborDropdown(showLaborDropdown === index ? null : index)}
+                    >
+                      <Icon name="chevron-down" size={20} style={{ color: colors.textSecondary }} />
+                    </TouchableOpacity>
+                  </View>
+                  {showLaborDropdown === index && (
+                    <View style={styles.dropdown}>
+                      <ScrollView style={styles.dropdownScroll} nestedScrollEnabled={true}>
+                        {cleaners.filter(c => c.isActive).map((cleaner) => (
+                          <TouchableOpacity
+                            key={cleaner.id}
+                            style={styles.dropdownItem}
+                            onPress={() => {
+                              const newLabor = [...formData.labor];
+                              newLabor[index].laborer_name = cleaner.name;
+                              newLabor[index].hourly_rate = (cleaner.defaultHourlyRate || 15).toString();
+                              setFormData({ ...formData, labor: newLabor });
+                              setShowLaborDropdown(null);
+                            }}
+                          >
+                            <Text style={styles.dropdownText}>
+                              {cleaner.name} - ${(cleaner.defaultHourlyRate || 15).toFixed(2)}/hr
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                        {cleaners.filter(c => c.isActive).length === 0 && (
+                          <View style={styles.dropdownItem}>
+                            <Text style={[styles.dropdownText, { fontStyle: 'italic', color: colors.textSecondary }]}>
+                              No active cleaners available
+                            </Text>
+                          </View>
+                        )}
+                      </ScrollView>
+                    </View>
+                  )}
+                  
+                  <Text style={styles.inputLabel}>Skill Level</Text>
+                  <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                    {['low', 'medium', 'high'].map((level) => (
+                      <TouchableOpacity
+                        key={level}
+                        style={[
+                          styles.filterChip,
+                          labor.skill_level === level && styles.filterChipActive
+                        ]}
+                        onPress={() => {
+                          const newLabor = [...formData.labor];
+                          newLabor[index].skill_level = level as any;
+                          setFormData({ ...formData, labor: newLabor });
+                        }}
+                      >
+                        <Text style={[
+                          styles.filterChipText,
+                          labor.skill_level === level && styles.filterChipTextActive
+                        ]}>
+                          {level.charAt(0).toUpperCase() + level.slice(1)}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.inputLabel}>Hours</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={labor.hours_worked}
+                        onChangeText={(text) => {
+                          const newLabor = [...formData.labor];
+                          newLabor[index].hours_worked = text;
+                          setFormData({ ...formData, labor: newLabor });
+                        }}
+                        placeholder="0"
+                        placeholderTextColor={colors.textSecondary}
+                        keyboardType="decimal-pad"
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.inputLabel}>Rate ($/hr)</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={labor.hourly_rate}
+                        onChangeText={(text) => {
+                          const newLabor = [...formData.labor];
+                          newLabor[index].hourly_rate = text;
+                          setFormData({ ...formData, labor: newLabor });
+                        }}
+                        placeholder="15.00"
+                        placeholderTextColor={colors.textSecondary}
+                        keyboardType="decimal-pad"
+                      />
+                    </View>
+                  </View>
+                </View>
+              ))}
+              <TouchableOpacity style={styles.addButton} onPress={addLabor}>
+                <Icon name="add" size={16} style={{ color: colors.background }} />
+                <Text style={styles.addButtonText}>Add Labor</Text>
+              </TouchableOpacity>
+
+              {/* Equipment Section with Dropdown + Manual Input */}
+              <Text style={styles.sectionHeader}>Equipment</Text>
+              {formData.equipment.map((equip, index) => (
+                <View key={index} style={styles.resourceCard}>
+                  <View style={styles.resourceHeader}>
+                    <Text style={styles.resourceTitle}>Equipment {index + 1}</Text>
+                    <TouchableOpacity style={styles.removeButton} onPress={() => removeEquipment(index)}>
+                      <Icon name="close-circle" size={24} style={{ color: colors.danger }} />
+                    </TouchableOpacity>
+                  </View>
+                  
+                  <Text style={styles.inputLabel}>Equipment Type</Text>
+                  <View style={styles.inputWithDropdown}>
+                    <TextInput
+                      style={styles.input}
+                      value={equip.equipment_type}
+                      onChangeText={(text) => {
+                        const newEquipment = [...formData.equipment];
+                        newEquipment[index].equipment_type = text;
+                        setFormData({ ...formData, equipment: newEquipment });
+                      }}
+                      placeholder="Type or select from dropdown"
+                      placeholderTextColor={colors.textSecondary}
+                    />
+                    <TouchableOpacity
+                      style={styles.dropdownToggle}
+                      onPress={() => setShowEquipmentDropdown(showEquipmentDropdown === index ? null : index)}
+                    >
+                      <Icon name="chevron-down" size={20} style={{ color: colors.textSecondary }} />
+                    </TouchableOpacity>
+                  </View>
+                  {showEquipmentDropdown === index && (
+                    <View style={styles.dropdown}>
+                      <ScrollView style={styles.dropdownScroll} nestedScrollEnabled={true}>
+                        {inventoryItems.filter(item => item.category === 'equipment').map((item) => (
+                          <TouchableOpacity
+                            key={item.id}
+                            style={styles.dropdownItem}
+                            onPress={() => {
+                              const newEquipment = [...formData.equipment];
+                              newEquipment[index].equipment_type = item.name;
+                              setFormData({ ...formData, equipment: newEquipment });
+                              setShowEquipmentDropdown(null);
+                            }}
+                          >
+                            <Text style={styles.dropdownText}>{item.name}</Text>
+                          </TouchableOpacity>
+                        ))}
+                        {inventoryItems.filter(item => item.category === 'equipment').length === 0 && (
+                          <View style={styles.dropdownItem}>
+                            <Text style={[styles.dropdownText, { fontStyle: 'italic', color: colors.textSecondary }]}>
+                              No equipment items in inventory
+                            </Text>
+                          </View>
+                        )}
+                      </ScrollView>
+                    </View>
+                  )}
+                  
+                  <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.inputLabel}>Hours</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={equip.hours_used}
+                        onChangeText={(text) => {
+                          const newEquipment = [...formData.equipment];
+                          newEquipment[index].hours_used = text;
+                          setFormData({ ...formData, equipment: newEquipment });
+                        }}
+                        placeholder="0"
+                        placeholderTextColor={colors.textSecondary}
+                        keyboardType="decimal-pad"
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.inputLabel}>Cost ($/hr)</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={equip.cost_per_hour}
+                        onChangeText={(text) => {
+                          const newEquipment = [...formData.equipment];
+                          newEquipment[index].cost_per_hour = text;
+                          setFormData({ ...formData, equipment: newEquipment });
+                        }}
+                        placeholder="0.00"
+                        placeholderTextColor={colors.textSecondary}
+                        keyboardType="decimal-pad"
+                      />
+                    </View>
+                  </View>
+                </View>
+              ))}
+              <TouchableOpacity style={styles.addButton} onPress={addEquipment}>
+                <Icon name="add" size={16} style={{ color: colors.background }} />
+                <Text style={styles.addButtonText}>Add Equipment</Text>
+              </TouchableOpacity>
+
+              {/* Vehicle Section with Dropdown + Manual Input */}
+              <Text style={styles.sectionHeader}>Vehicles</Text>
+              {formData.vehicles.map((vehicle, index) => (
+                <View key={index} style={styles.resourceCard}>
+                  <View style={styles.resourceHeader}>
+                    <Text style={styles.resourceTitle}>Vehicle {index + 1}</Text>
+                    <TouchableOpacity style={styles.removeButton} onPress={() => removeVehicle(index)}>
+                      <Icon name="close-circle" size={24} style={{ color: colors.danger }} />
+                    </TouchableOpacity>
+                  </View>
+                  
+                  <Text style={styles.inputLabel}>Vehicle Type</Text>
+                  <View style={styles.inputWithDropdown}>
+                    <TextInput
+                      style={styles.input}
+                      value={vehicle.vehicle_type}
+                      onChangeText={(text) => {
+                        const newVehicles = [...formData.vehicles];
+                        newVehicles[index].vehicle_type = text;
+                        setFormData({ ...formData, vehicles: newVehicles });
+                      }}
+                      placeholder="Type or select from dropdown"
+                      placeholderTextColor={colors.textSecondary}
+                    />
+                    <TouchableOpacity
+                      style={styles.dropdownToggle}
+                      onPress={() => setShowVehicleDropdown(showVehicleDropdown === index ? null : index)}
+                    >
+                      <Icon name="chevron-down" size={20} style={{ color: colors.textSecondary }} />
+                    </TouchableOpacity>
+                  </View>
+                  {showVehicleDropdown === index && (
+                    <View style={styles.dropdown}>
+                      <ScrollView style={styles.dropdownScroll} nestedScrollEnabled={true}>
+                        {PREDEFINED_VEHICLES.map((option) => (
+                          <TouchableOpacity
+                            key={option}
+                            style={styles.dropdownItem}
+                            onPress={() => {
+                              const newVehicles = [...formData.vehicles];
+                              newVehicles[index].vehicle_type = option;
+                              setFormData({ ...formData, vehicles: newVehicles });
+                              setShowVehicleDropdown(null);
+                            }}
+                          >
+                            <Text style={styles.dropdownText}>{option}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </View>
+                  )}
+                  
+                  <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.inputLabel}>Hours</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={vehicle.hours_used}
+                        onChangeText={(text) => {
+                          const newVehicles = [...formData.vehicles];
+                          newVehicles[index].hours_used = text;
+                          setFormData({ ...formData, vehicles: newVehicles });
+                        }}
+                        placeholder="0"
+                        placeholderTextColor={colors.textSecondary}
+                        keyboardType="decimal-pad"
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.inputLabel}>$/hr</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={vehicle.cost_per_hour}
+                        onChangeText={(text) => {
+                          const newVehicles = [...formData.vehicles];
+                          newVehicles[index].cost_per_hour = text;
+                          setFormData({ ...formData, vehicles: newVehicles });
+                        }}
+                        placeholder="0.00"
+                        placeholderTextColor={colors.textSecondary}
+                        keyboardType="decimal-pad"
+                      />
+                    </View>
+                  </View>
+                  <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.inputLabel}>Mileage</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={vehicle.mileage}
+                        onChangeText={(text) => {
+                          const newVehicles = [...formData.vehicles];
+                          newVehicles[index].mileage = text;
+                          setFormData({ ...formData, vehicles: newVehicles });
+                        }}
+                        placeholder="0"
+                        placeholderTextColor={colors.textSecondary}
+                        keyboardType="decimal-pad"
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.inputLabel}>$/mile</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={vehicle.cost_per_mile}
+                        onChangeText={(text) => {
+                          const newVehicles = [...formData.vehicles];
+                          newVehicles[index].cost_per_mile = text;
+                          setFormData({ ...formData, vehicles: newVehicles });
+                        }}
+                        placeholder="0.00"
+                        placeholderTextColor={colors.textSecondary}
+                        keyboardType="decimal-pad"
+                      />
+                    </View>
+                  </View>
+                </View>
+              ))}
+              <TouchableOpacity style={styles.addButton} onPress={addVehicle}>
+                <Icon name="add" size={16} style={{ color: colors.background }} />
+                <Text style={styles.addButtonText}>Add Vehicle</Text>
+              </TouchableOpacity>
+
+              {/* Supply Section with Dropdown + Manual Input */}
+              <Text style={styles.sectionHeader}>Supplies</Text>
+              {formData.supplies.map((supply, index) => (
+                <View key={index} style={styles.resourceCard}>
+                  <View style={styles.resourceHeader}>
+                    <Text style={styles.resourceTitle}>Supply {index + 1}</Text>
+                    <TouchableOpacity style={styles.removeButton} onPress={() => removeSupply(index)}>
+                      <Icon name="close-circle" size={24} style={{ color: colors.danger }} />
+                    </TouchableOpacity>
+                  </View>
+                  
+                  <Text style={styles.inputLabel}>Supply Type</Text>
+                  <View style={styles.inputWithDropdown}>
+                    <TextInput
+                      style={styles.input}
+                      value={supply.supply_type}
+                      onChangeText={(text) => {
+                        const newSupplies = [...formData.supplies];
+                        newSupplies[index].supply_type = text;
+                        setFormData({ ...formData, supplies: newSupplies });
+                      }}
+                      placeholder="Type or select from dropdown"
+                      placeholderTextColor={colors.textSecondary}
+                    />
+                    <TouchableOpacity
+                      style={styles.dropdownToggle}
+                      onPress={() => setShowSupplyDropdown(showSupplyDropdown === index ? null : index)}
+                    >
+                      <Icon name="chevron-down" size={20} style={{ color: colors.textSecondary }} />
+                    </TouchableOpacity>
+                  </View>
+                  {showSupplyDropdown === index && (
+                    <View style={styles.dropdown}>
+                      <ScrollView style={styles.dropdownScroll} nestedScrollEnabled={true}>
+                        {inventoryItems.filter(item => item.category === 'cleaning-supplies').map((item) => (
+                          <TouchableOpacity
+                            key={item.id}
+                            style={styles.dropdownItem}
+                            onPress={() => {
+                              const newSupplies = [...formData.supplies];
+                              newSupplies[index].supply_type = item.name;
+                              setFormData({ ...formData, supplies: newSupplies });
+                              setShowSupplyDropdown(null);
+                            }}
+                          >
+                            <Text style={styles.dropdownText}>{item.name}</Text>
+                          </TouchableOpacity>
+                        ))}
+                        {inventoryItems.filter(item => item.category === 'cleaning-supplies').length === 0 && (
+                          <View style={styles.dropdownItem}>
+                            <Text style={[styles.dropdownText, { fontStyle: 'italic', color: colors.textSecondary }]}>
+                              No supply items in inventory
+                            </Text>
+                          </View>
+                        )}
+                      </ScrollView>
+                    </View>
+                  )}
+                  
+                  <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.inputLabel}>Quantity</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={supply.quantity}
+                        onChangeText={(text) => {
+                          const newSupplies = [...formData.supplies];
+                          newSupplies[index].quantity = text;
+                          setFormData({ ...formData, supplies: newSupplies });
+                        }}
+                        placeholder="0"
+                        placeholderTextColor={colors.textSecondary}
+                        keyboardType="decimal-pad"
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.inputLabel}>Unit</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={supply.unit}
+                        onChangeText={(text) => {
+                          const newSupplies = [...formData.supplies];
+                          newSupplies[index].unit = text;
+                          setFormData({ ...formData, supplies: newSupplies });
+                        }}
+                        placeholder="ea, box, etc"
+                        placeholderTextColor={colors.textSecondary}
+                      />
+                    </View>
+                  </View>
+                  <Text style={styles.inputLabel}>Cost per Unit ($)</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={supply.cost_per_unit}
+                    onChangeText={(text) => {
+                      const newSupplies = [...formData.supplies];
+                      newSupplies[index].cost_per_unit = text;
+                      setFormData({ ...formData, supplies: newSupplies });
+                    }}
+                    placeholder="0.00"
+                    placeholderTextColor={colors.textSecondary}
+                    keyboardType="decimal-pad"
+                  />
+                </View>
+              ))}
+              <TouchableOpacity style={styles.addButton} onPress={addSupply}>
+                <Icon name="add" size={16} style={{ color: colors.background }} />
+                <Text style={styles.addButtonText}>Add Supply</Text>
+              </TouchableOpacity>
+
+              {/* Estimated Price & Profit */}
+              <Text style={styles.sectionHeader}>Financial Summary</Text>
+              
+              <Text style={styles.inputLabel}>Estimated Price (Calculated)</Text>
+              <View style={styles.calculatedField}>
+                <Text style={styles.inputText}>Total Cost</Text>
+                <Text style={styles.calculatedValue}>${calculateEstimatedPrice()}</Text>
+              </View>
+
+              <Text style={styles.inputLabel}>Estimated Profitability (Calculated)</Text>
+              <View style={styles.calculatedField}>
+                <Text style={styles.inputText}>Profit Margin</Text>
+                <Text style={styles.calculatedValue}>{calculateEstimatedProfit()}%</Text>
+              </View>
+
+              <Text style={styles.inputLabel}>Notes</Text>
+              <TextInput
+                style={[styles.input, styles.textArea]}
+                value={formData.notes}
+                onChangeText={(text) => setFormData({ ...formData, notes: text })}
+                placeholder="Enter notes"
+                placeholderTextColor={colors.textSecondary}
+                multiline
+              />
             </ScrollView>
 
             <View style={styles.modalActions}>
@@ -1679,7 +2291,21 @@ const ProjectsScreen = () => {
               />
               <Button
                 text={showAddModal ? 'Add' : 'Update'}
-                onPress={showAddModal ? handleAddProject : handleUpdateProject}
+                onPress={() => {
+                  // Update calculated fields before saving
+                  const updatedFormData = {
+                    ...formData,
+                    estimated_price: calculateEstimatedPrice(),
+                    estimated_profitability: calculateEstimatedProfit(),
+                  };
+                  setFormData(updatedFormData);
+                  
+                  if (showAddModal) {
+                    handleAddProject();
+                  } else {
+                    handleUpdateProject();
+                  }
+                }}
                 variant="primary"
                 style={styles.modalButton}
               />
@@ -1703,6 +2329,10 @@ const ProjectsScreen = () => {
               <ScrollView showsVerticalScrollIndicator={false}>
                 <View style={styles.detailsSection}>
                   <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Project:</Text>
+                    <Text style={styles.detailValue}>{selectedProject.project_name}</Text>
+                  </View>
+                  <View style={styles.detailRow}>
                     <Text style={styles.detailLabel}>Client:</Text>
                     <Text style={styles.detailValue}>{selectedProject.client_name}</Text>
                   </View>
@@ -1725,27 +2355,82 @@ const ProjectsScreen = () => {
                   <View style={styles.detailRow}>
                     <Text style={styles.detailLabel}>Billing:</Text>
                     <Text style={styles.detailValue}>
-                      {selectedProject.is_included_in_contract ? 'Included' : `$${selectedProject.billing_amount.toFixed(2)}`}
+                      {selectedProject.is_included_in_contract ? 'Included in Contract' : `$${selectedProject.billing_amount.toFixed(2)}`}
                     </Text>
                   </View>
+                  {selectedProject.estimated_price !== undefined && (
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Estimated Cost:</Text>
+                      <Text style={styles.detailValue}>${selectedProject.estimated_price.toFixed(2)}</Text>
+                    </View>
+                  )}
+                  {selectedProject.estimated_profitability !== undefined && (
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Profit Margin:</Text>
+                      <Text style={[styles.detailValue, { color: selectedProject.estimated_profitability > 0 ? colors.success : colors.danger }]}>
+                        {selectedProject.estimated_profitability.toFixed(2)}%
+                      </Text>
+                    </View>
+                  )}
+                  {selectedProject.work_order_number && (
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Work Order:</Text>
+                      <Text style={styles.detailValue}>{selectedProject.work_order_number}</Text>
+                    </View>
+                  )}
+                  {selectedProject.invoice_number && (
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Invoice:</Text>
+                      <Text style={styles.detailValue}>{selectedProject.invoice_number}</Text>
+                    </View>
+                  )}
+                  {selectedProject.next_scheduled_date && (
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Next Scheduled:</Text>
+                      <Text style={styles.detailValue}>{formatDate(selectedProject.next_scheduled_date)}</Text>
+                    </View>
+                  )}
+                  {selectedProject.last_completed_date && (
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Last Completed:</Text>
+                      <Text style={styles.detailValue}>{formatDate(selectedProject.last_completed_date)}</Text>
+                    </View>
+                  )}
+                  {selectedProject.description && (
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Description:</Text>
+                      <Text style={styles.detailValue}>{selectedProject.description}</Text>
+                    </View>
+                  )}
+                  {selectedProject.notes && (
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Notes:</Text>
+                      <Text style={styles.detailValue}>{selectedProject.notes}</Text>
+                    </View>
+                  )}
                 </View>
 
-                <View style={styles.costSummary}>
-                  <Text style={styles.costSummaryTitle}>Cost Summary</Text>
-                  <View style={styles.costRow}>
-                    <Text style={styles.costLabel}>Estimated Cost:</Text>
-                    <Text style={styles.costValue}>${estimatedCost.toFixed(2)}</Text>
+                {projectCompletions.length > 0 && (
+                  <View style={styles.historySection}>
+                    <Text style={styles.inputLabel}>Completion History</Text>
+                    {projectCompletions.map((completion) => (
+                      <View key={completion.id} style={styles.historyItem}>
+                        <View style={styles.historyHeader}>
+                          <Text style={styles.historyDate}>{formatDate(completion.completed_date)}</Text>
+                          {completion.completed_by && (
+                            <Text style={styles.historyBy}>by {completion.completed_by}</Text>
+                          )}
+                        </View>
+                        <Text style={styles.historyDetail}>
+                          {completion.hours_spent}h • {completion.photos_count} photos
+                        </Text>
+                        {completion.notes && (
+                          <Text style={styles.historyNotes}>{completion.notes}</Text>
+                        )}
+                      </View>
+                    ))}
                   </View>
-                  <View style={[styles.costRow, styles.costRowTotal]}>
-                    <Text style={styles.costLabelTotal}>Estimated Profit:</Text>
-                    <Text style={[
-                      styles.costValueTotal,
-                      estimatedProfit >= 0 ? styles.profitPositive : styles.profitNegative
-                    ]}>
-                      ${estimatedProfit.toFixed(2)}
-                    </Text>
-                  </View>
-                </View>
+                )}
               </ScrollView>
             )}
 

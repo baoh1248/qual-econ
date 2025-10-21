@@ -32,6 +32,7 @@ interface DragDropScheduleGridProps {
   viewMode: 'building' | 'user';
   onAddShiftToCleaner?: (cleaner: Cleaner, day: string) => void;
   currentWeekId?: string;
+  onTaskPress?: (entry: ScheduleEntry) => void;
 }
 
 const DragDropScheduleGrid = memo(({
@@ -50,10 +51,11 @@ const DragDropScheduleGrid = memo(({
   viewMode,
   onAddShiftToCleaner,
   currentWeekId,
+  onTaskPress,
 }: DragDropScheduleGridProps) => {
   console.log('DragDropScheduleGrid rendered with viewMode:', viewMode, 'currentWeekId:', currentWeekId);
 
-  // FIXED: Calculate the week's dates based on currentWeekId
+  // Calculate the week's dates based on currentWeekId
   const days = useMemo(() => {
     console.log('Recalculating week dates for building view, week ID:', currentWeekId);
     
@@ -76,6 +78,7 @@ const DragDropScheduleGrid = memo(({
 
     const weekDays = [];
     const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const dayShorts = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
     for (let i = 0; i < 7; i++) {
       const date = new Date(monday);
@@ -83,13 +86,15 @@ const DragDropScheduleGrid = memo(({
       
       weekDays.push({
         name: dayNames[i],
+        short: dayShorts[i],
         date: `${date.getMonth() + 1}/${date.getDate()}`,
+        fullDate: date,
       });
     }
 
     console.log('Building view week dates calculated:', weekDays.map(d => `${d.name} ${d.date}`).join(', '));
     return weekDays;
-  }, [currentWeekId]); // FIXED: Recalculate when currentWeekId changes
+  }, [currentWeekId]);
 
   const buildingsByClient = useMemo(() => {
     const grouped = new Map<string, ClientBuilding[]>();
@@ -119,22 +124,37 @@ const DragDropScheduleGrid = memo(({
 
   const getStatusColor = useCallback((status: string) => {
     switch (status.toLowerCase()) {
-      case 'scheduled': return colors.primary;
-      case 'in-progress': return colors.warning;
-      case 'completed': return colors.success;
-      case 'cancelled': return colors.danger;
+      case 'scheduled': return '#3B82F6';
+      case 'in-progress': return '#F59E0B';
+      case 'completed': return '#10B981';
+      case 'cancelled': return '#EF4444';
       default: return colors.border;
     }
   }, []);
 
+  const getStatusIcon = useCallback((status: string) => {
+    switch (status.toLowerCase()) {
+      case 'scheduled': return 'calendar';
+      case 'in-progress': return 'time';
+      case 'completed': return 'checkmark-circle';
+      case 'cancelled': return 'close-circle';
+      default: return 'ellipse';
+    }
+  }, []);
+
   const renderCellContent = useCallback((building: ClientBuilding, day: string) => {
-    const entries = getEntriesForCell(building.buildingName, day);
+    const entries = getEntriesForCell(building.buildingName, day.name);
     
     if (entries.length === 0) {
       return (
-        <View style={styles.emptyCell}>
-          <Icon name="add-circle-outline" size={20} style={{ color: colors.textSecondary, opacity: 0.3 }} />
-        </View>
+        <TouchableOpacity 
+          style={styles.emptyCell}
+          onPress={() => onCellPress(building, day.name)}
+          activeOpacity={0.6}
+        >
+          <Icon name="add-circle-outline" size={24} style={{ color: colors.textSecondary, opacity: 0.4 }} />
+          <Text style={styles.emptyCellText}>Add Shift</Text>
+        </TouchableOpacity>
       );
     }
 
@@ -142,48 +162,106 @@ const DragDropScheduleGrid = memo(({
       <View style={styles.cellContent}>
         {entries.map((entry, index) => {
           const statusColor = getStatusColor(entry.status);
+          const statusIcon = getStatusIcon(entry.status);
           const isSelected = selectedEntries.includes(entry.id);
+          const isProject = entry.isProject || false;
           
           return (
-            <View
+            <TouchableOpacity
               key={entry.id}
               style={[
                 styles.entryCard,
                 { 
-                  backgroundColor: statusColor + '15',
+                  backgroundColor: colors.background,
                   borderLeftColor: statusColor,
+                  borderLeftWidth: 4,
                 },
                 isSelected && styles.entryCardSelected,
                 index > 0 && { marginTop: spacing.xs }
               ]}
+              onPress={() => onTaskPress && onTaskPress(entry)}
+              activeOpacity={0.7}
             >
-              <View style={styles.entryHeader}>
-                <Text style={[styles.entryTime, { color: statusColor }]} numberOfLines={1}>
-                  {entry.startTime || '09:00'}
-                </Text>
-                {bulkMode && (
-                  <Icon 
-                    name={isSelected ? "checkmark-circle" : "ellipse-outline"} 
-                    size={16} 
-                    style={{ color: isSelected ? colors.success : colors.textSecondary }} 
-                  />
+              {/* Shift Type Badge */}
+              <View style={styles.entryTypeBadge}>
+                {isProject ? (
+                  <View style={[styles.typeBadge, styles.projectBadge]}>
+                    <Icon name="briefcase" size={10} style={{ color: '#FFFFFF' }} />
+                    <Text style={styles.typeBadgeText}>PROJECT</Text>
+                  </View>
+                ) : (
+                  <View style={[styles.typeBadge, styles.regularBadge]}>
+                    <Icon name="calendar-outline" size={10} style={{ color: '#FFFFFF' }} />
+                    <Text style={styles.typeBadgeText}>SHIFT</Text>
+                  </View>
                 )}
               </View>
-              <Text style={styles.entryCleaners} numberOfLines={1}>
-                {entry.cleanerNames && entry.cleanerNames.length > 0 
-                  ? entry.cleanerNames.join(', ')
-                  : entry.cleanerName
-                }
-              </Text>
-              <Text style={styles.entryHours}>{entry.hours}h</Text>
-            </View>
+
+              <View style={styles.entryHeader}>
+                <View style={styles.entryTimeContainer}>
+                  <Icon name="time-outline" size={14} style={{ color: statusColor }} />
+                  <Text style={[styles.entryTime, { color: statusColor }]} numberOfLines={1}>
+                    {entry.startTime || '09:00'}
+                  </Text>
+                </View>
+                <View style={[styles.statusIndicator, { backgroundColor: statusColor }]}>
+                  <Icon name={statusIcon} size={12} style={{ color: colors.background }} />
+                </View>
+              </View>
+              
+              <View style={styles.entryBody}>
+                {isProject && entry.projectName && (
+                  <View style={styles.projectNameContainer}>
+                    <Icon name="folder-outline" size={12} style={{ color: '#8B5CF6' }} />
+                    <Text style={styles.projectName} numberOfLines={1}>
+                      {entry.projectName}
+                    </Text>
+                  </View>
+                )}
+                
+                <View style={styles.entryCleanersContainer}>
+                  <Icon name="person-outline" size={14} style={{ color: colors.textSecondary }} />
+                  <Text style={styles.entryCleaners} numberOfLines={1}>
+                    {entry.cleanerNames && entry.cleanerNames.length > 0 
+                      ? entry.cleanerNames.join(', ')
+                      : entry.cleanerName
+                    }
+                  </Text>
+                </View>
+                
+                <View style={styles.entryFooter}>
+                  <View style={styles.entryHoursContainer}>
+                    <Icon name="hourglass-outline" size={12} style={{ color: colors.textSecondary }} />
+                    <Text style={styles.entryHours}>{entry.hours}h</Text>
+                  </View>
+                  {entry.notes && !isProject && (
+                    <Icon name="document-text-outline" size={12} style={{ color: colors.textSecondary }} />
+                  )}
+                </View>
+              </View>
+            </TouchableOpacity>
           );
         })}
+        
+        {entries.length > 0 && (
+          <TouchableOpacity 
+            style={styles.addMoreButton}
+            onPress={() => onCellPress(building, day.name)}
+            activeOpacity={0.7}
+          >
+            <Icon name="add" size={16} style={{ color: colors.primary }} />
+            <Text style={styles.addMoreText}>Add Another</Text>
+          </TouchableOpacity>
+        )}
       </View>
     );
-  }, [getEntriesForCell, getStatusColor, selectedEntries, bulkMode]);
+  }, [getEntriesForCell, getStatusColor, getStatusIcon, selectedEntries, onCellPress, onTaskPress]);
 
   const renderBuildingRow = useCallback((building: ClientBuilding) => {
+    const totalShifts = days.reduce((sum, day) => {
+      return sum + getEntriesForCell(building.buildingName, day.name).length;
+    }, 0);
+
     return (
       <View key={building.id} style={styles.buildingRow}>
         <TouchableOpacity
@@ -191,40 +269,58 @@ const DragDropScheduleGrid = memo(({
           onLongPress={() => onBuildingLongPress(building)}
           activeOpacity={0.7}
         >
-          <Text style={styles.buildingName} numberOfLines={2}>
-            {building.buildingName}
-          </Text>
-          <View style={styles.securityBadge}>
-            <Icon 
-              name="shield-checkmark" 
-              size={12} 
-              style={{ color: colors.textSecondary }} 
-            />
-            <Text style={styles.securityText}>
-              {building.securityLevel.toUpperCase()}
+          <View style={styles.buildingHeader}>
+            <Icon name="business" size={18} style={{ color: colors.primary }} />
+            <Text style={styles.buildingName} numberOfLines={2}>
+              {building.buildingName}
             </Text>
+          </View>
+          
+          <View style={styles.buildingMeta}>
+            <View style={styles.securityBadge}>
+              <Icon 
+                name="shield-checkmark" 
+                size={12} 
+                style={{ color: building.securityLevel === 'high' ? colors.danger : building.securityLevel === 'medium' ? colors.warning : colors.success }} 
+              />
+              <Text style={[styles.securityText, { 
+                color: building.securityLevel === 'high' ? colors.danger : building.securityLevel === 'medium' ? colors.warning : colors.success 
+              }]}>
+                {building.securityLevel.toUpperCase()}
+              </Text>
+            </View>
+            
+            {totalShifts > 0 && (
+              <View style={styles.shiftCountBadge}>
+                <Icon name="calendar" size={12} style={{ color: colors.primary }} />
+                <Text style={styles.shiftCountText}>{totalShifts}</Text>
+              </View>
+            )}
           </View>
         </TouchableOpacity>
         
         {days.map(day => (
-          <TouchableOpacity
+          <View
             key={day.name}
             style={styles.dayCell}
-            onPress={() => onCellPress(building, day.name)}
-            onLongPress={() => onCellLongPress(building, day.name)}
-            activeOpacity={0.7}
           >
-            {renderCellContent(building, day.name)}
-          </TouchableOpacity>
+            {renderCellContent(building, day)}
+          </View>
         ))}
       </View>
     );
-  }, [days, onCellPress, onCellLongPress, onBuildingLongPress, renderCellContent]);
+  }, [days, onBuildingLongPress, renderCellContent, getEntriesForCell]);
 
   const renderClientSection = useCallback((client: Client) => {
     const buildings = buildingsByClient.get(client.name) || [];
     
     if (buildings.length === 0) return null;
+
+    const totalShifts = buildings.reduce((sum, building) => {
+      return sum + days.reduce((daySum, day) => {
+        return daySum + getEntriesForCell(building.buildingName, day.name).length;
+      }, 0);
+    }, 0);
 
     return (
       <View key={client.id} style={styles.clientSection}>
@@ -233,16 +329,30 @@ const DragDropScheduleGrid = memo(({
           onLongPress={() => onClientLongPress(client)}
           activeOpacity={0.7}
         >
-          <Text style={styles.clientName}>{client.name}</Text>
-          <Text style={styles.buildingCount}>
-            {buildings.length} {buildings.length === 1 ? 'building' : 'buildings'}
-          </Text>
+          <View style={styles.clientHeaderLeft}>
+            <Icon name="briefcase" size={20} style={{ color: colors.background }} />
+            <Text style={styles.clientName}>{client.name}</Text>
+          </View>
+          <View style={styles.clientHeaderRight}>
+            <View style={styles.clientBadge}>
+              <Icon name="business" size={14} style={{ color: colors.background }} />
+              <Text style={styles.clientBadgeText}>
+                {buildings.length} {buildings.length === 1 ? 'building' : 'buildings'}
+              </Text>
+            </View>
+            {totalShifts > 0 && (
+              <View style={styles.clientBadge}>
+                <Icon name="calendar" size={14} style={{ color: colors.background }} />
+                <Text style={styles.clientBadgeText}>{totalShifts} shifts</Text>
+              </View>
+            )}
+          </View>
         </TouchableOpacity>
         
         {buildings.map(building => renderBuildingRow(building))}
       </View>
     );
-  }, [buildingsByClient, onClientLongPress, renderBuildingRow]);
+  }, [buildingsByClient, onClientLongPress, renderBuildingRow, days, getEntriesForCell]);
 
   if (viewMode === 'user') {
     return (
@@ -250,12 +360,7 @@ const DragDropScheduleGrid = memo(({
         cleaners={cleaners}
         schedule={schedule}
         currentWeekId={currentWeekId}
-        onTaskPress={(entry) => {
-          const building = clientBuildings.find(b => b.buildingName === entry.buildingName);
-          if (building) {
-            onCellPress(building, entry.day);
-          }
-        }}
+        onTaskPress={onTaskPress}
         onAddShiftToCleaner={onAddShiftToCleaner}
       />
     );
@@ -270,16 +375,37 @@ const DragDropScheduleGrid = memo(({
         bounces={false}
       >
         <View style={styles.scheduleGrid}>
+          {/* Enhanced Header Row */}
           <View style={styles.headerRow}>
             <View style={styles.buildingHeaderCell}>
+              <Icon name="business-outline" size={20} style={{ color: colors.text }} />
               <Text style={styles.headerText}>Buildings</Text>
             </View>
-            {days.map(day => (
-              <View key={day.name} style={styles.dayHeaderCell}>
-                <Text style={styles.dayHeaderText}>{day.name}</Text>
-                <Text style={styles.dayHeaderDate}>{day.date}</Text>
-              </View>
-            ))}
+            {days.map(day => {
+              const isToday = day.fullDate.toDateString() === new Date().toDateString();
+              
+              return (
+                <View 
+                  key={day.name} 
+                  style={[
+                    styles.dayHeaderCell,
+                    isToday && styles.dayHeaderCellToday
+                  ]}
+                >
+                  <Text style={[styles.dayHeaderText, isToday && styles.dayHeaderTextToday]}>
+                    {day.short}
+                  </Text>
+                  <Text style={[styles.dayHeaderDate, isToday && styles.dayHeaderDateToday]}>
+                    {day.date}
+                  </Text>
+                  {isToday && (
+                    <View style={styles.todayIndicator}>
+                      <Text style={styles.todayIndicatorText}>TODAY</Text>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
           </View>
 
           <ScrollView 
@@ -291,9 +417,9 @@ const DragDropScheduleGrid = memo(({
               activeClients.map(client => renderClientSection(client))
             ) : (
               <View style={styles.emptyState}>
-                <Icon name="business-outline" size={64} style={{ color: colors.textSecondary }} />
+                <Icon name="business-outline" size={80} style={{ color: colors.textSecondary, opacity: 0.3 }} />
                 <Text style={styles.emptyStateText}>No clients or buildings available</Text>
-                <Text style={styles.emptyStateSubtext}>Add a client and building to get started</Text>
+                <Text style={styles.emptyStateSubtext}>Add a client and building to get started with scheduling</Text>
               </View>
             )}
           </ScrollView>
@@ -303,13 +429,13 @@ const DragDropScheduleGrid = memo(({
   );
 });
 
-const BUILDING_COLUMN_WIDTH = 200;
-const DAY_COLUMN_WIDTH = 150;
+const BUILDING_COLUMN_WIDTH = 220;
+const DAY_COLUMN_WIDTH = 180;
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: '#F8FAFC',
   },
   horizontalScroll: {
     flex: 1,
@@ -319,22 +445,31 @@ const styles = StyleSheet.create({
   },
   headerRow: {
     flexDirection: 'row',
-    backgroundColor: colors.backgroundAlt,
+    backgroundColor: '#FFFFFF',
     borderBottomWidth: 2,
-    borderBottomColor: colors.border,
+    borderBottomColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   buildingHeaderCell: {
     width: BUILDING_COLUMN_WIDTH,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
     borderRightWidth: 1,
-    borderRightColor: colors.border,
+    borderRightColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
   },
   headerText: {
     ...typography.body,
-    fontWeight: '600',
-    color: colors.text,
+    fontWeight: '700',
+    color: '#1E293B',
+    fontSize: 15,
   },
   dayHeaderCell: {
     width: DAY_COLUMN_WIDTH,
@@ -343,137 +478,349 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRightWidth: 1,
-    borderRightColor: colors.border,
+    borderRightColor: '#E2E8F0',
+    position: 'relative',
+  },
+  dayHeaderCellToday: {
+    backgroundColor: '#EFF6FF',
   },
   dayHeaderText: {
     ...typography.small,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 2,
+    fontWeight: '700',
+    color: '#475569',
+    marginBottom: 4,
+    fontSize: 13,
+    letterSpacing: 0.5,
+  },
+  dayHeaderTextToday: {
+    color: '#3B82F6',
   },
   dayHeaderDate: {
     ...typography.small,
-    color: colors.textSecondary,
-    fontSize: 11,
+    color: '#94A3B8',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  dayHeaderDateToday: {
+    color: '#3B82F6',
+  },
+  todayIndicator: {
+    position: 'absolute',
+    bottom: 4,
+    backgroundColor: '#3B82F6',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  todayIndicatorText: {
+    ...typography.small,
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
   verticalScroll: {
     flex: 1,
   },
   clientSection: {
-    borderBottomWidth: 2,
-    borderBottomColor: colors.border,
+    borderBottomWidth: 3,
+    borderBottomColor: '#E2E8F0',
+    backgroundColor: '#FFFFFF',
   },
   clientHeader: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  clientHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flex: 1,
   },
   clientName: {
     ...typography.body,
-    color: colors.background,
-    fontWeight: '600',
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 16,
   },
-  buildingCount: {
+  clientHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  clientBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  clientBadgeText: {
     ...typography.small,
-    color: colors.background,
-    opacity: 0.9,
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 11,
   },
   buildingRow: {
     flexDirection: 'row',
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    minHeight: 80,
+    borderBottomColor: '#F1F5F9',
+    minHeight: 100,
+    backgroundColor: '#FFFFFF',
   },
   buildingCell: {
     width: BUILDING_COLUMN_WIDTH,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    justifyContent: 'center',
-    backgroundColor: colors.background,
+    paddingVertical: spacing.md,
+    justifyContent: 'space-between',
+    backgroundColor: '#FAFBFC',
     borderRightWidth: 1,
-    borderRightColor: colors.border,
+    borderRightColor: '#E2E8F0',
+  },
+  buildingHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
   },
   buildingName: {
     ...typography.body,
-    color: colors.text,
-    fontWeight: '500',
-    marginBottom: spacing.xs,
+    color: '#1E293B',
+    fontWeight: '600',
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  buildingMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flexWrap: 'wrap',
   },
   securityBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    backgroundColor: '#F8FAFC',
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
   securityText: {
     ...typography.small,
-    color: colors.textSecondary,
     fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  shiftCountBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  shiftCountText: {
+    ...typography.small,
+    color: '#3B82F6',
+    fontSize: 10,
+    fontWeight: '700',
   },
   dayCell: {
     width: DAY_COLUMN_WIDTH,
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
     borderRightWidth: 1,
-    borderRightColor: colors.border,
-    backgroundColor: colors.background,
+    borderRightColor: '#F1F5F9',
+    backgroundColor: '#FAFBFC',
   },
   emptyCell: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 60,
+    minHeight: 80,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#E2E8F0',
+    borderStyle: 'dashed',
+    backgroundColor: '#FFFFFF',
+  },
+  emptyCellText: {
+    ...typography.small,
+    color: '#94A3B8',
+    marginTop: spacing.xs,
+    fontSize: 11,
+    fontWeight: '600',
   },
   cellContent: {
     flex: 1,
+    gap: spacing.xs,
   },
   entryCard: {
     padding: spacing.sm,
-    borderRadius: 6,
-    borderLeftWidth: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+    position: 'relative',
   },
   entryCardSelected: {
     borderWidth: 2,
-    borderColor: colors.success,
+    borderColor: '#10B981',
+    shadowOpacity: 0.15,
+  },
+  entryTypeBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    zIndex: 10,
+  },
+  typeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  projectBadge: {
+    backgroundColor: '#8B5CF6',
+  },
+  regularBadge: {
+    backgroundColor: '#3B82F6',
+  },
+  typeBadgeText: {
+    ...typography.small,
+    color: '#FFFFFF',
+    fontSize: 8,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
   entryHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 4,
+    marginBottom: spacing.xs,
+    marginTop: 16, // Space for the badge
+  },
+  entryTimeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   entryTime: {
     ...typography.small,
-    fontWeight: '600',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  statusIndicator: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  entryBody: {
+    gap: spacing.xs,
+  },
+  projectNameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#F3E8FF',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 4,
+    marginBottom: 2,
+  },
+  projectName: {
+    ...typography.small,
+    color: '#8B5CF6',
+    fontWeight: '700',
+    flex: 1,
     fontSize: 11,
+  },
+  entryCleanersContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   entryCleaners: {
     ...typography.small,
-    color: colors.text,
-    fontWeight: '500',
-    marginBottom: 2,
+    color: '#1E293B',
+    fontWeight: '600',
+    flex: 1,
+    fontSize: 12,
+  },
+  entryFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  entryHoursContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   entryHours: {
     ...typography.small,
-    color: colors.textSecondary,
+    color: '#64748B',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  addMoreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: spacing.xs,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#3B82F6',
+    borderStyle: 'dashed',
+    backgroundColor: '#EFF6FF',
+  },
+  addMoreText: {
+    ...typography.small,
+    color: '#3B82F6',
+    fontWeight: '600',
     fontSize: 11,
   },
   emptyState: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: spacing.xxl,
+    paddingVertical: spacing.xxl * 2,
+    paddingHorizontal: spacing.xl,
   },
   emptyStateText: {
     ...typography.h3,
-    color: colors.textSecondary,
-    marginTop: spacing.md,
+    color: '#64748B',
+    marginTop: spacing.lg,
+    fontWeight: '600',
   },
   emptyStateSubtext: {
     ...typography.body,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
+    color: '#94A3B8',
+    marginTop: spacing.sm,
+    textAlign: 'center',
   },
 });
 

@@ -6,6 +6,7 @@ import { useTheme } from '../../hooks/useTheme';
 import { useScheduleStorage, type ScheduleEntry } from '../../hooks/useScheduleStorage';
 import { useClientData, type Client, type ClientBuilding, type Cleaner } from '../../hooks/useClientData';
 import { useToast } from '../../hooks/useToast';
+import { useDatabase } from '../../hooks/useDatabase';
 import { commonStyles, colors, spacing, typography, buttonStyles } from '../../styles/commonStyles';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -19,6 +20,7 @@ import DragDropScheduleGrid from '../../components/schedule/DragDropScheduleGrid
 import LoadingSpinner from '../../components/LoadingSpinner';
 import CompanyLogo from '../../components/CompanyLogo';
 import IconButton from '../../components/IconButton';
+import { projectToScheduleEntry, scheduleEntryExistsForProject } from '../../utils/projectScheduleSync';
 
 type ModalType = 'add' | 'edit' | 'addClient' | 'addBuilding' | 'addCleaner' | 'editClient' | 'editBuilding' | 'details' | null;
 type ViewType = 'daily' | 'weekly' | 'monthly';
@@ -57,49 +59,104 @@ export default function ScheduleView() {
   const [selectedDay, setSelectedDay] = useState<string>('');
 
   const { showToast } = useToast();
+  const { executeQuery } = useDatabase();
   const { clients, clientBuildings, cleaners, refreshData, addClient, addClientBuilding, addCleaner, updateClient, updateClientBuilding } = useClientData();
   const { 
-    getScheduleForWeek, 
+    getWeekSchedule, 
     addScheduleEntry, 
     updateScheduleEntry, 
     deleteScheduleEntry,
-    addRecurringSchedule,
+    getCurrentWeekId,
+    getWeekIdFromDate,
   } = useScheduleStorage();
 
   // Calculate current week ID
   const currentWeekId = useMemo(() => {
-    const monday = new Date(currentDate);
-    const dayOfWeek = monday.getDay();
-    const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-    monday.setDate(monday.getDate() + diff);
-    
-    const year = monday.getFullYear();
-    const month = String(monday.getMonth() + 1).padStart(2, '0');
-    const day = String(monday.getDate()).padStart(2, '0');
-    
-    return `${year}-${month}-${day}`;
-  }, [currentDate]);
+    return getWeekIdFromDate(currentDate);
+  }, [currentDate, getWeekIdFromDate]);
+
+  const syncProjectsToSchedule = useCallback(async () => {
+    try {
+      console.log('=== AUTO-SYNCING PROJECTS TO SCHEDULE ===');
+      
+      // Load all active projects with scheduled dates
+      const projects = await executeQuery<{
+        id: string;
+        client_name: string;
+        building_name?: string;
+        project_name: string;
+        frequency: string;
+        next_scheduled_date?: string;
+        status: string;
+      }>('select', 'client_projects');
+      
+      console.log('Loaded projects:', projects.length);
+      
+      // Filter projects that have scheduled dates and are active
+      const scheduledProjects = projects.filter(p => 
+        p.next_scheduled_date && 
+        p.status === 'active'
+      );
+      
+      console.log('Projects with scheduled dates:', scheduledProjects.length);
+      
+      // Get current schedule entries
+      const currentSchedule = getWeekSchedule(currentWeekId);
+      
+      let addedCount = 0;
+      
+      // Add schedule entries for projects that don't have them yet
+      for (const project of scheduledProjects) {
+        if (!scheduleEntryExistsForProject(currentSchedule, project as any)) {
+          const scheduleEntry = projectToScheduleEntry(project as any);
+          
+          if (scheduleEntry) {
+            const entryWithId = {
+              ...scheduleEntry,
+              id: `project-schedule-${project.id}-${Date.now()}`,
+            };
+            
+            console.log('Adding schedule entry for project:', project.project_name);
+            await addScheduleEntry(currentWeekId, entryWithId as ScheduleEntry);
+            addedCount++;
+          }
+        }
+      }
+      
+      console.log('✓ Auto-synced', addedCount, 'projects to schedule');
+      
+      if (addedCount > 0) {
+        showToast(`Auto-added ${addedCount} scheduled project${addedCount > 1 ? 's' : ''}`, 'success');
+      }
+      
+      return addedCount;
+    } catch (error) {
+      console.error('Error syncing projects to schedule:', error);
+      return 0;
+    }
+  }, [executeQuery, getWeekSchedule, currentWeekId, addScheduleEntry, showToast]);
 
   const loadCurrentWeekSchedule = useCallback(async () => {
     setIsLoading(true);
     try {
-      const startDate = new Date(currentDate);
-      if (viewType === 'weekly') {
-        startDate.setDate(currentDate.getDate() - currentDate.getDay());
-      } else if (viewType === 'monthly') {
-        startDate.setDate(1);
-      }
-
-      const schedule = await getScheduleForWeek(startDate);
+      const weekId = getWeekIdFromDate(currentDate);
+      const schedule = getWeekSchedule(weekId, true); // Force refresh
       setCurrentWeekSchedule(schedule);
-      console.log('Loaded schedule:', schedule.length, 'entries');
+      console.log('Loaded schedule for week', weekId, ':', schedule.length, 'entries');
+      
+      // Automatically sync projects to schedule
+      await syncProjectsToSchedule();
+      
+      // Reload schedule after sync
+      const updatedSchedule = getWeekSchedule(weekId, true);
+      setCurrentWeekSchedule(updatedSchedule);
     } catch (error) {
       console.error('Error loading schedule:', error);
       showToast('Failed to load schedule', 'error');
     } finally {
       setIsLoading(false);
     }
-  }, [currentDate, viewType, getScheduleForWeek, showToast]);
+  }, [currentDate, getWeekSchedule, getWeekIdFromDate, showToast, syncProjectsToSchedule]);
 
   useEffect(() => {
     loadCurrentWeekSchedule();
@@ -220,7 +277,7 @@ export default function ScheduleView() {
     setSelectedClientBuilding(clientBuildings.find(b => b.buildingName === entry.buildingName) || null);
     setSelectedCleaners(entry.cleanerNames || [entry.cleanerName]);
     setHours(entry.hours.toString());
-    setStartTime(entry.startTime);
+    setStartTime(entry.startTime || '09:00');
     setSelectedDay(entry.day);
     setModalType('details');
     setModalVisible(true);
@@ -277,13 +334,24 @@ export default function ScheduleView() {
 
         const endTime = addHoursToTime(startTime, parseFloat(hours));
         
-        const newEntry: Omit<ScheduleEntry, 'id'> = {
+        // Calculate the date for this day
+        const weekStart = new Date(currentDate);
+        const dayOfWeek = weekStart.getDay();
+        const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+        weekStart.setDate(weekStart.getDate() + diff);
+        
+        const dayIndex = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].indexOf(selectedDay);
+        const entryDate = new Date(weekStart);
+        entryDate.setDate(weekStart.getDate() + dayIndex);
+        
+        const newEntry: ScheduleEntry = {
+          id: `schedule-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           clientName: selectedClientBuilding.clientName,
           buildingName: selectedClientBuilding.buildingName,
           cleanerName: selectedCleaners[0],
           cleanerNames: selectedCleaners,
-          day: selectedDay,
-          date: currentDate.toISOString().split('T')[0],
+          day: selectedDay as any,
+          date: entryDate.toISOString().split('T')[0],
           hours: parseFloat(hours),
           startTime,
           endTime,
@@ -294,7 +362,7 @@ export default function ScheduleView() {
         };
 
         console.log('Adding new schedule entry:', newEntry);
-        await addScheduleEntry(newEntry);
+        await addScheduleEntry(currentWeekId, newEntry);
         showToast('Shift added successfully', 'success');
         await loadCurrentWeekSchedule();
         handleModalClose();
@@ -314,8 +382,7 @@ export default function ScheduleView() {
 
         const endTime = addHoursToTime(startTime, parseFloat(hours));
         
-        const updatedEntry: ScheduleEntry = {
-          ...selectedEntry,
+        const updates: Partial<ScheduleEntry> = {
           cleanerName: selectedCleaners[0],
           cleanerNames: selectedCleaners,
           hours: parseFloat(hours),
@@ -323,8 +390,8 @@ export default function ScheduleView() {
           endTime,
         };
 
-        console.log('Updating schedule entry:', updatedEntry);
-        await updateScheduleEntry(updatedEntry);
+        console.log('Updating schedule entry:', selectedEntry.id, updates);
+        await updateScheduleEntry(selectedEntry.weekId, selectedEntry.id, updates);
         showToast('Shift updated successfully', 'success');
         await loadCurrentWeekSchedule();
         handleModalClose();
@@ -355,7 +422,7 @@ export default function ScheduleView() {
           onPress: async () => {
             try {
               console.log('Deleting schedule entry:', selectedEntry.id);
-              await deleteScheduleEntry(selectedEntry.id);
+              await deleteScheduleEntry(selectedEntry.weekId, selectedEntry.id);
               showToast('Shift deleted successfully', 'success');
               await loadCurrentWeekSchedule();
               handleModalClose();
@@ -511,7 +578,7 @@ export default function ScheduleView() {
     if (selectedEntry) {
       setSelectedCleaners(selectedEntry.cleanerNames || [selectedEntry.cleanerName]);
       setHours(selectedEntry.hours.toString());
-      setStartTime(selectedEntry.startTime);
+      setStartTime(selectedEntry.startTime || '09:00');
       setModalType('edit');
     }
   }, [selectedEntry]);
@@ -785,6 +852,13 @@ export default function ScheduleView() {
           <Text style={styles.headerTitle}>Schedule</Text>
         </View>
         <View style={styles.headerRight}>
+          <IconButton
+            icon="sync"
+            onPress={syncProjectsToSchedule}
+            size={24}
+            color="#FFFFFF"
+            style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}
+          />
           <IconButton
             icon="refresh"
             onPress={loadCurrentWeekSchedule}

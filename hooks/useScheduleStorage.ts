@@ -6,9 +6,9 @@ export interface ScheduleEntry {
   id: string;
   clientName: string;
   buildingName: string;
-  cleanerName: string; // Keep for backward compatibility
-  cleanerNames?: string[]; // New field for multiple cleaners
-  cleanerIds?: string[]; // Store cleaner IDs for better data integrity
+  cleanerName: string;
+  cleanerNames?: string[];
+  cleanerIds?: string[];
   hours: number;
   day: 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
   date: string;
@@ -23,15 +23,17 @@ export interface ScheduleEntry {
   estimatedDuration?: number;
   actualDuration?: number;
   tags?: string[];
-  // Payment structure - ENHANCED
+  isProject?: boolean;
+  projectId?: string;
+  projectName?: string;
   paymentType?: 'hourly' | 'flat_rate';
-  flatRateAmount?: number; // Amount for flat rate jobs
-  hourlyRate?: number; // Hourly rate for hourly jobs
-  // Additional payment fields
-  overtimeRate?: number; // Overtime multiplier (default 1.5)
-  bonusAmount?: number; // Additional bonus for this job
-  deductions?: number; // Any deductions for this job
-  totalCalculatedPay?: number; // Calculated total pay for this entry
+  flatRateAmount?: number;
+  hourlyRate?: number;
+  overtimeRate?: number;
+  bonusAmount?: number;
+  deductions?: number;
+  totalCalculatedPay?: number;
+  address?: string;
 }
 
 export interface WeeklySchedule {
@@ -53,7 +55,6 @@ export interface ScheduleStats {
   conflictCount: number;
   utilizationRate: number;
   averageHoursPerCleaner: number;
-  // Enhanced payment stats
   totalHourlyJobs: number;
   totalFlatRateJobs: number;
   totalHourlyAmount: number;
@@ -67,12 +68,11 @@ export interface ScheduleStats {
 }
 
 const STORAGE_KEYS = {
-  WEEKLY_SCHEDULES: 'weekly_schedules_v7', // Increment version for payment enhancements
+  WEEKLY_SCHEDULES: 'weekly_schedules_v7',
   SCHEDULE_CACHE: 'schedule_cache_v7',
   LAST_CLEANUP_DATE: 'last_cleanup_date',
 };
 
-// Enhanced cache management with payment calculations
 const scheduleCache = new Map<string, ScheduleEntry[]>();
 const statsCache = new Map<string, ScheduleStats>();
 const conflictsCache = new Map<string, ScheduleConflict[]>();
@@ -87,7 +87,6 @@ export const useScheduleStorage = () => {
   const saveQueueRef = useRef<Map<string, ScheduleEntry[]>>(new Map());
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Force cache invalidation
   const invalidateAllCaches = useCallback(() => {
     console.log('=== INVALIDATING ALL CACHES ===');
     cacheVersion++;
@@ -97,7 +96,6 @@ export const useScheduleStorage = () => {
     console.log('✅ All caches cleared, version:', cacheVersion);
   }, []);
 
-  // Week ID generation
   const getCurrentWeekId = useCallback((): string => {
     try {
       const now = new Date();
@@ -141,7 +139,6 @@ export const useScheduleStorage = () => {
     }
   }, [getCurrentWeekId]);
 
-  // Enhanced payment calculation helper
   const calculateEntryPay = useCallback((entry: ScheduleEntry, cleanerDefaultRate: number = 15): number => {
     try {
       const paymentType = entry.paymentType || 'hourly';
@@ -156,7 +153,6 @@ export const useScheduleStorage = () => {
         const hourlyRate = entry.hourlyRate || cleanerDefaultRate;
         const overtimeMultiplier = entry.overtimeRate || 1.5;
         
-        // Calculate regular vs overtime hours (assuming 8 hours regular per day)
         const regularHours = Math.min(hours, 8);
         const overtimeHours = Math.max(0, hours - 8);
         
@@ -173,7 +169,6 @@ export const useScheduleStorage = () => {
     }
   }, []);
 
-  // Enhanced stats calculation with comprehensive payment information
   const calculateScheduleStats = useCallback((schedule: ScheduleEntry[]): ScheduleStats => {
     try {
       if (!Array.isArray(schedule)) {
@@ -225,7 +220,6 @@ export const useScheduleStorage = () => {
       
       const cleanerHours = new Map<string, number>();
       
-      // Process each entry
       for (const entry of schedule) {
         if (!entry) continue;
         
@@ -239,12 +233,10 @@ export const useScheduleStorage = () => {
         const current = cleanerHours.get(cleanerName) || 0;
         cleanerHours.set(cleanerName, current + hours);
 
-        // Calculate payment statistics
         const paymentType = entry.paymentType || 'hourly';
         const entryPay = calculateEntryPay(entry);
         totalPayroll += entryPay;
         
-        // Track bonuses and deductions
         totalBonusAmount += entry.bonusAmount || 0;
         totalDeductions += entry.deductions || 0;
         
@@ -257,7 +249,6 @@ export const useScheduleStorage = () => {
           totalHourlyRateSum += hourlyRate;
           hourlyJobCount++;
           
-          // Calculate overtime for this entry (assuming 8 hours regular per day)
           const entryOvertimeHours = Math.max(0, hours - 8);
           overtimeHours += entryOvertimeHours;
           
@@ -281,7 +272,7 @@ export const useScheduleStorage = () => {
         totalEntries,
         completedEntries,
         pendingEntries,
-        conflictCount: 0, // Will be calculated separately
+        conflictCount: 0,
         utilizationRate,
         averageHoursPerCleaner,
         totalHourlyJobs,
@@ -296,7 +287,6 @@ export const useScheduleStorage = () => {
         overtimeAmount,
       };
 
-      // Cache the result
       statsCache.set(scheduleKey, stats);
       return stats;
     } catch (error) {
@@ -323,7 +313,6 @@ export const useScheduleStorage = () => {
     }
   }, [calculateEntryPay]);
 
-  // Immediate save without debouncing for critical operations
   const saveSchedulesImmediately = useCallback(async (schedules: WeeklySchedule) => {
     try {
       console.log('=== IMMEDIATE SAVE OPERATION ===');
@@ -333,7 +322,6 @@ export const useScheduleStorage = () => {
       await AsyncStorage.setItem(STORAGE_KEYS.WEEKLY_SCHEDULES, serializedData);
       console.log('✅ Schedules saved successfully to AsyncStorage');
       
-      // Verify the save by reading it back
       const verifyData = await AsyncStorage.getItem(STORAGE_KEYS.WEEKLY_SCHEDULES);
       if (verifyData) {
         const parsedData = JSON.parse(verifyData);
@@ -348,7 +336,6 @@ export const useScheduleStorage = () => {
     }
   }, []);
 
-  // Debounced save to prevent excessive storage writes
   const debouncedSave = useCallback(async (schedules: WeeklySchedule) => {
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
@@ -364,7 +351,6 @@ export const useScheduleStorage = () => {
     }, 300);
   }, [saveSchedulesImmediately]);
 
-  // Enhanced data loading with payment field defaults
   const loadData = useCallback(async () => {
     if (loadingRef.current) return;
     
@@ -380,7 +366,6 @@ export const useScheduleStorage = () => {
         const parsedSchedules = JSON.parse(schedulesData);
         
         if (typeof parsedSchedules === 'object' && parsedSchedules !== null) {
-          // Validate and clean the data with enhanced payment defaults
           const cleanedSchedules: WeeklySchedule = {};
           
           Object.entries(parsedSchedules).forEach(([weekId, entries]) => {
@@ -393,14 +378,12 @@ export const useScheduleStorage = () => {
                 entry.buildingName
               ).map(entry => ({
                 ...entry,
-                // Ensure payment fields have defaults
                 paymentType: entry.paymentType || 'hourly',
                 hourlyRate: entry.hourlyRate || 15,
                 flatRateAmount: entry.flatRateAmount || 0,
                 overtimeRate: entry.overtimeRate || 1.5,
                 bonusAmount: entry.bonusAmount || 0,
                 deductions: entry.deductions || 0,
-                // Calculate total pay if not already set
                 totalCalculatedPay: entry.totalCalculatedPay || calculateEntryPay(entry, 15)
               }));
               if (validEntries.length > 0) {
@@ -411,7 +394,6 @@ export const useScheduleStorage = () => {
 
           setWeeklySchedules(cleanedSchedules);
           
-          // Populate cache
           Object.entries(cleanedSchedules).forEach(([weekId, entries]) => {
             scheduleCache.set(weekId, entries);
           });
@@ -435,7 +417,6 @@ export const useScheduleStorage = () => {
     }
   }, [calculateEntryPay]);
 
-  // Enhanced schedule retrieval with payment calculations
   const getWeekSchedule = useCallback((weekId: string, forceRefresh: boolean = false): ScheduleEntry[] => {
     try {
       if (!weekId || typeof weekId !== 'string') {
@@ -443,7 +424,6 @@ export const useScheduleStorage = () => {
         return [];
       }
 
-      // Check cache first (unless force refresh is requested)
       if (!forceRefresh && scheduleCache.has(weekId)) {
         const cachedSchedule = scheduleCache.get(weekId)!;
         console.log('✅ Returning cached schedule for week:', weekId, 'entries:', cachedSchedule.length);
@@ -453,7 +433,6 @@ export const useScheduleStorage = () => {
       console.log('🔄 Getting fresh schedule data for week:', weekId, 'forceRefresh:', forceRefresh);
       const schedule = weeklySchedules[weekId] || [];
       
-      // Validate and enhance with payment calculations
       const validSchedule = schedule.filter(entry => 
         entry && 
         typeof entry === 'object' && 
@@ -462,14 +441,12 @@ export const useScheduleStorage = () => {
         entry.buildingName
       ).map(entry => ({
         ...entry,
-        // Ensure payment fields have defaults
         paymentType: entry.paymentType || 'hourly',
         hourlyRate: entry.hourlyRate || 15,
         flatRateAmount: entry.flatRateAmount || 0,
         overtimeRate: entry.overtimeRate || 1.5,
         bonusAmount: entry.bonusAmount || 0,
         deductions: entry.deductions || 0,
-        // Calculate total pay
         totalCalculatedPay: calculateEntryPay(entry, 15)
       }));
 
@@ -486,7 +463,6 @@ export const useScheduleStorage = () => {
       
       console.log('✅ Processed schedule for week:', weekId, 'entries:', sortedSchedule.length);
       
-      // Cache the result
       scheduleCache.set(weekId, sortedSchedule);
       return sortedSchedule;
     } catch (error) {
@@ -495,7 +471,34 @@ export const useScheduleStorage = () => {
     }
   }, [weeklySchedules, calculateEntryPay]);
 
-  // Enhanced update with payment field validation
+  const getScheduleForCleaner = useCallback(async (cleanerName: string): Promise<ScheduleEntry[]> => {
+    try {
+      console.log('🔄 Getting schedule for cleaner:', cleanerName);
+      
+      // Get all schedules
+      const allEntries: ScheduleEntry[] = [];
+      
+      Object.keys(weeklySchedules).forEach(weekId => {
+        const weekSchedule = getWeekSchedule(weekId);
+        allEntries.push(...weekSchedule);
+      });
+      
+      // Filter entries for this cleaner
+      const cleanerEntries = allEntries.filter(entry => {
+        if (entry.cleanerNames && entry.cleanerNames.length > 0) {
+          return entry.cleanerNames.includes(cleanerName);
+        }
+        return entry.cleanerName === cleanerName;
+      });
+      
+      console.log(`✅ Found ${cleanerEntries.length} schedule entries for ${cleanerName}`);
+      return cleanerEntries;
+    } catch (error) {
+      console.error('Error getting schedule for cleaner:', error);
+      return [];
+    }
+  }, [weeklySchedules, getWeekSchedule]);
+
   const updateWeekSchedule = useCallback(async (weekId: string, entries: ScheduleEntry[]) => {
     try {
       console.log('=== UPDATING WEEK SCHEDULE ===');
@@ -510,7 +513,6 @@ export const useScheduleStorage = () => {
         throw new Error('Invalid entries provided');
       }
 
-      // Validate entries with enhanced payment field validation
       const validatedEntries = entries
         .filter(entry => {
           if (!entry || typeof entry !== 'object') {
@@ -532,7 +534,6 @@ export const useScheduleStorage = () => {
             hours: typeof entry.hours === 'number' ? entry.hours : parseFloat(entry.hours as any) || 0,
             status: entry.status || 'scheduled',
             day: entry.day || 'monday',
-            // Enhanced payment fields with validation
             paymentType: entry.paymentType || 'hourly',
             hourlyRate: Math.max(0, entry.hourlyRate || 15),
             flatRateAmount: Math.max(0, entry.flatRateAmount || 0),
@@ -541,7 +542,6 @@ export const useScheduleStorage = () => {
             deductions: Math.max(0, entry.deductions || 0),
           };
           
-          // Calculate total pay
           enhancedEntry.totalCalculatedPay = calculateEntryPay(enhancedEntry, 15);
           
           return enhancedEntry;
@@ -554,16 +554,12 @@ export const useScheduleStorage = () => {
       
       console.log('🔄 Setting updated schedules for week:', weekId);
       
-      // Update state first
       setWeeklySchedules(updatedSchedules);
       
-      // Immediately invalidate all caches
       invalidateAllCaches();
       
-      // Update cache immediately with new data
       scheduleCache.set(weekId, validatedEntries);
       
-      // Force immediate save for all schedule updates
       await saveSchedulesImmediately(updatedSchedules);
       
       console.log('✅ WEEK SCHEDULE UPDATE COMPLETED ===');
@@ -575,7 +571,6 @@ export const useScheduleStorage = () => {
     }
   }, [weeklySchedules, saveSchedulesImmediately, invalidateAllCaches, calculateEntryPay]);
 
-  // Stats retrieval
   const getWeekStats = useCallback((weekId: string): ScheduleStats => {
     try {
       const schedule = getWeekSchedule(weekId);
@@ -604,7 +599,6 @@ export const useScheduleStorage = () => {
     }
   }, [getWeekSchedule, calculateScheduleStats]);
 
-  // CRUD operations
   const addScheduleEntry = useCallback(async (weekId: string, entry: ScheduleEntry) => {
     try {
       console.log('=== ADDING SCHEDULE ENTRY ===');
@@ -618,7 +612,9 @@ export const useScheduleStorage = () => {
         day: entry.day,
         paymentType: entry.paymentType,
         flatRateAmount: entry.flatRateAmount,
-        hourlyRate: entry.hourlyRate
+        hourlyRate: entry.hourlyRate,
+        isProject: entry.isProject,
+        projectName: entry.projectName
       });
       
       if (!weekId || !entry) {
@@ -636,7 +632,6 @@ export const useScheduleStorage = () => {
         hours: typeof entry.hours === 'number' ? entry.hours : parseFloat(entry.hours as any) || 0,
         status: entry.status || 'scheduled',
         day: entry.day || 'monday',
-        // Enhanced payment fields
         paymentType: entry.paymentType || 'hourly',
         hourlyRate: Math.max(0, entry.hourlyRate || 15),
         flatRateAmount: Math.max(0, entry.flatRateAmount || 0),
@@ -645,7 +640,6 @@ export const useScheduleStorage = () => {
         deductions: Math.max(0, entry.deductions || 0),
       };
       
-      // Calculate total pay
       validatedEntry.totalCalculatedPay = calculateEntryPay(validatedEntry, 15);
 
       const updatedSchedule = [...currentWeekSchedule, validatedEntry];
@@ -695,7 +689,6 @@ export const useScheduleStorage = () => {
         hours: updates.hours !== undefined ? 
           (typeof updates.hours === 'number' ? updates.hours : parseFloat(updates.hours as any) || 0) :
           originalEntry.hours,
-        // Enhanced payment field handling
         paymentType: updates.paymentType || originalEntry.paymentType || 'hourly',
         hourlyRate: updates.hourlyRate !== undefined ? Math.max(0, updates.hourlyRate) : (originalEntry.hourlyRate || 15),
         flatRateAmount: updates.flatRateAmount !== undefined ? Math.max(0, updates.flatRateAmount) : (originalEntry.flatRateAmount || 0),
@@ -704,7 +697,6 @@ export const useScheduleStorage = () => {
         deductions: updates.deductions !== undefined ? Math.max(0, updates.deductions) : (originalEntry.deductions || 0),
       };
       
-      // Recalculate total pay
       updatedEntry.totalCalculatedPay = calculateEntryPay(updatedEntry, 15);
       
       const updatedSchedule = [...currentWeekSchedule];
@@ -759,7 +751,6 @@ export const useScheduleStorage = () => {
     }
   }, [getWeekSchedule, updateWeekSchedule]);
 
-  // Enhanced payment-related functions
   const updateEntryPayment = useCallback(async (
     weekId: string, 
     entryId: string, 
@@ -833,7 +824,6 @@ export const useScheduleStorage = () => {
     }
   }, [getWeekSchedule, calculateScheduleStats]);
 
-  // Bulk operations
   const bulkUpdateEntries = useCallback(async (weekId: string, entryIds: string[], updates: Partial<ScheduleEntry>) => {
     try {
       if (!weekId || !Array.isArray(entryIds) || !updates) {
@@ -846,7 +836,6 @@ export const useScheduleStorage = () => {
       const updatedSchedule = currentWeekSchedule.map(entry => {
         if (entry && entryIdSet.has(entry.id)) {
           const updatedEntry = { ...entry, ...updates, weekId };
-          // Recalculate total pay for updated entries
           updatedEntry.totalCalculatedPay = calculateEntryPay(updatedEntry, 15);
           return updatedEntry;
         }
@@ -877,7 +866,6 @@ export const useScheduleStorage = () => {
     }
   }, [getWeekSchedule, updateWeekSchedule]);
 
-  // Utility functions
   const clearCaches = useCallback(() => {
     try {
       console.log('=== CLEARING CACHES ===');
@@ -922,7 +910,6 @@ export const useScheduleStorage = () => {
     }
   }, [invalidateAllCaches]);
 
-  // Multiple cleaners helper functions
   const getEntryCleaners = useCallback((entry: ScheduleEntry): string[] => {
     try {
       if (entry.cleanerNames && entry.cleanerNames.length > 0) {
@@ -967,7 +954,6 @@ export const useScheduleStorage = () => {
         cleanerName: updatedCleaners[0] || '',
       };
       
-      // Recalculate total pay
       updatedEntry.totalCalculatedPay = calculateEntryPay(updatedEntry, 15);
 
       const updatedSchedule = [...currentWeekSchedule];
@@ -1015,7 +1001,6 @@ export const useScheduleStorage = () => {
         cleanerName: updatedCleaners[0] || '',
       };
       
-      // Recalculate total pay
       updatedEntry.totalCalculatedPay = calculateEntryPay(updatedEntry, 15);
 
       const updatedSchedule = [...currentWeekSchedule];
@@ -1052,7 +1037,6 @@ export const useScheduleStorage = () => {
         cleanerName: cleanerNames[0] || '',
       };
       
-      // Recalculate total pay
       updatedEntry.totalCalculatedPay = calculateEntryPay(updatedEntry, 15);
 
       const updatedSchedule = [...currentWeekSchedule];
@@ -1070,7 +1054,6 @@ export const useScheduleStorage = () => {
     setError(null);
   }, []);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (saveTimeoutRef.current) {
@@ -1079,19 +1062,17 @@ export const useScheduleStorage = () => {
     };
   }, []);
 
-  // Initialize data on mount
   useEffect(() => {
     loadData();
   }, [loadData]);
 
   return {
-    // Data
     weeklySchedules,
     isLoading,
     error,
     
-    // Basic operations
     getWeekSchedule,
+    getScheduleForCleaner,
     addScheduleEntry,
     updateScheduleEntry,
     deleteScheduleEntry,
@@ -1099,24 +1080,20 @@ export const useScheduleStorage = () => {
     clearWeekSchedule,
     resetAllSchedules,
     
-    // Enhanced features
     getWeekStats,
     calculateScheduleStats,
     bulkUpdateEntries,
     bulkDeleteEntries,
     
-    // Multiple cleaners operations
     getEntryCleaners,
     addCleanerToEntry,
     removeCleanerFromEntry,
     updateEntryCleaners,
     
-    // Enhanced payment operations
     updateEntryPayment,
     getPaymentSummary,
     calculateEntryPay,
     
-    // Utilities
     clearError,
     clearCaches,
     loadData,

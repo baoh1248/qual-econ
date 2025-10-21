@@ -1,17 +1,20 @@
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet } from 'react-native';
-import { router } from 'expo-router';
-import { useTheme } from '../../hooks/useTheme';
-import { useToast } from '../../hooks/useToast';
-import { useDatabase } from '../../hooks/useDatabase';
 import { useClientData } from '../../hooks/useClientData';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, Modal, Switch, Alert } from 'react-native';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { router } from 'expo-router';
+import { useToast } from '../../hooks/useToast';
 import Toast from '../../components/Toast';
-import AnimatedCard from '../../components/AnimatedCard';
-import LoadingSpinner from '../../components/LoadingSpinner';
-import Icon from '../../components/Icon';
+import { useDatabase } from '../../hooks/useDatabase';
 import CompanyLogo from '../../components/CompanyLogo';
+import { supabase } from '../integrations/supabase/client';
+import uuid from 'react-native-uuid';
+import { useTheme } from '../../hooks/useTheme';
+import Button from '../../components/Button';
+import AnimatedCard from '../../components/AnimatedCard';
 import { commonStyles, colors, spacing, typography } from '../../styles/commonStyles';
+import Icon from '../../components/Icon';
+import LoadingSpinner from '../../components/LoadingSpinner';
 
 interface ClientProject {
   id: string;
@@ -41,97 +44,329 @@ interface ClientWithProjects {
   buildings: string[];
 }
 
-const ClientsListScreen = () => {
-  const { themeColor } = useTheme();
+interface Client {
+  id: string;
+  name: string;
+  security_level: 'low' | 'medium' | 'high';
+  security?: string;
+  is_active: boolean;
+  color?: string;
+}
+
+interface ClientFormData {
+  name: string;
+  security_level: 'low' | 'medium' | 'high';
+  security: string;
+  is_active: boolean;
+  color: string;
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.md,
+  },
+  headerTitle: {
+    fontSize: typography.sizes.xxl,
+    fontWeight: typography.weights.bold as any,
+    color: colors.text,
+  },
+  searchContainer: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
+  },
+  searchInput: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: spacing.md,
+    fontSize: typography.sizes.md,
+    color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
+    gap: spacing.sm,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: spacing.md,
+    alignItems: 'center',
+  },
+  statValue: {
+    fontSize: typography.sizes.xl,
+    fontWeight: typography.weights.bold as any,
+    color: colors.primary,
+  },
+  statLabel: {
+    fontSize: typography.sizes.sm,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+  },
+  listContainer: {
+    paddingHorizontal: spacing.lg,
+  },
+  clientCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  clientHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  clientName: {
+    fontSize: typography.sizes.lg,
+    fontWeight: typography.weights.semibold as any,
+    color: colors.text,
+    flex: 1,
+  },
+  clientActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  clientInfo: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.md,
+    marginTop: spacing.sm,
+  },
+  infoItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  infoText: {
+    fontSize: typography.sizes.sm,
+    color: colors.textSecondary,
+  },
+  badge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: 8,
+  },
+  badgeText: {
+    fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.semibold as any,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: spacing.xl,
+    width: '90%',
+    maxWidth: 500,
+  },
+  modalTitle: {
+    fontSize: typography.sizes.xl,
+    fontWeight: typography.weights.bold as any,
+    color: colors.text,
+    marginBottom: spacing.lg,
+  },
+  formGroup: {
+    marginBottom: spacing.md,
+  },
+  label: {
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.semibold as any,
+    color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  input: {
+    backgroundColor: colors.background,
+    borderRadius: 8,
+    padding: spacing.md,
+    fontSize: typography.sizes.md,
+    color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  switchContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+  },
+  colorPicker: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  colorOption: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  colorOptionSelected: {
+    borderColor: colors.primary,
+    borderWidth: 3,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginTop: spacing.lg,
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xxl,
+  },
+  emptyStateText: {
+    fontSize: typography.sizes.lg,
+    color: colors.textSecondary,
+    marginTop: spacing.md,
+  },
+});
+
+const PREDEFINED_COLORS = [
+  '#3B82F6', // Blue
+  '#10B981', // Green
+  '#F59E0B', // Amber
+  '#EF4444', // Red
+  '#8B5CF6', // Purple
+  '#EC4899', // Pink
+  '#06B6D4', // Cyan
+  '#F97316', // Orange
+];
+
+export default function ClientsListScreen() {
+  const { clients, clientBuildings, refreshData, isLoading } = useClientData();
+  const { theme } = useTheme();
   const { showToast } = useToast();
-  const { executeQuery } = useDatabase();
-  const { clients: allClients } = useClientData();
+  const { config } = useDatabase();
 
-  const [projects, setProjects] = useState<ClientProject[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('all');
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [projects, setProjects] = useState<ClientProject[]>([]);
+  const [loadingProjects, setLoadingProjects] = useState(false);
 
-  // Load projects from database
+  const [formData, setFormData] = useState<ClientFormData>({
+    name: '',
+    security_level: 'medium',
+    security: '',
+    is_active: true,
+    color: '#3B82F6',
+  });
+
+  // Load projects from Supabase
   const loadProjects = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      console.log('Loading projects for clients list...');
+    if (!config.useSupabase) return;
 
-      const result = await executeQuery<ClientProject>('select', 'client_projects');
-      console.log('✓ Loaded projects:', result.length);
-      
-      setProjects(result);
+    try {
+      setLoadingProjects(true);
+      console.log('🔄 Loading projects from Supabase...');
+
+      const { data, error } = await supabase
+        .from('client_projects')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('❌ Error loading projects:', error);
+        throw error;
+      }
+
+      console.log(`✅ Loaded ${data?.length || 0} projects`);
+      setProjects(data || []);
     } catch (error) {
-      console.error('Error loading projects:', error);
+      console.error('❌ Failed to load projects:', error);
       showToast('Failed to load projects', 'error');
     } finally {
-      setIsLoading(false);
+      setLoadingProjects(false);
     }
-  }, [executeQuery, showToast]);
+  }, [config.useSupabase, showToast]);
 
+  // Load data on mount
   useEffect(() => {
+    console.log('🔄 ClientsListScreen mounted, loading data...');
     loadProjects();
   }, [loadProjects]);
 
-  // Group projects by client
-  const clientsWithProjects = useMemo<ClientWithProjects[]>(() => {
-    const clientMap = new Map<string, ClientWithProjects>();
+  // Aggregate client data with projects
+  const clientsWithProjects = useMemo(() => {
+    const aggregated: { [key: string]: ClientWithProjects } = {};
 
-    projects.forEach((project) => {
-      const existing = clientMap.get(project.client_name);
-      
-      if (existing) {
-        existing.projectCount += 1;
-        if (project.status === 'active') {
-          existing.activeProjects += 1;
-        }
-        if (!project.is_included_in_contract) {
-          existing.totalRevenue += project.billing_amount;
-        }
-        if (project.building_name && !existing.buildings.includes(project.building_name)) {
-          existing.buildings.push(project.building_name);
-          existing.buildingCount = existing.buildings.length;
-        }
-      } else {
-        clientMap.set(project.client_name, {
-          clientName: project.client_name,
-          buildingCount: project.building_name ? 1 : 0,
-          projectCount: 1,
-          activeProjects: project.status === 'active' ? 1 : 0,
-          totalRevenue: project.is_included_in_contract ? 0 : project.billing_amount,
-          buildings: project.building_name ? [project.building_name] : [],
-        });
+    clients.forEach(client => {
+      if (!aggregated[client.name]) {
+        aggregated[client.name] = {
+          clientName: client.name,
+          buildingCount: 0,
+          projectCount: 0,
+          activeProjects: 0,
+          totalRevenue: 0,
+          buildings: [],
+        };
       }
     });
 
-    return Array.from(clientMap.values()).sort((a, b) => 
-      a.clientName.localeCompare(b.clientName)
-    );
-  }, [projects]);
+    clientBuildings.forEach(building => {
+      if (aggregated[building.clientName]) {
+        aggregated[building.clientName].buildingCount++;
+        if (!aggregated[building.clientName].buildings.includes(building.buildingName)) {
+          aggregated[building.clientName].buildings.push(building.buildingName);
+        }
+      }
+    });
 
-  // Filter clients
+    projects.forEach(project => {
+      if (aggregated[project.client_name]) {
+        aggregated[project.client_name].projectCount++;
+        if (project.status === 'active') {
+          aggregated[project.client_name].activeProjects++;
+        }
+        aggregated[project.client_name].totalRevenue += project.billing_amount || 0;
+      }
+    });
+
+    return Object.values(aggregated);
+  }, [clients, clientBuildings, projects]);
+
+  // Filter clients based on search
   const filteredClients = useMemo(() => {
-    let filtered = [...clientsWithProjects];
+    if (!searchQuery.trim()) return clientsWithProjects;
 
-    // Search filter
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter((client) =>
-        client.clientName.toLowerCase().includes(query) ||
-        client.buildings.some(b => b.toLowerCase().includes(query))
-      );
-    }
+    const query = searchQuery.toLowerCase();
+    return clientsWithProjects.filter(client =>
+      client.clientName.toLowerCase().includes(query)
+    );
+  }, [clientsWithProjects, searchQuery]);
 
-    // Status filter
-    if (filterStatus === 'active') {
-      filtered = filtered.filter((client) => client.activeProjects > 0);
-    } else if (filterStatus === 'inactive') {
-      filtered = filtered.filter((client) => client.activeProjects === 0);
-    }
-
-    return filtered;
-  }, [clientsWithProjects, searchQuery, filterStatus]);
+  // Calculate stats
+  const stats = useMemo(() => {
+    return {
+      totalClients: clients.length,
+      activeClients: clients.filter(c => c.isActive).length,
+      totalBuildings: clientBuildings.length,
+      totalProjects: projects.length,
+    };
+  }, [clients, clientBuildings, projects]);
 
   const handleClientPress = (clientName: string) => {
     router.push({
@@ -140,348 +375,565 @@ const ClientsListScreen = () => {
     });
   };
 
-  if (isLoading) {
-    return <LoadingSpinner message="Loading clients..." />;
-  }
+  const handleAddClient = async () => {
+    if (!formData.name.trim()) {
+      showToast('Please enter a client name', 'error');
+      return;
+    }
 
-  const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.background,
-    },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: spacing.lg,
-      paddingVertical: spacing.md,
-      backgroundColor: themeColor,
-    },
-    headerTitle: {
-      ...typography.h2,
-      color: colors.background,
-      fontWeight: '600',
-    },
-    filtersContainer: {
-      paddingHorizontal: spacing.lg,
-      paddingVertical: spacing.md,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-    },
-    searchContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: colors.backgroundAlt,
-      borderRadius: 8,
-      paddingHorizontal: spacing.md,
-      marginBottom: spacing.sm,
-    },
-    searchIcon: {
-      color: colors.textSecondary,
-      marginRight: spacing.sm,
-    },
-    searchInput: {
-      flex: 1,
-      paddingVertical: spacing.sm,
-      fontSize: 16,
-      color: colors.text,
-    },
-    filterRow: {
-      flexDirection: 'row',
-      gap: spacing.sm,
-    },
-    filterChip: {
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.xs,
-      borderRadius: 16,
-      backgroundColor: colors.backgroundAlt,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    filterChipActive: {
-      backgroundColor: themeColor,
-      borderColor: themeColor,
-    },
-    filterChipText: {
-      ...typography.small,
-      color: colors.text,
-      fontWeight: '500',
-    },
-    filterChipTextActive: {
-      color: colors.background,
-      fontWeight: '600',
-    },
-    statsContainer: {
-      flexDirection: 'row',
-      paddingHorizontal: spacing.lg,
-      paddingVertical: spacing.md,
-      gap: spacing.sm,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-    },
-    statCard: {
-      flex: 1,
-      backgroundColor: colors.backgroundAlt,
-      borderRadius: 8,
-      padding: spacing.md,
-      alignItems: 'center',
-    },
-    statValue: {
-      ...typography.h2,
-      color: themeColor,
-      fontWeight: 'bold',
-      marginBottom: spacing.xs,
-    },
-    statLabel: {
-      ...typography.small,
-      color: colors.textSecondary,
-      textAlign: 'center',
-    },
-    content: {
-      flex: 1,
-      paddingHorizontal: spacing.lg,
-      paddingTop: spacing.md,
-    },
-    emptyState: {
-      flex: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingVertical: spacing.xxl,
-    },
-    emptyStateText: {
-      ...typography.h3,
-      color: colors.textSecondary,
-      marginVertical: spacing.lg,
-    },
-    clientCard: {
-      marginBottom: spacing.md,
-      padding: spacing.lg,
-      backgroundColor: colors.backgroundAlt,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    clientHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: spacing.md,
-    },
-    clientName: {
-      ...typography.h3,
-      color: colors.text,
-      fontWeight: '600',
-      flex: 1,
-    },
-    chevronIcon: {
-      color: colors.textSecondary,
-    },
-    clientStats: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: spacing.md,
-      marginBottom: spacing.sm,
-    },
-    statItem: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.xs,
-    },
-    statItemText: {
-      ...typography.small,
-      color: colors.textSecondary,
-    },
-    statItemValue: {
-      ...typography.small,
-      color: colors.text,
-      fontWeight: '600',
-    },
-    buildingsList: {
-      marginTop: spacing.sm,
-      paddingTop: spacing.sm,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
-    },
-    buildingsTitle: {
-      ...typography.small,
-      color: colors.textSecondary,
-      fontWeight: '600',
-      marginBottom: spacing.xs,
-    },
-    buildingChip: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: colors.background,
-      paddingHorizontal: spacing.sm,
-      paddingVertical: spacing.xs,
-      borderRadius: 12,
-      marginRight: spacing.xs,
-      marginBottom: spacing.xs,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    buildingChipText: {
-      ...typography.small,
-      color: colors.text,
-      marginLeft: spacing.xs,
-    },
-    buildingsRow: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-    },
-  });
+    try {
+      console.log('🔄 Adding new client:', formData.name);
+
+      const newClient = {
+        id: uuid.v4() as string,
+        name: formData.name.trim(),
+        security_level: formData.security_level,
+        security: formData.security.trim() || null,
+        is_active: formData.is_active,
+        color: formData.color,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase
+        .from('clients')
+        .insert(newClient);
+
+      if (error) {
+        console.error('❌ Error adding client:', error);
+        throw error;
+      }
+
+      console.log('✅ Client added successfully');
+      showToast('Client added successfully', 'success');
+      
+      // Refresh data to show the new client
+      await refreshData();
+      
+      setShowAddModal(false);
+      setFormData({
+        name: '',
+        security_level: 'medium',
+        security: '',
+        is_active: true,
+        color: '#3B82F6',
+      });
+    } catch (error) {
+      console.error('❌ Failed to add client:', error);
+      showToast('Failed to add client', 'error');
+    }
+  };
+
+  const handleEditClient = async () => {
+    if (!selectedClient || !formData.name.trim()) {
+      showToast('Please enter a client name', 'error');
+      return;
+    }
+
+    try {
+      console.log('🔄 Updating client:', selectedClient.id);
+
+      const updates = {
+        name: formData.name.trim(),
+        security_level: formData.security_level,
+        security: formData.security.trim() || null,
+        is_active: formData.is_active,
+        color: formData.color,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase
+        .from('clients')
+        .update(updates)
+        .eq('id', selectedClient.id);
+
+      if (error) {
+        console.error('❌ Error updating client:', error);
+        throw error;
+      }
+
+      console.log('✅ Client updated successfully');
+      showToast('Client updated successfully', 'success');
+      
+      // Refresh data to show the updated client
+      await refreshData();
+      
+      setShowEditModal(false);
+      setSelectedClient(null);
+      setFormData({
+        name: '',
+        security_level: 'medium',
+        security: '',
+        is_active: true,
+        color: '#3B82F6',
+      });
+    } catch (error) {
+      console.error('❌ Failed to update client:', error);
+      showToast('Failed to update client', 'error');
+    }
+  };
+
+  const handleDeleteClient = async (clientId: string, clientName: string) => {
+    Alert.alert(
+      'Delete Client',
+      `Are you sure you want to delete ${clientName}? This will also delete all associated buildings and projects.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              console.log('🔄 Deleting client:', clientId);
+
+              // Delete associated buildings
+              const { error: buildingsError } = await supabase
+                .from('client_buildings')
+                .delete()
+                .eq('client_name', clientName);
+
+              if (buildingsError) {
+                console.error('❌ Error deleting buildings:', buildingsError);
+              }
+
+              // Delete associated projects
+              const { error: projectsError } = await supabase
+                .from('client_projects')
+                .delete()
+                .eq('client_name', clientName);
+
+              if (projectsError) {
+                console.error('❌ Error deleting projects:', projectsError);
+              }
+
+              // Delete client
+              const { error } = await supabase
+                .from('clients')
+                .delete()
+                .eq('id', clientId);
+
+              if (error) {
+                console.error('❌ Error deleting client:', error);
+                throw error;
+              }
+
+              console.log('✅ Client deleted successfully');
+              showToast('Client deleted successfully', 'success');
+              
+              // Refresh data to remove the deleted client
+              await refreshData();
+              await loadProjects();
+            } catch (error) {
+              console.error('❌ Failed to delete client:', error);
+              showToast('Failed to delete client', 'error');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const openEditModal = (clientName: string) => {
+    const client = clients.find(c => c.name === clientName);
+    if (!client) return;
+
+    setSelectedClient({
+      id: client.id,
+      name: client.name,
+      security_level: client.securityLevel,
+      security: client.security || '',
+      is_active: client.isActive,
+      color: client.color || '#3B82F6',
+    });
+
+    setFormData({
+      name: client.name,
+      security_level: client.securityLevel,
+      security: client.security || '',
+      is_active: client.isActive,
+      color: client.color || '#3B82F6',
+    });
+
+    setShowEditModal(true);
+  };
+
+  const getSecurityLevelColor = (level: string) => {
+    switch (level) {
+      case 'high':
+        return '#EF4444';
+      case 'medium':
+        return '#F59E0B';
+      case 'low':
+        return '#10B981';
+      default:
+        return colors.textSecondary;
+    }
+  };
+
+  if (isLoading || loadingProjects) {
+    return <LoadingSpinner />;
+  }
 
   return (
     <View style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
+        <CompanyLogo />
         <TouchableOpacity onPress={() => router.back()}>
-          <Icon name="arrow-back" size={24} style={{ color: colors.background }} />
+          <Icon name="close" size={24} color={colors.text} />
         </TouchableOpacity>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-          <CompanyLogo size="small" showText={false} variant="light" />
-          <Text style={styles.headerTitle}>Clients</Text>
-        </View>
-        <View style={{ width: 24 }} />
       </View>
 
-      {/* Filters */}
-      <View style={styles.filtersContainer}>
-        <View style={styles.searchContainer}>
-          <Icon name="search" size={20} style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search clients or buildings..."
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholderTextColor={colors.textSecondary}
-          />
-        </View>
-
-        <View style={styles.filterRow}>
-          <TouchableOpacity
-            style={[styles.filterChip, filterStatus === 'all' && styles.filterChipActive]}
-            onPress={() => setFilterStatus('all')}
-          >
-            <Text style={[styles.filterChipText, filterStatus === 'all' && styles.filterChipTextActive]}>
-              All Clients
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.filterChip, filterStatus === 'active' && styles.filterChipActive]}
-            onPress={() => setFilterStatus('active')}
-          >
-            <Text style={[styles.filterChipText, filterStatus === 'active' && styles.filterChipTextActive]}>
-              Active
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.filterChip, filterStatus === 'inactive' && styles.filterChipActive]}
-            onPress={() => setFilterStatus('inactive')}
-          >
-            <Text style={[styles.filterChipText, filterStatus === 'inactive' && styles.filterChipTextActive]}>
-              Inactive
-            </Text>
-          </TouchableOpacity>
-        </View>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Clients</Text>
+        <TouchableOpacity onPress={() => setShowAddModal(true)}>
+          <Icon name="add-circle" size={32} color={colors.primary} />
+        </TouchableOpacity>
       </View>
 
-      {/* Stats Summary */}
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search clients..."
+          placeholderTextColor={colors.textSecondary}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+      </View>
+
       <View style={styles.statsContainer}>
         <View style={styles.statCard}>
-          <Text style={styles.statValue}>{clientsWithProjects.length}</Text>
-          <Text style={styles.statLabel}>Total Clients</Text>
+          <Text style={styles.statValue}>{stats.totalClients}</Text>
+          <Text style={styles.statLabel}>Total</Text>
         </View>
         <View style={styles.statCard}>
-          <Text style={styles.statValue}>
-            {clientsWithProjects.reduce((sum, c) => sum + c.activeProjects, 0)}
-          </Text>
-          <Text style={styles.statLabel}>Active Projects</Text>
+          <Text style={styles.statValue}>{stats.activeClients}</Text>
+          <Text style={styles.statLabel}>Active</Text>
         </View>
         <View style={styles.statCard}>
-          <Text style={[styles.statValue, { color: colors.success }]}>
-            ${clientsWithProjects.reduce((sum, c) => sum + c.totalRevenue, 0).toFixed(0)}
-          </Text>
-          <Text style={styles.statLabel}>Total Revenue</Text>
+          <Text style={styles.statValue}>{stats.totalBuildings}</Text>
+          <Text style={styles.statLabel}>Buildings</Text>
+        </View>
+        <View style={styles.statCard}>
+          <Text style={styles.statValue}>{stats.totalProjects}</Text>
+          <Text style={styles.statLabel}>Projects</Text>
         </View>
       </View>
 
-      {/* Clients List */}
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.listContainer}>
         {filteredClients.length === 0 ? (
           <View style={styles.emptyState}>
-            <Icon name="business-outline" size={64} style={{ color: colors.textSecondary }} />
-            <Text style={styles.emptyStateText}>No clients found</Text>
+            <Icon name="business" size={64} color={colors.textSecondary} />
+            <Text style={styles.emptyStateText}>
+              {searchQuery ? 'No clients found' : 'No clients yet'}
+            </Text>
           </View>
         ) : (
-          filteredClients.map((client) => (
-            <AnimatedCard key={client.clientName}>
+          filteredClients.map((client) => {
+            const clientData = clients.find(c => c.name === client.clientName);
+            return (
               <TouchableOpacity
-                style={styles.clientCard}
+                key={client.clientName}
                 onPress={() => handleClientPress(client.clientName)}
-                activeOpacity={0.7}
               >
-                <View style={styles.clientHeader}>
-                  <Text style={styles.clientName}>{client.clientName}</Text>
-                  <Icon name="chevron-forward" size={24} style={styles.chevronIcon} />
-                </View>
-
-                <View style={styles.clientStats}>
-                  <View style={styles.statItem}>
-                    <Icon name="business" size={16} style={{ color: themeColor }} />
-                    <Text style={styles.statItemText}>
-                      <Text style={styles.statItemValue}>{client.buildingCount}</Text> Buildings
-                    </Text>
+                <AnimatedCard style={styles.clientCard}>
+                  <View style={styles.clientHeader}>
+                    <Text style={styles.clientName}>{client.clientName}</Text>
+                    <View style={styles.clientActions}>
+                      <TouchableOpacity onPress={() => openEditModal(client.clientName)}>
+                        <Icon name="create" size={20} color={colors.primary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => handleDeleteClient(clientData?.id || '', client.clientName)}
+                      >
+                        <Icon name="trash" size={20} color={colors.error} />
+                      </TouchableOpacity>
+                    </View>
                   </View>
 
-                  <View style={styles.statItem}>
-                    <Icon name="briefcase" size={16} style={{ color: colors.warning }} />
-                    <Text style={styles.statItemText}>
-                      <Text style={styles.statItemValue}>{client.projectCount}</Text> Projects
-                    </Text>
-                  </View>
-
-                  <View style={styles.statItem}>
-                    <Icon name="checkmark-circle" size={16} style={{ color: colors.success }} />
-                    <Text style={styles.statItemText}>
-                      <Text style={styles.statItemValue}>{client.activeProjects}</Text> Active
-                    </Text>
-                  </View>
-
-                  {client.totalRevenue > 0 && (
-                    <View style={styles.statItem}>
-                      <Icon name="cash" size={16} style={{ color: colors.success }} />
-                      <Text style={styles.statItemText}>
-                        <Text style={styles.statItemValue}>${client.totalRevenue.toFixed(2)}</Text>
+                  <View style={styles.clientInfo}>
+                    <View style={styles.infoItem}>
+                      <Icon name="business" size={16} color={colors.textSecondary} />
+                      <Text style={styles.infoText}>
+                        {client.buildingCount} {client.buildingCount === 1 ? 'Building' : 'Buildings'}
                       </Text>
                     </View>
-                  )}
-                </View>
-
-                {client.buildings.length > 0 && (
-                  <View style={styles.buildingsList}>
-                    <Text style={styles.buildingsTitle}>Buildings:</Text>
-                    <View style={styles.buildingsRow}>
-                      {client.buildings.map((building, index) => (
-                        <View key={index} style={styles.buildingChip}>
-                          <Icon name="location" size={12} style={{ color: themeColor }} />
-                          <Text style={styles.buildingChipText}>{building}</Text>
-                        </View>
-                      ))}
+                    <View style={styles.infoItem}>
+                      <Icon name="folder" size={16} color={colors.textSecondary} />
+                      <Text style={styles.infoText}>
+                        {client.projectCount} {client.projectCount === 1 ? 'Project' : 'Projects'}
+                      </Text>
                     </View>
+                    <View style={styles.infoItem}>
+                      <Icon name="checkmark-circle" size={16} color={colors.success} />
+                      <Text style={styles.infoText}>
+                        {client.activeProjects} Active
+                      </Text>
+                    </View>
+                    {clientData && (
+                      <View
+                        style={[
+                          styles.badge,
+                          { backgroundColor: getSecurityLevelColor(clientData.securityLevel) + '20' },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.badgeText,
+                            { color: getSecurityLevelColor(clientData.securityLevel) },
+                          ]}
+                        >
+                          {clientData.securityLevel.toUpperCase()}
+                        </Text>
+                      </View>
+                    )}
                   </View>
-                )}
+                </AnimatedCard>
               </TouchableOpacity>
-            </AnimatedCard>
-          ))
+            );
+          })
         )}
       </ScrollView>
+
+      {/* Add Client Modal */}
+      <Modal visible={showAddModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Add New Client</Text>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Client Name *</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter client name"
+                placeholderTextColor={colors.textSecondary}
+                value={formData.name}
+                onChangeText={(text) => setFormData({ ...formData, name: text })}
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Security Level</Text>
+              <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                {['low', 'medium', 'high'].map((level) => (
+                  <TouchableOpacity
+                    key={level}
+                    style={[
+                      styles.badge,
+                      {
+                        backgroundColor:
+                          formData.security_level === level
+                            ? colors.primary
+                            : colors.background,
+                      },
+                    ]}
+                    onPress={() =>
+                      setFormData({ ...formData, security_level: level as any })
+                    }
+                  >
+                    <Text
+                      style={[
+                        styles.badgeText,
+                        {
+                          color:
+                            formData.security_level === level
+                              ? '#FFFFFF'
+                              : colors.text,
+                        },
+                      ]}
+                    >
+                      {level.toUpperCase()}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Security Notes</Text>
+              <TextInput
+                style={[styles.input, { height: 80 }]}
+                placeholder="Enter security requirements..."
+                placeholderTextColor={colors.textSecondary}
+                value={formData.security}
+                onChangeText={(text) => setFormData({ ...formData, security: text })}
+                multiline
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Color</Text>
+              <View style={styles.colorPicker}>
+                {PREDEFINED_COLORS.map((color) => (
+                  <TouchableOpacity
+                    key={color}
+                    style={[
+                      styles.colorOption,
+                      { backgroundColor: color },
+                      formData.color === color && styles.colorOptionSelected,
+                    ]}
+                    onPress={() => setFormData({ ...formData, color })}
+                  />
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.switchContainer}>
+              <Text style={styles.label}>Active</Text>
+              <Switch
+                value={formData.is_active}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, is_active: value })
+                }
+              />
+            </View>
+
+            <View style={styles.modalActions}>
+              <Button
+                title="Cancel"
+                onPress={() => {
+                  setShowAddModal(false);
+                  setFormData({
+                    name: '',
+                    security_level: 'medium',
+                    security: '',
+                    is_active: true,
+                    color: '#3B82F6',
+                  });
+                }}
+                variant="secondary"
+                style={{ flex: 1 }}
+              />
+              <Button
+                title="Add Client"
+                onPress={handleAddClient}
+                style={{ flex: 1 }}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Edit Client Modal */}
+      <Modal visible={showEditModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Edit Client</Text>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Client Name *</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter client name"
+                placeholderTextColor={colors.textSecondary}
+                value={formData.name}
+                onChangeText={(text) => setFormData({ ...formData, name: text })}
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Security Level</Text>
+              <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                {['low', 'medium', 'high'].map((level) => (
+                  <TouchableOpacity
+                    key={level}
+                    style={[
+                      styles.badge,
+                      {
+                        backgroundColor:
+                          formData.security_level === level
+                            ? colors.primary
+                            : colors.background,
+                      },
+                    ]}
+                    onPress={() =>
+                      setFormData({ ...formData, security_level: level as any })
+                    }
+                  >
+                    <Text
+                      style={[
+                        styles.badgeText,
+                        {
+                          color:
+                            formData.security_level === level
+                              ? '#FFFFFF'
+                              : colors.text,
+                        },
+                      ]}
+                    >
+                      {level.toUpperCase()}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Security Notes</Text>
+              <TextInput
+                style={[styles.input, { height: 80 }]}
+                placeholder="Enter security requirements..."
+                placeholderTextColor={colors.textSecondary}
+                value={formData.security}
+                onChangeText={(text) => setFormData({ ...formData, security: text })}
+                multiline
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Color</Text>
+              <View style={styles.colorPicker}>
+                {PREDEFINED_COLORS.map((color) => (
+                  <TouchableOpacity
+                    key={color}
+                    style={[
+                      styles.colorOption,
+                      { backgroundColor: color },
+                      formData.color === color && styles.colorOptionSelected,
+                    ]}
+                    onPress={() => setFormData({ ...formData, color })}
+                  />
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.switchContainer}>
+              <Text style={styles.label}>Active</Text>
+              <Switch
+                value={formData.is_active}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, is_active: value })
+                }
+              />
+            </View>
+
+            <View style={styles.modalActions}>
+              <Button
+                title="Cancel"
+                onPress={() => {
+                  setShowEditModal(false);
+                  setSelectedClient(null);
+                  setFormData({
+                    name: '',
+                    security_level: 'medium',
+                    security: '',
+                    is_active: true,
+                    color: '#3B82F6',
+                  });
+                }}
+                variant="secondary"
+                style={{ flex: 1 }}
+              />
+              <Button
+                title="Save Changes"
+                onPress={handleEditClient}
+                style={{ flex: 1 }}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Toast />
     </View>
   );
-};
-
-export default ClientsListScreen;
+}
