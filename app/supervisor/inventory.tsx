@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Text, View, ScrollView, TouchableOpacity, TextInput, Alert, Modal, StyleSheet, Platform } from 'react-native';
+import { Text, View, ScrollView, TouchableOpacity, TextInput, Alert, Modal, StyleSheet, Platform, Dimensions } from 'react-native';
 import { router } from 'expo-router';
 import { useToast } from '../../hooks/useToast';
 import { useDatabase } from '../../hooks/useDatabase';
@@ -76,6 +76,12 @@ interface EditItemForm {
   auto_reorder_enabled: boolean;
   reorder_quantity: string;
 }
+
+const { width } = Dimensions.get('window');
+const ITEMS_PER_ROW = 4;
+const ITEM_SPACING = spacing.sm;
+const HORIZONTAL_PADDING = spacing.lg * 2;
+const ITEM_WIDTH = (width - HORIZONTAL_PADDING - (ITEM_SPACING * (ITEMS_PER_ROW - 1))) / ITEMS_PER_ROW;
 
 const styles = StyleSheet.create({
   container: {
@@ -160,49 +166,58 @@ const styles = StyleSheet.create({
   listContainer: {
     paddingHorizontal: spacing.lg,
   },
+  gridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: spacing.lg,
+    gap: ITEM_SPACING,
+  },
   itemCard: {
     backgroundColor: colors.surface,
     borderRadius: 12,
-    padding: spacing.md,
-    marginBottom: spacing.md,
+    padding: spacing.sm,
+    width: ITEM_WIDTH,
     borderWidth: 1,
     borderColor: colors.border,
+    marginBottom: ITEM_SPACING,
   },
   itemHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: 'column',
     alignItems: 'center',
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
   },
   itemName: {
-    fontSize: typography.sizes.lg,
+    fontSize: typography.sizes.sm,
     fontWeight: typography.weights.semibold as any,
     color: colors.text,
-    flex: 1,
+    textAlign: 'center',
+    marginTop: spacing.xs,
   },
   itemActions: {
     flexDirection: 'row',
-    gap: spacing.sm,
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+    justifyContent: 'center',
   },
   itemInfo: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md,
-    marginTop: spacing.sm,
+    alignItems: 'center',
+    marginTop: spacing.xs,
   },
   infoItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
+    marginTop: spacing.xs,
   },
   infoText: {
-    fontSize: typography.sizes.sm,
+    fontSize: typography.sizes.xs,
     color: colors.textSecondary,
   },
   stockBadge: {
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     borderRadius: 8,
+    marginTop: spacing.xs,
   },
   stockBadgeText: {
     fontSize: typography.sizes.xs,
@@ -266,6 +281,38 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.lg,
     color: colors.textSecondary,
     marginTop: spacing.md,
+  },
+  requestCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  requestHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  requestName: {
+    fontSize: typography.sizes.lg,
+    fontWeight: typography.weights.semibold as any,
+    color: colors.text,
+    flex: 1,
+  },
+  requestInfo: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.md,
+    marginTop: spacing.sm,
+  },
+  requestActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    justifyContent: 'flex-end',
   },
 });
 
@@ -749,7 +796,7 @@ export default function SupervisorInventoryScreen() {
         </View>
       </View>
 
-      <ScrollView style={styles.listContainer}>
+      <ScrollView>
         {filteredItems.length === 0 ? (
           <View style={styles.emptyState}>
             <Icon name="cube-outline" size={64} color={colors.textSecondary} />
@@ -758,56 +805,47 @@ export default function SupervisorInventoryScreen() {
             </Text>
           </View>
         ) : (
-          filteredItems.map((item) => {
-            const stockStatus = getStockStatus(item);
-            return (
-              <AnimatedCard key={item.id} style={styles.itemCard}>
-                <View style={styles.itemHeader}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flex: 1 }}>
-                    <Icon name={getCategoryIcon(item.category)} size={24} color={colors.primary} />
-                    <Text style={styles.itemName}>{item.name}</Text>
+          <View style={styles.gridContainer}>
+            {filteredItems.map((item) => {
+              const stockStatus = getStockStatus(item);
+              return (
+                <AnimatedCard key={item.id} style={styles.itemCard}>
+                  <View style={styles.itemHeader}>
+                    <Icon name={getCategoryIcon(item.category)} size={32} color={colors.primary} />
+                    <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
                   </View>
-                  <View style={styles.itemActions}>
-                    <TouchableOpacity onPress={() => openEditModal(item)}>
-                      <Icon name="create" size={20} color={colors.primary} />
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => handleDeleteItem(item.id, item.name)}>
-                      <Icon name="trash" size={20} color={colors.error} />
-                    </TouchableOpacity>
-                  </View>
-                </View>
 
-                <View style={styles.itemInfo}>
-                  <View style={[styles.stockBadge, { backgroundColor: stockStatus.color + '20' }]}>
-                    <Text style={[styles.stockBadgeText, { color: stockStatus.color }]}>
-                      {item.current_stock} {item.unit}
-                    </Text>
-                  </View>
-                  <View style={styles.infoItem}>
-                    <Icon name="location" size={16} color={colors.textSecondary} />
-                    <Text style={styles.infoText}>{item.location}</Text>
-                  </View>
-                  <View style={styles.infoItem}>
-                    <Icon name="business" size={16} color={colors.textSecondary} />
-                    <Text style={styles.infoText}>{item.supplier}</Text>
-                  </View>
-                  <View style={styles.infoItem}>
-                    <Icon name="cash" size={16} color={colors.textSecondary} />
+                  <View style={styles.itemInfo}>
+                    <View style={[styles.stockBadge, { backgroundColor: stockStatus.color + '20' }]}>
+                      <Text style={[styles.stockBadgeText, { color: stockStatus.color }]}>
+                        {item.current_stock} {item.unit}
+                      </Text>
+                    </View>
+                    <Text style={styles.infoText} numberOfLines={1}>{item.location}</Text>
                     <Text style={styles.infoText}>${item.cost.toFixed(2)}</Text>
                   </View>
-                </View>
-              </AnimatedCard>
-            );
-          })
+
+                  <View style={styles.itemActions}>
+                    <TouchableOpacity onPress={() => openEditModal(item)}>
+                      <Icon name="create" size={18} color={colors.primary} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => handleDeleteItem(item.id, item.name)}>
+                      <Icon name="trash" size={18} color={colors.error} />
+                    </TouchableOpacity>
+                  </View>
+                </AnimatedCard>
+              );
+            })}
+          </View>
         )}
 
         {restockRequests.length > 0 && (
-          <View style={{ marginTop: spacing.lg }}>
+          <View style={{ marginTop: spacing.lg, paddingHorizontal: spacing.lg }}>
             <Text style={[styles.modalTitle, { marginBottom: spacing.md }]}>Restock Requests</Text>
             {restockRequests.map((request) => (
-              <AnimatedCard key={request.id} style={styles.itemCard}>
-                <View style={styles.itemHeader}>
-                  <Text style={styles.itemName}>{request.item_name}</Text>
+              <AnimatedCard key={request.id} style={styles.requestCard}>
+                <View style={styles.requestHeader}>
+                  <Text style={styles.requestName}>{request.item_name}</Text>
                   <View style={[styles.stockBadge, { backgroundColor: getPriorityColor(request.priority) + '20' }]}>
                     <Text style={[styles.stockBadgeText, { color: getPriorityColor(request.priority) }]}>
                       {request.priority.toUpperCase()}
@@ -815,7 +853,7 @@ export default function SupervisorInventoryScreen() {
                   </View>
                 </View>
 
-                <View style={styles.itemInfo}>
+                <View style={styles.requestInfo}>
                   <View style={styles.infoItem}>
                     <Icon name="cube" size={16} color={colors.textSecondary} />
                     <Text style={styles.infoText}>Qty: {request.quantity}</Text>
@@ -836,7 +874,7 @@ export default function SupervisorInventoryScreen() {
                 )}
 
                 {request.status === 'pending' && (
-                  <View style={[styles.itemActions, { marginTop: spacing.md, justifyContent: 'flex-end' }]}>
+                  <View style={styles.requestActions}>
                     <Button
                       title="Reject"
                       onPress={() => confirmRejectRequest(request.id)}
