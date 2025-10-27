@@ -61,6 +61,13 @@ interface ClientFormData {
   color: string;
 }
 
+interface BuildingFormData {
+  building_name: string;
+  security_level: 'low' | 'medium' | 'high';
+  security: string;
+  address: string;
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -166,6 +173,33 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.xs,
     fontWeight: typography.weights.semibold as any,
   },
+  buildingsSection: {
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  buildingsSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  buildingsSectionTitle: {
+    fontSize: typography.sizes.md,
+    fontWeight: typography.weights.semibold as any,
+    color: colors.text,
+  },
+  buildingItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.xs,
+    gap: spacing.xs,
+  },
+  buildingName: {
+    fontSize: typography.sizes.sm,
+    color: colors.text,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -178,6 +212,7 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
     width: '90%',
     maxWidth: 500,
+    maxHeight: '80%',
   },
   modalTitle: {
     fontSize: typography.sizes.xl,
@@ -263,9 +298,12 @@ export default function ClientsListScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showAddBuildingModal, setShowAddBuildingModal] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [selectedClientForBuilding, setSelectedClientForBuilding] = useState<string>('');
   const [projects, setProjects] = useState<ClientProject[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(false);
+  const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set());
 
   const [formData, setFormData] = useState<ClientFormData>({
     name: '',
@@ -273,6 +311,13 @@ export default function ClientsListScreen() {
     security: '',
     is_active: true,
     color: '#3B82F6',
+  });
+
+  const [buildingFormData, setBuildingFormData] = useState<BuildingFormData>({
+    building_name: '',
+    security_level: 'medium',
+    security: '',
+    address: '',
   });
 
   // Load projects from Supabase
@@ -367,6 +412,18 @@ export default function ClientsListScreen() {
       totalProjects: projects.length,
     };
   }, [clients, clientBuildings, projects]);
+
+  const toggleClientExpansion = (clientName: string) => {
+    setExpandedClients(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(clientName)) {
+        newSet.delete(clientName);
+      } else {
+        newSet.add(clientName);
+      }
+      return newSet;
+    });
+  };
 
   const handleClientPress = (clientName: string) => {
     router.push({
@@ -557,6 +614,71 @@ export default function ClientsListScreen() {
     setShowEditModal(true);
   };
 
+  const openAddBuildingModal = (clientName: string) => {
+    setSelectedClientForBuilding(clientName);
+    setBuildingFormData({
+      building_name: '',
+      security_level: 'medium',
+      security: '',
+      address: '',
+    });
+    setShowAddBuildingModal(true);
+  };
+
+  const handleAddBuilding = async () => {
+    if (!buildingFormData.building_name.trim()) {
+      showToast('Please enter a building name', 'error');
+      return;
+    }
+
+    if (!selectedClientForBuilding) {
+      showToast('Please select a client', 'error');
+      return;
+    }
+
+    try {
+      console.log('🔄 Adding new building:', buildingFormData.building_name);
+
+      const newBuilding = {
+        id: uuid.v4() as string,
+        client_name: selectedClientForBuilding,
+        building_name: buildingFormData.building_name.trim(),
+        security_level: buildingFormData.security_level,
+        security: buildingFormData.security.trim() || null,
+        address: buildingFormData.address.trim() || null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase
+        .from('client_buildings')
+        .insert(newBuilding);
+
+      if (error) {
+        console.error('❌ Error adding building:', error);
+        throw error;
+      }
+
+      console.log('✅ Building added successfully');
+      showToast('Building added successfully', 'success');
+      
+      // Refresh data to show the new building
+      await refreshData();
+      
+      setShowAddBuildingModal(false);
+      setSelectedClientForBuilding('');
+      setBuildingFormData({
+        building_name: '',
+        security_level: 'medium',
+        security: '',
+        address: '',
+      });
+    } catch (error) {
+      console.error('❌ Failed to add building:', error);
+      showToast('Failed to add building', 'error');
+    }
+  };
+
   const getSecurityLevelColor = (level: string) => {
     switch (level) {
       case 'high':
@@ -630,12 +752,12 @@ export default function ClientsListScreen() {
         ) : (
           filteredClients.map((client) => {
             const clientData = clients.find(c => c.name === client.clientName);
+            const isExpanded = expandedClients.has(client.clientName);
+            const clientBuildingsList = clientBuildings.filter(b => b.clientName === client.clientName);
+
             return (
-              <TouchableOpacity
-                key={client.clientName}
-                onPress={() => handleClientPress(client.clientName)}
-              >
-                <AnimatedCard style={styles.clientCard}>
+              <AnimatedCard key={client.clientName} style={styles.clientCard}>
+                <TouchableOpacity onPress={() => handleClientPress(client.clientName)}>
                   <View style={styles.clientHeader}>
                     <Text style={styles.clientName}>{client.clientName}</Text>
                     <View style={styles.clientActions}>
@@ -687,8 +809,52 @@ export default function ClientsListScreen() {
                       </View>
                     )}
                   </View>
-                </AnimatedCard>
-              </TouchableOpacity>
+                </TouchableOpacity>
+
+                {/* Buildings Section */}
+                <View style={styles.buildingsSection}>
+                  <View style={styles.buildingsSectionHeader}>
+                    <TouchableOpacity
+                      onPress={() => toggleClientExpansion(client.clientName)}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}
+                    >
+                      <Icon
+                        name={isExpanded ? 'chevron-down' : 'chevron-forward'}
+                        size={20}
+                        color={colors.text}
+                      />
+                      <Text style={styles.buildingsSectionTitle}>
+                        Buildings ({client.buildingCount})
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => openAddBuildingModal(client.clientName)}>
+                      <Icon name="add-circle-outline" size={24} color={colors.primary} />
+                    </TouchableOpacity>
+                  </View>
+
+                  {isExpanded && (
+                    <View>
+                      {clientBuildingsList.length === 0 ? (
+                        <Text style={[styles.infoText, { marginLeft: spacing.lg }]}>
+                          No buildings yet
+                        </Text>
+                      ) : (
+                        clientBuildingsList.map((building) => (
+                          <View key={building.id} style={styles.buildingItem}>
+                            <Icon name="business-outline" size={16} color={colors.textSecondary} />
+                            <Text style={styles.buildingName}>{building.buildingName}</Text>
+                            {building.address && (
+                              <Text style={[styles.infoText, { marginLeft: spacing.xs }]}>
+                                - {building.address}
+                              </Text>
+                            )}
+                          </View>
+                        ))
+                      )}
+                    </View>
+                  )}
+                </View>
+              </AnimatedCard>
             );
           })
         )}
@@ -700,92 +866,94 @@ export default function ClientsListScreen() {
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Add New Client</Text>
 
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Client Name *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Enter client name"
-                placeholderTextColor={colors.textSecondary}
-                value={formData.name}
-                onChangeText={(text) => setFormData({ ...formData, name: text })}
-              />
-            </View>
+            <ScrollView>
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Client Name *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter client name"
+                  placeholderTextColor={colors.textSecondary}
+                  value={formData.name}
+                  onChangeText={(text) => setFormData({ ...formData, name: text })}
+                />
+              </View>
 
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Security Level</Text>
-              <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-                {['low', 'medium', 'high'].map((level) => (
-                  <TouchableOpacity
-                    key={level}
-                    style={[
-                      styles.badge,
-                      {
-                        backgroundColor:
-                          formData.security_level === level
-                            ? colors.primary
-                            : colors.background,
-                      },
-                    ]}
-                    onPress={() =>
-                      setFormData({ ...formData, security_level: level as any })
-                    }
-                  >
-                    <Text
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Security Level</Text>
+                <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                  {['low', 'medium', 'high'].map((level) => (
+                    <TouchableOpacity
+                      key={level}
                       style={[
-                        styles.badgeText,
+                        styles.badge,
                         {
-                          color:
+                          backgroundColor:
                             formData.security_level === level
-                              ? '#FFFFFF'
-                              : colors.text,
+                              ? colors.primary
+                              : colors.background,
                         },
                       ]}
+                      onPress={() =>
+                        setFormData({ ...formData, security_level: level as any })
+                      }
                     >
-                      {level.toUpperCase()}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                      <Text
+                        style={[
+                          styles.badgeText,
+                          {
+                            color:
+                              formData.security_level === level
+                                ? '#FFFFFF'
+                                : colors.text,
+                          },
+                        ]}
+                      >
+                        {level.toUpperCase()}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
               </View>
-            </View>
 
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Security Notes</Text>
-              <TextInput
-                style={[styles.input, { height: 80 }]}
-                placeholder="Enter security requirements..."
-                placeholderTextColor={colors.textSecondary}
-                value={formData.security}
-                onChangeText={(text) => setFormData({ ...formData, security: text })}
-                multiline
-              />
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Color</Text>
-              <View style={styles.colorPicker}>
-                {PREDEFINED_COLORS.map((color) => (
-                  <TouchableOpacity
-                    key={color}
-                    style={[
-                      styles.colorOption,
-                      { backgroundColor: color },
-                      formData.color === color && styles.colorOptionSelected,
-                    ]}
-                    onPress={() => setFormData({ ...formData, color })}
-                  />
-                ))}
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Security Notes</Text>
+                <TextInput
+                  style={[styles.input, { height: 80 }]}
+                  placeholder="Enter security requirements..."
+                  placeholderTextColor={colors.textSecondary}
+                  value={formData.security}
+                  onChangeText={(text) => setFormData({ ...formData, security: text })}
+                  multiline
+                />
               </View>
-            </View>
 
-            <View style={styles.switchContainer}>
-              <Text style={styles.label}>Active</Text>
-              <Switch
-                value={formData.is_active}
-                onValueChange={(value) =>
-                  setFormData({ ...formData, is_active: value })
-                }
-              />
-            </View>
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Color</Text>
+                <View style={styles.colorPicker}>
+                  {PREDEFINED_COLORS.map((color) => (
+                    <TouchableOpacity
+                      key={color}
+                      style={[
+                        styles.colorOption,
+                        { backgroundColor: color },
+                        formData.color === color && styles.colorOptionSelected,
+                      ]}
+                      onPress={() => setFormData({ ...formData, color })}
+                    />
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.switchContainer}>
+                <Text style={styles.label}>Active</Text>
+                <Switch
+                  value={formData.is_active}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, is_active: value })
+                  }
+                />
+              </View>
+            </ScrollView>
 
             <View style={styles.modalActions}>
               <Button
@@ -819,92 +987,94 @@ export default function ClientsListScreen() {
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Edit Client</Text>
 
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Client Name *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Enter client name"
-                placeholderTextColor={colors.textSecondary}
-                value={formData.name}
-                onChangeText={(text) => setFormData({ ...formData, name: text })}
-              />
-            </View>
+            <ScrollView>
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Client Name *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter client name"
+                  placeholderTextColor={colors.textSecondary}
+                  value={formData.name}
+                  onChangeText={(text) => setFormData({ ...formData, name: text })}
+                />
+              </View>
 
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Security Level</Text>
-              <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-                {['low', 'medium', 'high'].map((level) => (
-                  <TouchableOpacity
-                    key={level}
-                    style={[
-                      styles.badge,
-                      {
-                        backgroundColor:
-                          formData.security_level === level
-                            ? colors.primary
-                            : colors.background,
-                      },
-                    ]}
-                    onPress={() =>
-                      setFormData({ ...formData, security_level: level as any })
-                    }
-                  >
-                    <Text
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Security Level</Text>
+                <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                  {['low', 'medium', 'high'].map((level) => (
+                    <TouchableOpacity
+                      key={level}
                       style={[
-                        styles.badgeText,
+                        styles.badge,
                         {
-                          color:
+                          backgroundColor:
                             formData.security_level === level
-                              ? '#FFFFFF'
-                              : colors.text,
+                              ? colors.primary
+                              : colors.background,
                         },
                       ]}
+                      onPress={() =>
+                        setFormData({ ...formData, security_level: level as any })
+                      }
                     >
-                      {level.toUpperCase()}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                      <Text
+                        style={[
+                          styles.badgeText,
+                          {
+                            color:
+                              formData.security_level === level
+                                ? '#FFFFFF'
+                                : colors.text,
+                          },
+                        ]}
+                      >
+                        {level.toUpperCase()}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
               </View>
-            </View>
 
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Security Notes</Text>
-              <TextInput
-                style={[styles.input, { height: 80 }]}
-                placeholder="Enter security requirements..."
-                placeholderTextColor={colors.textSecondary}
-                value={formData.security}
-                onChangeText={(text) => setFormData({ ...formData, security: text })}
-                multiline
-              />
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Color</Text>
-              <View style={styles.colorPicker}>
-                {PREDEFINED_COLORS.map((color) => (
-                  <TouchableOpacity
-                    key={color}
-                    style={[
-                      styles.colorOption,
-                      { backgroundColor: color },
-                      formData.color === color && styles.colorOptionSelected,
-                    ]}
-                    onPress={() => setFormData({ ...formData, color })}
-                  />
-                ))}
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Security Notes</Text>
+                <TextInput
+                  style={[styles.input, { height: 80 }]}
+                  placeholder="Enter security requirements..."
+                  placeholderTextColor={colors.textSecondary}
+                  value={formData.security}
+                  onChangeText={(text) => setFormData({ ...formData, security: text })}
+                  multiline
+                />
               </View>
-            </View>
 
-            <View style={styles.switchContainer}>
-              <Text style={styles.label}>Active</Text>
-              <Switch
-                value={formData.is_active}
-                onValueChange={(value) =>
-                  setFormData({ ...formData, is_active: value })
-                }
-              />
-            </View>
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Color</Text>
+                <View style={styles.colorPicker}>
+                  {PREDEFINED_COLORS.map((color) => (
+                    <TouchableOpacity
+                      key={color}
+                      style={[
+                        styles.colorOption,
+                        { backgroundColor: color },
+                        formData.color === color && styles.colorOptionSelected,
+                      ]}
+                      onPress={() => setFormData({ ...formData, color })}
+                    />
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.switchContainer}>
+                <Text style={styles.label}>Active</Text>
+                <Switch
+                  value={formData.is_active}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, is_active: value })
+                  }
+                />
+              </View>
+            </ScrollView>
 
             <View style={styles.modalActions}>
               <Button
@@ -926,6 +1096,120 @@ export default function ClientsListScreen() {
               <Button
                 title="Save Changes"
                 onPress={handleEditClient}
+                style={{ flex: 1 }}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Add Building Modal */}
+      <Modal visible={showAddBuildingModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Add Building to {selectedClientForBuilding}</Text>
+
+            <ScrollView>
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Building Name *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter building name"
+                  placeholderTextColor={colors.textSecondary}
+                  value={buildingFormData.building_name}
+                  onChangeText={(text) =>
+                    setBuildingFormData({ ...buildingFormData, building_name: text })
+                  }
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Address</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter building address"
+                  placeholderTextColor={colors.textSecondary}
+                  value={buildingFormData.address}
+                  onChangeText={(text) =>
+                    setBuildingFormData({ ...buildingFormData, address: text })
+                  }
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Security Level</Text>
+                <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                  {['low', 'medium', 'high'].map((level) => (
+                    <TouchableOpacity
+                      key={level}
+                      style={[
+                        styles.badge,
+                        {
+                          backgroundColor:
+                            buildingFormData.security_level === level
+                              ? colors.primary
+                              : colors.background,
+                        },
+                      ]}
+                      onPress={() =>
+                        setBuildingFormData({
+                          ...buildingFormData,
+                          security_level: level as any,
+                        })
+                      }
+                    >
+                      <Text
+                        style={[
+                          styles.badgeText,
+                          {
+                            color:
+                              buildingFormData.security_level === level
+                                ? '#FFFFFF'
+                                : colors.text,
+                          },
+                        ]}
+                      >
+                        {level.toUpperCase()}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Security Notes</Text>
+                <TextInput
+                  style={[styles.input, { height: 80 }]}
+                  placeholder="Enter security requirements..."
+                  placeholderTextColor={colors.textSecondary}
+                  value={buildingFormData.security}
+                  onChangeText={(text) =>
+                    setBuildingFormData({ ...buildingFormData, security: text })
+                  }
+                  multiline
+                />
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <Button
+                title="Cancel"
+                onPress={() => {
+                  setShowAddBuildingModal(false);
+                  setSelectedClientForBuilding('');
+                  setBuildingFormData({
+                    building_name: '',
+                    security_level: 'medium',
+                    security: '',
+                    address: '',
+                  });
+                }}
+                variant="secondary"
+                style={{ flex: 1 }}
+              />
+              <Button
+                title="Add Building"
+                onPress={handleAddBuilding}
                 style={{ flex: 1 }}
               />
             </View>
