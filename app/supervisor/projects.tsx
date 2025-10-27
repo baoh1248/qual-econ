@@ -563,12 +563,16 @@ const ProjectsScreen = () => {
         updated_at: new Date().toISOString(),
       };
 
-      await executeQuery<ClientProject>(
+      console.log('📝 Project update data:', updatedProject);
+
+      const result = await executeQuery<ClientProject>(
         'update',
         'client_projects',
         updatedProject,
         { id: selectedProject.id }
       );
+
+      console.log('📥 Project update result:', result);
 
       // Delete existing resources
       await executeQuery('delete', 'project_labor', undefined, { project_id: selectedProject.id });

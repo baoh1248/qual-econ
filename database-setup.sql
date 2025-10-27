@@ -1,195 +1,19 @@
+-- Database Setup Script for Supabase
+-- Run this in your Supabase SQL Editor to create the required tables
 
-import { createClient } from '@supabase/supabase-js';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-// Supabase configuration - using hardcoded values since env vars are not set
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || "https://qyskfuxvuzshdtzbtygx.supabase.co";
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF5c2tmdXh2dXpzaGR0emJ0eWd4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkyMDMwOTksImV4cCI6MjA3NDc3OTA5OX0.QyU5Zn9qMErS2zds-rho5BPXQADsF8oyz83kknjNsrs";
-
-// Create Supabase client with AsyncStorage for session persistence
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    storage: AsyncStorage,
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
-  },
-});
-
-// Database table names
-export const TABLES = {
-  CLIENTS: 'clients',
-  CLIENT_BUILDINGS: 'client_buildings',
-  CLEANERS: 'cleaners',
-  CLIENT_PROJECTS: 'client_projects',
-  PROJECT_LABOR: 'project_labor',
-  PROJECT_EQUIPMENT: 'project_equipment',
-  PROJECT_VEHICLES: 'project_vehicles',
-  PROJECT_SUPPLIES: 'project_supplies',
-  SCHEDULE_ENTRIES: 'schedule_entries',
-  INVENTORY_ITEMS: 'inventory_items',
-  INVENTORY_TRANSACTIONS: 'inventory_transactions',
-  RESTOCK_REQUESTS: 'restock_requests',
-} as const;
-
-// Database types
-export interface DatabaseClient {
-  id: string;
-  name: string;
-  is_active: boolean;
-  color?: string;
-  security?: string;
-  security_level: 'low' | 'medium' | 'high';
-  security_info?: string;
-  contact_email?: string;
-  contact_phone?: string;
-  contact_address?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface DatabaseClientBuilding {
-  id: string;
-  client_name: string;
-  building_name: string;
-  address?: string;
-  security?: string;
-  security_level: 'low' | 'medium' | 'high';
-  security_info?: string;
-  is_active: boolean;
-  contact_email?: string;
-  contact_phone?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface DatabaseCleaner {
-  id: string;
-  name: string;
-  is_active: boolean;
-  avatar?: string;
-  specialties: string[];
-  employee_id: string;
-  security_level: 'low' | 'medium' | 'high';
-  phone_number: string;
-  email?: string;
-  hire_date?: string;
-  emergency_contact_name?: string;
-  emergency_contact_phone?: string;
-  emergency_contact_relationship?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface DatabaseScheduleEntry {
-  id: string;
-  client_name: string;
-  building_name: string;
-  cleaner_name: string;
-  cleaner_names?: string[];
-  cleaner_ids?: string[];
-  hours: number;
-  day: 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
-  date: string;
-  start_time?: string;
-  end_time?: string;
-  status: 'scheduled' | 'in-progress' | 'completed' | 'cancelled';
-  week_id: string;
-  notes?: string;
-  priority?: 'low' | 'medium' | 'high';
-  is_recurring?: boolean;
-  recurring_id?: string;
-  estimated_duration?: number;
-  actual_duration?: number;
-  tags?: string[];
-  payment_type?: 'hourly' | 'flat_rate';
-  flat_rate_amount?: number;
-  hourly_rate?: number;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface DatabaseInventoryItem {
-  id: string;
-  name: string;
-  category: 'cleaning-supplies' | 'equipment' | 'safety';
-  current_stock: number;
-  min_stock: number;
-  max_stock: number;
-  unit: string;
-  location: string;
-  cost: number;
-  supplier: string;
-  auto_reorder_enabled: boolean;
-  reorder_quantity: number;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface DatabaseInventoryTransaction {
-  id: string;
-  item_id: string;
-  item_name: string;
-  transaction_type: 'in' | 'out' | 'adjustment';
-  quantity: number;
-  previous_stock: number;
-  new_stock: number;
-  reason: string;
-  performed_by: string;
-  location?: string;
-  created_at: string;
-}
-
-export interface DatabaseRestockRequest {
-  id: string;
-  item_id: string;
-  item_name: string;
-  requested_by: string;
-  requested_at: string;
-  quantity: number;
-  priority: 'low' | 'medium' | 'high';
-  status: 'pending' | 'approved' | 'ordered' | 'delivered';
-  notes: string;
-  approved_by?: string;
-  approved_at?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-// Helper functions to check if Supabase is configured
-export const isSupabaseConfigured = (): boolean => {
-  return !!(supabaseUrl && supabaseAnonKey && supabaseUrl !== '' && supabaseAnonKey !== '');
-};
-
-export const getSupabaseStatus = () => {
-  if (!isSupabaseConfigured()) {
-    return {
-      configured: false,
-      message: 'Supabase is not configured. Please set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY environment variables.',
-    };
-  }
-  
-  return {
-    configured: true,
-    message: 'Supabase is configured and ready to use.',
-  };
-};
-
-// Database initialization SQL (for reference - these would be run in Supabase dashboard)
-export const DATABASE_SCHEMA = `
 -- Enable Row Level Security
-ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
-ALTER TABLE client_buildings ENABLE ROW LEVEL SECURITY;
-ALTER TABLE cleaners ENABLE ROW LEVEL SECURITY;
-ALTER TABLE client_projects ENABLE ROW LEVEL SECURITY;
-ALTER TABLE project_labor ENABLE ROW LEVEL SECURITY;
-ALTER TABLE project_equipment ENABLE ROW LEVEL SECURITY;
-ALTER TABLE project_vehicles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE project_supplies ENABLE ROW LEVEL SECURITY;
-ALTER TABLE schedule_entries ENABLE ROW LEVEL SECURITY;
-ALTER TABLE inventory_items ENABLE ROW LEVEL SECURITY;
-ALTER TABLE inventory_transactions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE restock_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS clients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS client_buildings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS cleaners ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS client_projects ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS project_labor ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS project_equipment ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS project_vehicles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS project_supplies ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS schedule_entries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS inventory_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS inventory_transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS restock_requests ENABLE ROW LEVEL SECURITY;
 
 -- Create tables
 CREATE TABLE IF NOT EXISTS clients (
@@ -399,6 +223,11 @@ CREATE TABLE IF NOT EXISTS restock_requests (
 CREATE INDEX IF NOT EXISTS idx_clients_name ON clients(name);
 CREATE INDEX IF NOT EXISTS idx_client_buildings_client_name ON client_buildings(client_name);
 CREATE INDEX IF NOT EXISTS idx_cleaners_employee_id ON cleaners(employee_id);
+CREATE INDEX IF NOT EXISTS idx_client_projects_client_name ON client_projects(client_name);
+CREATE INDEX IF NOT EXISTS idx_project_labor_project_id ON project_labor(project_id);
+CREATE INDEX IF NOT EXISTS idx_project_equipment_project_id ON project_equipment(project_id);
+CREATE INDEX IF NOT EXISTS idx_project_vehicles_project_id ON project_vehicles(project_id);
+CREATE INDEX IF NOT EXISTS idx_project_supplies_project_id ON project_supplies(project_id);
 CREATE INDEX IF NOT EXISTS idx_schedule_entries_week_id ON schedule_entries(week_id);
 CREATE INDEX IF NOT EXISTS idx_schedule_entries_date ON schedule_entries(date);
 CREATE INDEX IF NOT EXISTS idx_inventory_items_category ON inventory_items(category);
@@ -439,4 +268,3 @@ CREATE POLICY "Allow all operations" ON schedule_entries FOR ALL USING (true);
 CREATE POLICY "Allow all operations" ON inventory_items FOR ALL USING (true);
 CREATE POLICY "Allow all operations" ON inventory_transactions FOR ALL USING (true);
 CREATE POLICY "Allow all operations" ON restock_requests FOR ALL USING (true);
-`;

@@ -1,7 +1,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase } from '../app/integrations/supabase/client';
+import { supabase } from '../utils/supabase';
 
 export interface Client {
   id: string;
@@ -558,6 +558,7 @@ export const useClientData = () => {
   const updateCleaner = useCallback(async (cleanerId: string, updates: Partial<Cleaner>) => {
     try {
       console.log('🔄 Updating cleaner in Supabase:', cleanerId);
+      console.log('📝 Update data:', updates);
       
       const updateData: any = {};
       if (updates.name !== undefined) updateData.name = updates.name;
@@ -586,17 +587,22 @@ export const useClientData = () => {
       
       updateData.updated_at = new Date().toISOString();
 
-      const { error } = await supabase
+      console.log('📤 Sending to Supabase:', updateData);
+
+      const { data, error } = await supabase
         .from('cleaners')
         .update(updateData)
-        .eq('id', cleanerId);
+        .eq('id', cleanerId)
+        .select();
 
       if (error) {
         console.error('❌ Error updating cleaner in Supabase:', error);
+        console.error('❌ Error details:', JSON.stringify(error, null, 2));
         throw error;
       }
 
       console.log('✅ Cleaner updated in Supabase successfully');
+      console.log('📥 Response data:', data);
       
       // Update local state immediately for better UX
       const updatedCleaners = cleaners.map(cleaner =>
