@@ -224,6 +224,9 @@ export default function CleanersScreen() {
       console.log('✓ Cleaner updated successfully');
       showToast('Cleaner updated successfully', 'success');
       
+      // Force refresh the cleaners data to ensure UI updates
+      await loadCleaners();
+      
       setShowEditModal(false);
       setSelectedCleaner(null);
       resetForm();
@@ -231,7 +234,7 @@ export default function CleanersScreen() {
       console.error('Error updating cleaner:', error);
       showToast(`Failed to update cleaner: ${error?.message || 'Unknown error'}`, 'error');
     }
-  }, [selectedCleaner, formData, updateCleaner, showToast, resetForm]);
+  }, [selectedCleaner, formData, updateCleaner, showToast, resetForm, loadCleaners]);
 
   const handleDeleteCleaner = useCallback(async (cleanerId: string) => {
     Alert.alert(

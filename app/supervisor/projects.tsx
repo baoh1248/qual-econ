@@ -643,6 +643,7 @@ const ProjectsScreen = () => {
       console.log('✓ Project updated successfully');
       showToast('Project updated successfully', 'success');
       
+      // Force refresh the projects data to ensure UI updates
       await loadProjects();
       
       setShowEditModal(false);

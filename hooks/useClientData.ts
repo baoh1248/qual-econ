@@ -292,14 +292,8 @@ export const useClientData = () => {
   }, []);
 
   const loadData = useCallback(async () => {
-    if (loadingRef.current) {
-      console.log('⚠️ Load already in progress, skipping...');
-      return;
-    }
-    
     try {
       console.log('🔄 === LOADING ALL CLIENT DATA ===');
-      loadingRef.current = true;
       setIsLoading(true);
       setError(null);
 
@@ -322,13 +316,11 @@ export const useClientData = () => {
       setError('Failed to load client data');
     } finally {
       setIsLoading(false);
-      loadingRef.current = false;
     }
   }, [loadClientsFromSupabase, loadBuildingsFromSupabase, loadCleanersFromSupabase]);
 
   const refreshData = useCallback(async () => {
     console.log('🔄 === REFRESHING ALL CLIENT DATA ===');
-    loadingRef.current = false;
     await loadData();
   }, [loadData]);
 
@@ -410,6 +402,13 @@ export const useClientData = () => {
 
       console.log('✅ Client updated in Supabase successfully');
       
+      // Update local state immediately for better UX
+      const updatedClients = clients.map(client =>
+        client.id === clientId ? { ...client, ...updates, updatedAt: new Date() } : client
+      );
+      setClients(updatedClients);
+      
+      // Also refresh from database to ensure consistency
       await refreshData();
     } catch (error) {
       console.error('❌ Failed to update client in Supabase, updating locally:', error);
@@ -485,6 +484,13 @@ export const useClientData = () => {
 
       console.log('✅ Building updated in Supabase successfully');
       
+      // Update local state immediately for better UX
+      const updatedBuildings = clientBuildings.map(building =>
+        building.id === buildingId ? { ...building, ...updates, updatedAt: new Date() } : building
+      );
+      setClientBuildings(updatedBuildings);
+      
+      // Also refresh from database to ensure consistency
       await refreshData();
     } catch (error) {
       console.error('❌ Failed to update building in Supabase, updating locally:', error);
@@ -592,6 +598,13 @@ export const useClientData = () => {
 
       console.log('✅ Cleaner updated in Supabase successfully');
       
+      // Update local state immediately for better UX
+      const updatedCleaners = cleaners.map(cleaner =>
+        cleaner.id === cleanerId ? { ...cleaner, ...updates, updatedAt: new Date() } : cleaner
+      );
+      setCleaners(updatedCleaners);
+      
+      // Also refresh from database to ensure consistency
       await refreshData();
     } catch (error) {
       console.error('❌ Failed to update cleaner in Supabase, updating locally:', error);
