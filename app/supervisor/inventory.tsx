@@ -77,6 +77,12 @@ interface EditItemForm {
   reorder_quantity: string;
 }
 
+const { width } = Dimensions.get('window');
+const ITEMS_PER_ROW = 7;
+const ITEM_SPACING = spacing.sm;
+const HORIZONTAL_PADDING = spacing.lg * 2;
+const ITEM_WIDTH = (width - HORIZONTAL_PADDING - (ITEM_SPACING * (ITEMS_PER_ROW - 1))) / ITEMS_PER_ROW;
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,

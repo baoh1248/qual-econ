@@ -174,6 +174,59 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.xs,
     fontWeight: typography.weights.semibold as any,
   },
+  buildingsSection: {
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  buildingsSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  buildingsSectionTitle: {
+    fontSize: typography.sizes.md,
+    fontWeight: typography.weights.semibold as any,
+    color: colors.text,
+  },
+  buildingItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    gap: spacing.xs,
+    backgroundColor: colors.background,
+    borderRadius: 8,
+    marginBottom: spacing.xs,
+  },
+  buildingName: {
+    fontSize: typography.sizes.sm,
+    color: colors.text,
+    flex: 1,
+  },
+  buildingActionsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  buildingActionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary + '20',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    borderRadius: 8,
+    gap: spacing.xs,
+  },
+  buildingActionButtonText: {
+    color: colors.primary,
+    fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.semibold as any,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -272,7 +325,11 @@ export default function ClientsListScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showAddBuildingModal, setShowAddBuildingModal] = useState(false);
+  const [showBuildingGroupsModal, setShowBuildingGroupsModal] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [selectedClientForBuilding, setSelectedClientForBuilding] = useState<string>('');
+  const [selectedClientForGroups, setSelectedClientForGroups] = useState<string>('');
   const [projects, setProjects] = useState<ClientProject[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(false);
   const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set());
@@ -597,6 +654,76 @@ export default function ClientsListScreen() {
     setShowEditModal(true);
   };
 
+  const openAddBuildingModal = (clientName: string) => {
+    setSelectedClientForBuilding(clientName);
+    setBuildingFormData({
+      building_name: '',
+      security_level: 'medium',
+      security: '',
+      address: '',
+    });
+    setShowAddBuildingModal(true);
+  };
+
+  const openBuildingGroupsModal = (clientName: string) => {
+    setSelectedClientForGroups(clientName);
+    setShowBuildingGroupsModal(true);
+  };
+
+  const handleAddBuilding = async () => {
+    if (!buildingFormData.building_name.trim()) {
+      showToast('Please enter a building name', 'error');
+      return;
+    }
+
+    if (!selectedClientForBuilding) {
+      showToast('Please select a client', 'error');
+      return;
+    }
+
+    try {
+      console.log('🔄 Adding new building:', buildingFormData.building_name);
+
+      const newBuilding = {
+        id: uuid.v4() as string,
+        client_name: selectedClientForBuilding,
+        building_name: buildingFormData.building_name.trim(),
+        security_level: buildingFormData.security_level,
+        security: buildingFormData.security.trim() || null,
+        address: buildingFormData.address.trim() || null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase
+        .from('client_buildings')
+        .insert(newBuilding);
+
+      if (error) {
+        console.error('❌ Error adding building:', error);
+        throw error;
+      }
+
+      console.log('✅ Building added successfully');
+      showToast('Building added successfully', 'success');
+      
+      // Refresh data to show the new building
+      await refreshData();
+      
+      setShowAddBuildingModal(false);
+      setSelectedClientForBuilding('');
+      setBuildingFormData({
+        building_name: '',
+        security_level: 'medium',
+        security: '',
+        address: '',
+      });
+    } catch (error) {
+      console.error('❌ Failed to add building:', error);
+      showToast('Failed to add building', 'error');
+    }
+  };
+
   const getSecurityLevelColor = (level: string) => {
     switch (level) {
       case 'high':
@@ -727,8 +854,70 @@ export default function ClientsListScreen() {
                       </View>
                     )}
                   </View>
-                </AnimatedCard>
-              </TouchableOpacity>
+                </TouchableOpacity>
+
+                {/* Buildings Section */}
+                <View style={styles.buildingsSection}>
+                  <View style={styles.buildingsSectionHeader}>
+                    <TouchableOpacity
+                      onPress={() => toggleClientExpansion(client.clientName)}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}
+                    >
+                      <Icon
+                        name={isExpanded ? 'chevron-down' : 'chevron-forward'}
+                        size={20}
+                        color={colors.text}
+                      />
+                      <Text style={styles.buildingsSectionTitle}>
+                        Buildings ({client.buildingCount})
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => openAddBuildingModal(client.clientName)}>
+                      <Icon name="add-circle-outline" size={24} color={colors.primary} />
+                    </TouchableOpacity>
+                  </View>
+
+                  {isExpanded && (
+                    <View>
+                      {clientBuildingsList.length === 0 ? (
+                        <Text style={[styles.infoText, { marginLeft: spacing.lg }]}>
+                          No buildings yet
+                        </Text>
+                      ) : (
+                        <>
+                          {clientBuildingsList.map((building) => (
+                            <TouchableOpacity 
+                              key={building.id} 
+                              style={styles.buildingItem}
+                              onPress={() => handleBuildingPress(building.id, building.buildingName)}
+                            >
+                              <Icon name="business-outline" size={16} color={colors.textSecondary} />
+                              <Text style={styles.buildingName}>{building.buildingName}</Text>
+                              {building.address && (
+                                <Text style={[styles.infoText, { marginLeft: spacing.xs }]}>
+                                  - {building.address}
+                                </Text>
+                              )}
+                              <Icon name="chevron-forward" size={16} color={colors.textSecondary} style={{ marginLeft: 'auto' }} />
+                            </TouchableOpacity>
+                          ))}
+                          
+                          {/* Building Actions */}
+                          <View style={styles.buildingActionsRow}>
+                            <TouchableOpacity
+                              style={styles.buildingActionButton}
+                              onPress={() => openBuildingGroupsModal(client.clientName)}
+                            >
+                              <Icon name="git-merge" size={16} color={colors.primary} />
+                              <Text style={styles.buildingActionButtonText}>Manage Groups</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </>
+                      )}
+                    </View>
+                  )}
+                </View>
+              </AnimatedCard>
             );
           })
         )}
