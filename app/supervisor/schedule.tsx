@@ -12,6 +12,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import RecurringTaskModal from '../../components/schedule/RecurringTaskModal';
 import ScheduleModal from '../../components/schedule/ScheduleModal';
+import BuildingGroupScheduleModal from '../../components/schedule/BuildingGroupScheduleModal';
 import Toast from '../../components/Toast';
 import ErrorBoundary from '../../components/ErrorBoundary';
 import { Calendar } from 'react-native-calendars';
@@ -20,6 +21,7 @@ import DragDropScheduleGrid from '../../components/schedule/DragDropScheduleGrid
 import LoadingSpinner from '../../components/LoadingSpinner';
 import CompanyLogo from '../../components/CompanyLogo';
 import IconButton from '../../components/IconButton';
+import DraggableButton from '../../components/DraggableButton';
 import { projectToScheduleEntry, scheduleEntryExistsForProject } from '../../utils/projectScheduleSync';
 
 type ModalType = 'add' | 'edit' | 'addClient' | 'addBuilding' | 'addCleaner' | 'editClient' | 'editBuilding' | 'details' | null;
@@ -56,6 +58,7 @@ export default function ScheduleView() {
   const [isLoading, setIsLoading] = useState(true);
   const [currentWeekSchedule, setCurrentWeekSchedule] = useState<ScheduleEntry[]>([]);
   const [recurringModalVisible, setRecurringModalVisible] = useState(false);
+  const [buildingGroupModalVisible, setBuildingGroupModalVisible] = useState(false);
   const [selectedDay, setSelectedDay] = useState<string>('');
 
   const { showToast } = useToast();
@@ -777,17 +780,6 @@ export default function ScheduleView() {
       textAlign: 'center',
       marginTop: spacing.md,
     },
-    fab: {
-      position: 'absolute',
-      bottom: spacing.xl + 80,
-      right: spacing.xl,
-      width: 56,
-      height: 56,
-      borderRadius: 28,
-      justifyContent: 'center',
-      alignItems: 'center',
-      ...commonStyles.shadowLg,
-    },
     modeToggle: {
       flexDirection: 'row',
       gap: spacing.xs,
@@ -852,20 +844,6 @@ export default function ScheduleView() {
           <Text style={styles.headerTitle}>Schedule</Text>
         </View>
         <View style={styles.headerRight}>
-          <IconButton
-            icon="sync"
-            onPress={syncProjectsToSchedule}
-            size={24}
-            color="#FFFFFF"
-            style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}
-          />
-          <IconButton
-            icon="refresh"
-            onPress={loadCurrentWeekSchedule}
-            size={24}
-            color="#FFFFFF"
-            style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}
-          />
           <CompanyLogo size={40} />
         </View>
       </View>
@@ -950,9 +928,13 @@ export default function ScheduleView() {
       {/* Main Content */}
       {renderMainContent()}
 
-      {/* FAB */}
-      <TouchableOpacity
-        style={[styles.fab, { backgroundColor: themeColor }]}
+      {/* Draggable FAB - Add Single Shift */}
+      <DraggableButton
+        icon="add"
+        iconSize={28}
+        iconColor={colors.textInverse}
+        backgroundColor={themeColor}
+        size={56}
         onPress={() => {
           console.log('FAB pressed');
           setSelectedClientBuilding(null);
@@ -962,9 +944,21 @@ export default function ScheduleView() {
           setModalType('add');
           setModalVisible(true);
         }}
-      >
-        <Icon name="add" size={28} color={colors.textInverse} />
-      </TouchableOpacity>
+      />
+
+      {/* Draggable FAB - Schedule Building Group */}
+      <DraggableButton
+        icon="albums"
+        iconSize={24}
+        iconColor={colors.textInverse}
+        backgroundColor={colors.success}
+        size={48}
+        initialX={Platform.select({ ios: 100, android: 100, default: 100 })}
+        onPress={() => {
+          console.log('Building Group FAB pressed');
+          setBuildingGroupModalVisible(true);
+        }}
+      />
 
       {/* Date Picker */}
       {showDatePicker && (
@@ -1028,6 +1022,17 @@ export default function ScheduleView() {
         onEditClient={handleEditClient}
         onEditBuilding={handleEditBuilding}
         onSwitchToEdit={handleSwitchToEdit}
+      />
+
+      {/* Building Group Schedule Modal */}
+      <BuildingGroupScheduleModal
+        visible={buildingGroupModalVisible}
+        onClose={() => setBuildingGroupModalVisible(false)}
+        cleaners={cleaners}
+        onScheduleCreated={loadCurrentWeekSchedule}
+        weekId={currentWeekId}
+        day={selectedDay || 'monday'}
+        date={currentDate.toISOString().split('T')[0]}
       />
 
       <Toast />

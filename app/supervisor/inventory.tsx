@@ -78,7 +78,7 @@ interface EditItemForm {
 }
 
 const { width } = Dimensions.get('window');
-const ITEMS_PER_ROW = 4;
+const ITEMS_PER_ROW = 7;
 const ITEM_SPACING = spacing.sm;
 const HORIZONTAL_PADDING = spacing.lg * 2;
 const ITEM_WIDTH = (width - HORIZONTAL_PADDING - (ITEM_SPACING * (ITEMS_PER_ROW - 1))) / ITEMS_PER_ROW;
@@ -100,6 +100,28 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.xl,
     fontWeight: typography.weights.bold as any,
     color: colors.background,
+  },
+  actionButtonsContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    gap: spacing.sm,
+  },
+  actionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+    borderRadius: 12,
+    gap: spacing.xs,
+  },
+  actionButtonText: {
+    color: colors.background,
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.semibold as any,
   },
   searchContainer: {
     paddingHorizontal: spacing.lg,
@@ -329,6 +351,8 @@ export default function SupervisorInventoryScreen() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
+  const [showSendItemsModal, setShowSendItemsModal] = useState(false);
+  const [showTransferHistoryModal, setShowTransferHistoryModal] = useState(false);
 
   const [newItemForm, setNewItemForm] = useState<NewItemForm>({
     name: '',
@@ -594,6 +618,62 @@ export default function SupervisorInventoryScreen() {
     );
   };
 
+  const handleSendItems = async (itemIds: string[], quantities: number[]) => {
+    try {
+      console.log('🔄 Sending items:', itemIds, quantities);
+
+      // Update inventory quantities
+      for (let i = 0; i < itemIds.length; i++) {
+        const itemId = itemIds[i];
+        const quantity = quantities[i];
+        const item = items.find(item => item.id === itemId);
+        
+        if (item) {
+          const newStock = item.current_stock - quantity;
+          
+          const { error } = await supabase
+            .from('inventory_items')
+            .update({ 
+              current_stock: newStock,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', itemId);
+
+          if (error) {
+            console.error('❌ Error updating inventory item:', error);
+            throw error;
+          }
+
+          // Log the transaction
+          const { error: transactionError } = await supabase
+            .from('inventory_transactions')
+            .insert({
+              id: uuid.v4() as string,
+              item_id: itemId,
+              item_name: item.name,
+              transaction_type: 'out',
+              quantity: quantity,
+              previous_stock: item.current_stock,
+              new_stock: newStock,
+              reason: 'Sent to location',
+              performed_by: 'Supervisor',
+              created_at: new Date().toISOString(),
+            });
+
+          if (transactionError) {
+            console.error('❌ Error logging transaction:', transactionError);
+          }
+        }
+      }
+
+      console.log('✅ Items sent successfully');
+      await loadInventoryData();
+    } catch (error) {
+      console.error('❌ Failed to send items:', error);
+      throw error;
+    }
+  };
+
   const handleApproveRequest = async (requestId: string) => {
     try {
       console.log('🔄 Approving restock request:', requestId);
@@ -712,7 +792,6 @@ export default function SupervisorInventoryScreen() {
   const stats = {
     totalItems: items.length,
     lowStock: items.filter(item => item.current_stock <= item.min_stock).length,
-    pendingRequests: restockRequests.filter(req => req.status === 'pending').length,
     totalValue: items.reduce((sum, item) => sum + (item.current_stock * item.cost), 0),
   };
 
@@ -729,6 +808,25 @@ export default function SupervisorInventoryScreen() {
         <CompanyLogo />
         <TouchableOpacity onPress={() => setShowAddModal(true)}>
           <Icon name="add-circle" size={32} color={colors.background} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Action Buttons */}
+      <View style={styles.actionButtonsContainer}>
+        <TouchableOpacity 
+          style={styles.actionButton}
+          onPress={() => setShowSendItemsModal(true)}
+        >
+          <Icon name="send" size={20} color={colors.background} />
+          <Text style={styles.actionButtonText}>Send Items</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={styles.actionButton}
+          onPress={() => setShowTransferHistoryModal(true)}
+        >
+          <Icon name="time" size={20} color={colors.background} />
+          <Text style={styles.actionButtonText}>Transfer History</Text>
         </TouchableOpacity>
       </View>
 
@@ -785,10 +883,6 @@ export default function SupervisorInventoryScreen() {
         <View style={styles.statCard}>
           <Text style={[styles.statValue, { color: colors.error }]}>{stats.lowStock}</Text>
           <Text style={styles.statLabel}>Low Stock</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Text style={[styles.statValue, { color: colors.warning }]}>{stats.pendingRequests}</Text>
-          <Text style={styles.statLabel}>Requests</Text>
         </View>
         <View style={styles.statCard}>
           <Text style={[styles.statValue, { color: colors.success }]}>${stats.totalValue.toFixed(0)}</Text>
@@ -893,6 +987,22 @@ export default function SupervisorInventoryScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Send Items Modal */}
+      <SendItemsModal
+        visible={showSendItemsModal}
+        onClose={() => setShowSendItemsModal(false)}
+        inventory={items}
+        onSend={handleSendItems}
+        onSuccess={() => loadInventoryData()}
+      />
+
+      {/* Transfer History Modal */}
+      <TransferHistoryModal
+        visible={showTransferHistoryModal}
+        onClose={() => setShowTransferHistoryModal(false)}
+        onRefresh={() => loadInventoryData()}
+      />
 
       {/* Add Item Modal */}
       <Modal visible={showAddModal} transparent animationType="fade">

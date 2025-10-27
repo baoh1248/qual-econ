@@ -15,6 +15,7 @@ import AnimatedCard from '../../components/AnimatedCard';
 import { commonStyles, colors, spacing, typography } from '../../styles/commonStyles';
 import Icon from '../../components/Icon';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import BuildingGroupsModal from '../../components/BuildingGroupsModal';
 
 interface ClientProject {
   id: string;
@@ -193,12 +194,38 @@ const styles = StyleSheet.create({
   buildingItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: spacing.xs,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
     gap: spacing.xs,
+    backgroundColor: colors.background,
+    borderRadius: 8,
+    marginBottom: spacing.xs,
   },
   buildingName: {
     fontSize: typography.sizes.sm,
     color: colors.text,
+    flex: 1,
+  },
+  buildingActionsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  buildingActionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary + '20',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    borderRadius: 8,
+    gap: spacing.xs,
+  },
+  buildingActionButtonText: {
+    color: colors.primary,
+    fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.semibold as any,
   },
   modalOverlay: {
     flex: 1,
@@ -299,8 +326,10 @@ export default function ClientsListScreen() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showAddBuildingModal, setShowAddBuildingModal] = useState(false);
+  const [showBuildingGroupsModal, setShowBuildingGroupsModal] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [selectedClientForBuilding, setSelectedClientForBuilding] = useState<string>('');
+  const [selectedClientForGroups, setSelectedClientForGroups] = useState<string>('');
   const [projects, setProjects] = useState<ClientProject[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(false);
   const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set());
@@ -430,6 +459,17 @@ export default function ClientsListScreen() {
       pathname: '/supervisor/contract-details',
       params: { clientName },
     });
+  };
+
+  const handleBuildingPress = (buildingId: string, buildingName: string) => {
+    console.log('🔄 Navigating to building detail:', { buildingId, buildingName });
+    try {
+      router.push(`/supervisor/building-detail?buildingId=${buildingId}`);
+      console.log('✅ Navigation initiated successfully');
+    } catch (error) {
+      console.error('❌ Navigation error:', error);
+      showToast('Failed to open building details', 'error');
+    }
   };
 
   const handleAddClient = async () => {
@@ -623,6 +663,11 @@ export default function ClientsListScreen() {
       address: '',
     });
     setShowAddBuildingModal(true);
+  };
+
+  const openBuildingGroupsModal = (clientName: string) => {
+    setSelectedClientForGroups(clientName);
+    setShowBuildingGroupsModal(true);
   };
 
   const handleAddBuilding = async () => {
@@ -839,17 +884,35 @@ export default function ClientsListScreen() {
                           No buildings yet
                         </Text>
                       ) : (
-                        clientBuildingsList.map((building) => (
-                          <View key={building.id} style={styles.buildingItem}>
-                            <Icon name="business-outline" size={16} color={colors.textSecondary} />
-                            <Text style={styles.buildingName}>{building.buildingName}</Text>
-                            {building.address && (
-                              <Text style={[styles.infoText, { marginLeft: spacing.xs }]}>
-                                - {building.address}
-                              </Text>
-                            )}
+                        <>
+                          {clientBuildingsList.map((building) => (
+                            <TouchableOpacity 
+                              key={building.id} 
+                              style={styles.buildingItem}
+                              onPress={() => handleBuildingPress(building.id, building.buildingName)}
+                            >
+                              <Icon name="business-outline" size={16} color={colors.textSecondary} />
+                              <Text style={styles.buildingName}>{building.buildingName}</Text>
+                              {building.address && (
+                                <Text style={[styles.infoText, { marginLeft: spacing.xs }]}>
+                                  - {building.address}
+                                </Text>
+                              )}
+                              <Icon name="chevron-forward" size={16} color={colors.textSecondary} style={{ marginLeft: 'auto' }} />
+                            </TouchableOpacity>
+                          ))}
+                          
+                          {/* Building Actions */}
+                          <View style={styles.buildingActionsRow}>
+                            <TouchableOpacity
+                              style={styles.buildingActionButton}
+                              onPress={() => openBuildingGroupsModal(client.clientName)}
+                            >
+                              <Icon name="git-merge" size={16} color={colors.primary} />
+                              <Text style={styles.buildingActionButtonText}>Manage Groups</Text>
+                            </TouchableOpacity>
                           </View>
-                        ))
+                        </>
                       )}
                     </View>
                   )}
@@ -859,6 +922,18 @@ export default function ClientsListScreen() {
           })
         )}
       </ScrollView>
+
+      {/* Building Groups Modal */}
+      <BuildingGroupsModal
+        visible={showBuildingGroupsModal}
+        onClose={() => {
+          setShowBuildingGroupsModal(false);
+          setSelectedClientForGroups('');
+        }}
+        clientName={selectedClientForGroups}
+        buildings={clientBuildings.filter(b => b.clientName === selectedClientForGroups)}
+        onRefresh={() => refreshData()}
+      />
 
       {/* Add Client Modal */}
       <Modal visible={showAddModal} transparent animationType="fade">
