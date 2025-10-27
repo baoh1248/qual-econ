@@ -71,6 +71,8 @@ interface ClientProject {
   is_included_in_contract: boolean;
   billing_amount: number;
   status: 'active' | 'completed' | 'cancelled' | 'on-hold';
+  client_status?: 'not-sent' | 'sent-awaiting-approval' | 'awaiting-approval-on-hold' | 'approved' | 'approved-to-be-scheduled' | 'approved-scheduled' | 'approved-on-hold' | 'declined';
+  declined_reason?: string;
   next_scheduled_date?: string;
   last_completed_date?: string;
   notes?: string;
@@ -142,6 +144,8 @@ interface ProjectFormData {
   is_included_in_contract: boolean;
   billing_amount: string;
   status: 'active' | 'completed' | 'cancelled' | 'on-hold';
+  client_status: 'not-sent' | 'sent-awaiting-approval' | 'awaiting-approval-on-hold' | 'approved' | 'approved-to-be-scheduled' | 'approved-scheduled' | 'approved-on-hold' | 'declined';
+  declined_reason: string;
   next_scheduled_date: string;
   notes: string;
   work_order_number: string;
@@ -203,6 +207,7 @@ const ProjectsScreen = () => {
   const [showBuildingDropdown, setShowBuildingDropdown] = useState(false);
   const [showFrequencyDropdown, setShowFrequencyDropdown] = useState(false);
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
+  const [showClientStatusDropdown, setShowClientStatusDropdown] = useState(false);
 
   // Resource dropdown states
   const [showLaborDropdown, setShowLaborDropdown] = useState<number | null>(null);
@@ -220,6 +225,8 @@ const ProjectsScreen = () => {
     is_included_in_contract: false,
     billing_amount: '0',
     status: 'active',
+    client_status: 'not-sent',
+    declined_reason: '',
     next_scheduled_date: '',
     notes: '',
     work_order_number: '',
@@ -401,6 +408,8 @@ const ProjectsScreen = () => {
       is_included_in_contract: false,
       billing_amount: '0',
       status: 'active',
+      client_status: 'not-sent',
+      declined_reason: '',
       next_scheduled_date: '',
       notes: '',
       work_order_number: '',
@@ -434,6 +443,8 @@ const ProjectsScreen = () => {
         is_included_in_contract: formData.is_included_in_contract,
         billing_amount: parseFloat(formData.billing_amount) || 0,
         status: formData.status,
+        client_status: formData.client_status,
+        declined_reason: formData.client_status === 'declined' ? formData.declined_reason : undefined,
         next_scheduled_date: formData.next_scheduled_date || undefined,
         notes: formData.notes || undefined,
         work_order_number: formData.work_order_number || undefined,
@@ -541,6 +552,8 @@ const ProjectsScreen = () => {
         is_included_in_contract: formData.is_included_in_contract,
         billing_amount: parseFloat(formData.billing_amount) || 0,
         status: formData.status,
+        client_status: formData.client_status,
+        declined_reason: formData.client_status === 'declined' ? formData.declined_reason : undefined,
         next_scheduled_date: formData.next_scheduled_date || undefined,
         notes: formData.notes || undefined,
         work_order_number: formData.work_order_number || undefined,
@@ -756,6 +769,8 @@ const ProjectsScreen = () => {
         is_included_in_contract: project.is_included_in_contract,
         billing_amount: project.billing_amount.toString(),
         status: project.status,
+        client_status: project.client_status || 'not-sent',
+        declined_reason: project.declined_reason || '',
         next_scheduled_date: project.next_scheduled_date || '',
         notes: project.notes || '',
         work_order_number: project.work_order_number || '',
@@ -823,6 +838,30 @@ const ProjectsScreen = () => {
         return colors.warning;
       default:
         return colors.textSecondary;
+    }
+  };
+
+  const getClientStatusLabel = (status?: string) => {
+    if (!status) return 'Not Sent';
+    switch (status) {
+      case 'not-sent':
+        return 'Not Sent';
+      case 'sent-awaiting-approval':
+        return 'Sent, awaiting approval';
+      case 'awaiting-approval-on-hold':
+        return 'Awaiting Approval On Hold';
+      case 'approved':
+        return 'Approved';
+      case 'approved-to-be-scheduled':
+        return 'Approved to be Scheduled';
+      case 'approved-scheduled':
+        return 'Approved Scheduled';
+      case 'approved-on-hold':
+        return 'Approved On Hold';
+      case 'declined':
+        return 'Declined';
+      default:
+        return status;
     }
   };
 
@@ -1564,7 +1603,7 @@ const ProjectsScreen = () => {
         )}
       </ScrollView>
 
-      {/* Add/Edit Modal */}
+      {/* Add/Edit Modal - Continued in next part due to length */}
       <Modal
         visible={showAddModal || showEditModal}
         animationType="slide"
@@ -1725,6 +1764,47 @@ const ProjectsScreen = () => {
                     ))}
                   </ScrollView>
                 </View>
+              )}
+
+              <Text style={styles.inputLabel}>Client Status</Text>
+              <TouchableOpacity
+                style={styles.inputTouchable}
+                onPress={() => setShowClientStatusDropdown(!showClientStatusDropdown)}
+              >
+                <Text style={styles.inputText}>{getClientStatusLabel(formData.client_status)}</Text>
+                <Icon name="chevron-down" size={20} style={{ color: colors.textSecondary }} />
+              </TouchableOpacity>
+              {showClientStatusDropdown && (
+                <View style={styles.dropdown}>
+                  <ScrollView style={styles.dropdownScroll} nestedScrollEnabled={true}>
+                    {['not-sent', 'sent-awaiting-approval', 'awaiting-approval-on-hold', 'approved', 'approved-to-be-scheduled', 'approved-scheduled', 'approved-on-hold', 'declined'].map((status) => (
+                      <TouchableOpacity
+                        key={status}
+                        style={styles.dropdownItem}
+                        onPress={() => {
+                          setFormData({ ...formData, client_status: status as any });
+                          setShowClientStatusDropdown(false);
+                        }}
+                      >
+                        <Text style={styles.dropdownText}>{getClientStatusLabel(status)}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+
+              {formData.client_status === 'declined' && (
+                <>
+                  <Text style={styles.inputLabel}>Declined Reason</Text>
+                  <TextInput
+                    style={[styles.input, styles.textArea]}
+                    value={formData.declined_reason}
+                    onChangeText={(text) => setFormData({ ...formData, declined_reason: text })}
+                    placeholder="Enter reason for decline"
+                    placeholderTextColor={colors.textSecondary}
+                    multiline
+                  />
+                </>
               )}
 
               <View style={styles.switchRow}>
@@ -2348,6 +2428,18 @@ const ProjectsScreen = () => {
                       {selectedProject.status}
                     </Text>
                   </View>
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Client Status:</Text>
+                    <Text style={styles.detailValue}>
+                      {getClientStatusLabel(selectedProject.client_status)}
+                    </Text>
+                  </View>
+                  {selectedProject.client_status === 'declined' && selectedProject.declined_reason && (
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Declined Reason:</Text>
+                      <Text style={styles.detailValue}>{selectedProject.declined_reason}</Text>
+                    </View>
+                  )}
                   <View style={styles.detailRow}>
                     <Text style={styles.detailLabel}>Frequency:</Text>
                     <Text style={styles.detailValue}>{getFrequencyLabel(selectedProject.frequency)}</Text>

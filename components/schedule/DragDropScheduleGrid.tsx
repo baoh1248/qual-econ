@@ -55,6 +55,22 @@ const DragDropScheduleGrid = memo(({
 }: DragDropScheduleGridProps) => {
   console.log('DragDropScheduleGrid rendered with viewMode:', viewMode, 'currentWeekId:', currentWeekId);
 
+  // State to track which clients are expanded
+  const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set());
+
+  // Toggle client expansion
+  const toggleClientExpansion = useCallback((clientName: string) => {
+    setExpandedClients(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(clientName)) {
+        newSet.delete(clientName);
+      } else {
+        newSet.add(clientName);
+      }
+      return newSet;
+    });
+  }, []);
+
   // Calculate the week's dates based on currentWeekId
   const days = useMemo(() => {
     console.log('Recalculating week dates for building view, week ID:', currentWeekId);
@@ -316,6 +332,8 @@ const DragDropScheduleGrid = memo(({
     
     if (buildings.length === 0) return null;
 
+    const isExpanded = expandedClients.has(client.name);
+
     const totalShifts = buildings.reduce((sum, building) => {
       return sum + days.reduce((daySum, day) => {
         return daySum + getEntriesForCell(building.buildingName, day.name).length;
@@ -326,10 +344,16 @@ const DragDropScheduleGrid = memo(({
       <View key={client.id} style={styles.clientSection}>
         <TouchableOpacity
           style={[styles.clientHeader, { backgroundColor: client.color || colors.primary }]}
+          onPress={() => toggleClientExpansion(client.name)}
           onLongPress={() => onClientLongPress(client)}
           activeOpacity={0.7}
         >
           <View style={styles.clientHeaderLeft}>
+            <Icon 
+              name={isExpanded ? "chevron-down" : "chevron-forward"} 
+              size={24} 
+              style={{ color: colors.background }} 
+            />
             <Icon name="briefcase" size={20} style={{ color: colors.background }} />
             <Text style={styles.clientName}>{client.name}</Text>
           </View>
@@ -349,10 +373,19 @@ const DragDropScheduleGrid = memo(({
           </View>
         </TouchableOpacity>
         
-        {buildings.map(building => renderBuildingRow(building))}
+        {isExpanded && buildings.map(building => renderBuildingRow(building))}
+        
+        {!isExpanded && (
+          <View style={styles.collapsedIndicator}>
+            <Icon name="chevron-down" size={16} style={{ color: colors.textSecondary }} />
+            <Text style={styles.collapsedText}>
+              Tap to expand {buildings.length} {buildings.length === 1 ? 'building' : 'buildings'}
+            </Text>
+          </View>
+        )}
       </View>
     );
-  }, [buildingsByClient, onClientLongPress, renderBuildingRow, days, getEntriesForCell]);
+  }, [buildingsByClient, expandedClients, toggleClientExpansion, onClientLongPress, renderBuildingRow, days, getEntriesForCell]);
 
   if (viewMode === 'user') {
     return (
@@ -570,6 +603,22 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '600',
     fontSize: 11,
+  },
+  collapsedIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.md,
+    backgroundColor: '#F8FAFC',
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
+  collapsedText: {
+    ...typography.small,
+    color: colors.textSecondary,
+    fontWeight: '600',
+    fontSize: 13,
   },
   buildingRow: {
     flexDirection: 'row',

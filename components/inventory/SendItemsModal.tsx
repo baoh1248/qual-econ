@@ -7,6 +7,8 @@ import Icon from '../Icon';
 import Button from '../Button';
 import IconButton from '../IconButton';
 import { logInventoryTransfer, type InventoryTransferItem } from '../../utils/inventoryTracking';
+import { supabase } from '../../app/integrations/supabase/client';
+import type { ClientBuilding } from '../../hooks/useClientData';
 
 interface InventoryItem {
   id: string;
@@ -14,6 +16,15 @@ interface InventoryItem {
   current_stock: number;
   unit: string;
   category: string;
+}
+
+interface BuildingGroup {
+  id: string;
+  client_name: string;
+  group_name: string;
+  description?: string;
+  building_ids: string[];
+  buildings: ClientBuilding[];
 }
 
 interface SendItemsModalProps {
@@ -33,10 +44,21 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
   console.log('SendItemsModal rendered');
   
   const [destination, setDestination] = useState('');
+  const [destinationType, setDestinationType] = useState<'custom' | 'building' | 'group'>('custom');
+  const [selectedBuildingId, setSelectedBuildingId] = useState<string | null>(null);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [selectedItems, setSelectedItems] = useState<SelectedItem[]>([]);
   const [notes, setNotes] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [sending, setSending] = useState(false);
+  
+  const [buildings, setBuildings] = useState<ClientBuilding[]>([]);
+  const [buildingGroups, setBuildingGroups] = useState<BuildingGroup[]>([]);
+  const [loadingDestinations, setLoadingDestinations] = useState(false);
+  
+  // State for collapsible sections
+  const [expandedBuildingClients, setExpandedBuildingClients] = useState<Set<string>>(new Set());
+  const [expandedGroupClients, setExpandedGroupClients] = useState<Set<string>>(new Set());
 
   const commonDestinations = [
     'TechCorp Main Office',
@@ -50,13 +72,96 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
   ];
 
   useEffect(() => {
-    if (!visible) {
+    if (visible) {
+      loadDestinations();
+    } else {
       setDestination('');
+      setDestinationType('custom');
+      setSelectedBuildingId(null);
+      setSelectedGroupId(null);
       setSelectedItems([]);
       setNotes('');
       setSearchQuery('');
+      setExpandedBuildingClients(new Set());
+      setExpandedGroupClients(new Set());
     }
   }, [visible]);
+
+  const loadDestinations = async () => {
+    try {
+      setLoadingDestinations(true);
+      console.log('🔄 Loading buildings and groups for send items...');
+
+      // Load buildings
+      const { data: buildingsData, error: buildingsError } = await supabase
+        .from('client_buildings')
+        .select('*')
+        .order('client_name', { ascending: true });
+
+      if (buildingsError) {
+        console.error('❌ Error loading buildings:', buildingsError);
+      } else {
+        const buildingsList: ClientBuilding[] = (buildingsData || []).map(row => ({
+          id: row.id,
+          clientName: row.client_name,
+          buildingName: row.building_name,
+          name: row.building_name,
+          address: row.address || undefined,
+          security: row.security || undefined,
+          securityLevel: row.security_level as 'low' | 'medium' | 'high',
+          securityInfo: row.security || undefined,
+          isActive: true,
+          priority: 'medium',
+        }));
+        setBuildings(buildingsList);
+        console.log(`✅ Loaded ${buildingsList.length} buildings`);
+      }
+
+      // Load building groups
+      const { data: groupsData, error: groupsError } = await supabase
+        .from('building_groups')
+        .select('*')
+        .order('client_name', { ascending: true });
+
+      if (groupsError) {
+        console.error('❌ Error loading building groups:', groupsError);
+      } else {
+        const groupsWithBuildings: BuildingGroup[] = [];
+        
+        for (const group of groupsData || []) {
+          const { data: membersData, error: membersError } = await supabase
+            .from('building_group_members')
+            .select('building_id')
+            .eq('group_id', group.id);
+
+          if (membersError) {
+            console.error('❌ Error loading group members:', membersError);
+            continue;
+          }
+
+          const buildingIds = membersData?.map(m => m.building_id) || [];
+          const groupBuildings = buildingsList.filter(b => buildingIds.includes(b.id));
+
+          groupsWithBuildings.push({
+            id: group.id,
+            client_name: group.client_name,
+            group_name: group.group_name,
+            description: group.description || undefined,
+            building_ids: buildingIds,
+            buildings: groupBuildings,
+          });
+        }
+
+        setBuildingGroups(groupsWithBuildings);
+        console.log(`✅ Loaded ${groupsWithBuildings.length} building groups`);
+        console.log('Building groups:', groupsWithBuildings);
+      }
+    } catch (error) {
+      console.error('❌ Failed to load destinations:', error);
+    } finally {
+      setLoadingDestinations(false);
+    }
+  };
 
   const filteredInventory = inventory.filter(item =>
     item.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
@@ -88,9 +193,22 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
     ));
   };
 
+  const getDestinationName = () => {
+    if (destinationType === 'building' && selectedBuildingId) {
+      const building = buildings.find(b => b.id === selectedBuildingId);
+      return building ? `${building.clientName} - ${building.buildingName}` : '';
+    } else if (destinationType === 'group' && selectedGroupId) {
+      const group = buildingGroups.find(g => g.id === selectedGroupId);
+      return group ? `${group.client_name} - ${group.group_name} (${group.buildings.length} buildings)` : '';
+    }
+    return destination;
+  };
+
   const handleSendItems = async () => {
-    if (!destination.trim()) {
-      Alert.alert('Error', 'Please enter a destination');
+    const destinationName = getDestinationName();
+    
+    if (!destinationName.trim()) {
+      Alert.alert('Error', 'Please select or enter a destination');
       return;
     }
 
@@ -103,7 +221,8 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
       setSending(true);
       
       console.log('=== SENDING ITEMS ===');
-      console.log('Destination:', destination);
+      console.log('Destination Type:', destinationType);
+      console.log('Destination:', destinationName);
       console.log('Selected items:', selectedItems);
       
       await logInventoryTransfer({
@@ -112,7 +231,7 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
           quantity: item.quantity,
           unit: item.unit,
         })),
-        destination: destination.trim(),
+        destination: destinationName,
         timestamp: new Date().toISOString(),
         transferredBy: 'Supervisor',
         notes: notes.trim() || undefined,
@@ -133,7 +252,7 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
       setTimeout(() => {
         Alert.alert(
           'Items Sent Successfully',
-          `${itemSummary} have been sent to ${destination}`,
+          `${itemSummary} have been sent to ${destinationName}`,
           [{ text: 'OK', onPress: () => onSuccess?.() }]
         );
       }, 300);
@@ -147,6 +266,48 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
   };
 
   const totalItems = selectedItems.reduce((sum, item) => sum + item.quantity, 0);
+
+  // Group buildings by client
+  const buildingsByClient = buildings.reduce((acc, building) => {
+    if (!acc[building.clientName]) {
+      acc[building.clientName] = [];
+    }
+    acc[building.clientName].push(building);
+    return acc;
+  }, {} as Record<string, ClientBuilding[]>);
+
+  // Group building groups by client
+  const groupsByClient = buildingGroups.reduce((acc, group) => {
+    if (!acc[group.client_name]) {
+      acc[group.client_name] = [];
+    }
+    acc[group.client_name].push(group);
+    return acc;
+  }, {} as Record<string, BuildingGroup[]>);
+
+  const toggleBuildingClient = (clientName: string) => {
+    setExpandedBuildingClients(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(clientName)) {
+        newSet.delete(clientName);
+      } else {
+        newSet.add(clientName);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleGroupClient = (clientName: string) => {
+    setExpandedGroupClients(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(clientName)) {
+        newSet.delete(clientName);
+      } else {
+        newSet.add(clientName);
+      }
+      return newSet;
+    });
+  };
 
   return (
     <Modal
@@ -210,43 +371,348 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
               <Text style={[typography.body, { color: colors.text, fontWeight: '600', marginBottom: spacing.sm }]}>
                 Destination
               </Text>
-              <TextInput
-                style={[commonStyles.textInput, { marginBottom: spacing.sm }]}
-                placeholder="Enter destination (e.g., TechCorp Main Office)"
-                placeholderTextColor={colors.textSecondary}
-                value={destination}
-                onChangeText={setDestination}
-              />
               
-              <Text style={[typography.caption, { color: colors.textSecondary, marginBottom: spacing.sm }]}>
-                Quick Select:
-              </Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View style={[commonStyles.row, { gap: spacing.sm, paddingHorizontal: spacing.xs }]}>
-                  {commonDestinations.map(dest => (
-                    <TouchableOpacity
-                      key={dest}
-                      style={[
-                        destination === dest ? buttonStyles.quickSelectButtonActive : buttonStyles.quickSelectButton,
-                        { borderWidth: 0 }
-                      ]}
-                      onPress={() => setDestination(dest)}
-                    >
-                      <Text style={[
-                        typography.caption,
-                        { 
-                          color: destination === dest 
-                            ? getContrastColor(colors.primary) 
-                            : getContrastColor(colors.background),
-                          fontWeight: destination === dest ? '700' : '500'
-                        }
-                      ]}>
-                        {dest}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </ScrollView>
+              {/* Destination Type Selector */}
+              <View style={[commonStyles.row, { gap: spacing.sm, marginBottom: spacing.md }]}>
+                <TouchableOpacity
+                  style={[
+                    destinationType === 'custom' ? buttonStyles.quickSelectButtonActive : buttonStyles.quickSelectButton,
+                    { flex: 1, borderWidth: 0 }
+                  ]}
+                  onPress={() => {
+                    setDestinationType('custom');
+                    setSelectedBuildingId(null);
+                    setSelectedGroupId(null);
+                  }}
+                >
+                  <Icon 
+                    name="create" 
+                    size={16} 
+                    style={{ 
+                      color: destinationType === 'custom' 
+                        ? getContrastColor(colors.primary) 
+                        : getContrastColor(colors.background),
+                      marginRight: spacing.xs 
+                    }} 
+                  />
+                  <Text style={[
+                    typography.caption,
+                    { 
+                      color: destinationType === 'custom' 
+                        ? getContrastColor(colors.primary) 
+                        : getContrastColor(colors.background),
+                      fontWeight: destinationType === 'custom' ? '700' : '500'
+                    }
+                  ]}>
+                    Custom
+                  </Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[
+                    destinationType === 'building' ? buttonStyles.quickSelectButtonActive : buttonStyles.quickSelectButton,
+                    { flex: 1, borderWidth: 0 }
+                  ]}
+                  onPress={() => {
+                    setDestinationType('building');
+                    setDestination('');
+                    setSelectedGroupId(null);
+                  }}
+                >
+                  <Icon 
+                    name="business" 
+                    size={16} 
+                    style={{ 
+                      color: destinationType === 'building' 
+                        ? getContrastColor(colors.primary) 
+                        : getContrastColor(colors.background),
+                      marginRight: spacing.xs 
+                    }} 
+                  />
+                  <Text style={[
+                    typography.caption,
+                    { 
+                      color: destinationType === 'building' 
+                        ? getContrastColor(colors.primary) 
+                        : getContrastColor(colors.background),
+                      fontWeight: destinationType === 'building' ? '700' : '500'
+                    }
+                  ]}>
+                    Building
+                  </Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[
+                    destinationType === 'group' ? buttonStyles.quickSelectButtonActive : buttonStyles.quickSelectButton,
+                    { flex: 1, borderWidth: 0 }
+                  ]}
+                  onPress={() => {
+                    setDestinationType('group');
+                    setDestination('');
+                    setSelectedBuildingId(null);
+                  }}
+                >
+                  <Icon 
+                    name="albums" 
+                    size={16} 
+                    style={{ 
+                      color: destinationType === 'group' 
+                        ? getContrastColor(colors.primary) 
+                        : getContrastColor(colors.background),
+                      marginRight: spacing.xs 
+                    }} 
+                  />
+                  <Text style={[
+                    typography.caption,
+                    { 
+                      color: destinationType === 'group' 
+                        ? getContrastColor(colors.primary) 
+                        : getContrastColor(colors.background),
+                      fontWeight: destinationType === 'group' ? '700' : '500'
+                    }
+                  ]}>
+                    Group
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Custom Destination Input */}
+              {destinationType === 'custom' && (
+                <>
+                  <TextInput
+                    style={[commonStyles.textInput, { marginBottom: spacing.sm }]}
+                    placeholder="Enter destination (e.g., TechCorp Main Office)"
+                    placeholderTextColor={colors.textSecondary}
+                    value={destination}
+                    onChangeText={setDestination}
+                  />
+                  
+                  <Text style={[typography.caption, { color: colors.textSecondary, marginBottom: spacing.sm }]}>
+                    Quick Select:
+                  </Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <View style={[commonStyles.row, { gap: spacing.sm, paddingHorizontal: spacing.xs }]}>
+                      {commonDestinations.map(dest => (
+                        <TouchableOpacity
+                          key={dest}
+                          style={[
+                            destination === dest ? buttonStyles.quickSelectButtonActive : buttonStyles.quickSelectButton,
+                            { borderWidth: 0 }
+                          ]}
+                          onPress={() => setDestination(dest)}
+                        >
+                          <Text style={[
+                            typography.caption,
+                            { 
+                              color: destination === dest 
+                                ? getContrastColor(colors.primary) 
+                                : getContrastColor(colors.background),
+                              fontWeight: destination === dest ? '700' : '500'
+                            }
+                          ]}>
+                            {dest}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </ScrollView>
+                </>
+              )}
+
+              {/* Building Selector - Now Collapsible */}
+              {destinationType === 'building' && (
+                <ScrollView style={{ maxHeight: 300 }} showsVerticalScrollIndicator={false}>
+                  {Object.entries(buildingsByClient).map(([clientName, clientBuildings]) => {
+                    const isExpanded = expandedBuildingClients.has(clientName);
+                    return (
+                      <View key={clientName} style={{ marginBottom: spacing.sm }}>
+                        <TouchableOpacity
+                          style={[
+                            commonStyles.card,
+                            { 
+                              marginBottom: spacing.xs,
+                              backgroundColor: colors.surface,
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                            }
+                          ]}
+                          onPress={() => toggleBuildingClient(clientName)}
+                        >
+                          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                            <Icon 
+                              name={isExpanded ? 'chevron-down' : 'chevron-forward'} 
+                              size={20} 
+                              style={{ color: colors.primary, marginRight: spacing.sm }} 
+                            />
+                            <Text style={[typography.body, { color: colors.text, fontWeight: '700' }]}>
+                              {clientName}
+                            </Text>
+                          </View>
+                          <View style={{
+                            backgroundColor: colors.primary + '20',
+                            paddingHorizontal: spacing.sm,
+                            paddingVertical: spacing.xs,
+                            borderRadius: 12,
+                          }}>
+                            <Text style={[typography.caption, { color: colors.primary, fontWeight: '600' }]}>
+                              {clientBuildings.length}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                        
+                        {isExpanded && clientBuildings.map(building => (
+                          <TouchableOpacity
+                            key={building.id}
+                            style={[
+                              commonStyles.card,
+                              { 
+                                marginBottom: spacing.xs,
+                                marginLeft: spacing.lg,
+                                backgroundColor: selectedBuildingId === building.id ? colors.primary + '20' : colors.surface,
+                                borderWidth: selectedBuildingId === building.id ? 2 : 1,
+                                borderColor: selectedBuildingId === building.id ? colors.primary : colors.border,
+                              }
+                            ]}
+                            onPress={() => setSelectedBuildingId(building.id)}
+                          >
+                            <View style={[commonStyles.row, { alignItems: 'center' }]}>
+                              <Icon 
+                                name={selectedBuildingId === building.id ? 'radio-button-on' : 'radio-button-off'} 
+                                size={20} 
+                                style={{ color: selectedBuildingId === building.id ? colors.primary : colors.textSecondary, marginRight: spacing.sm }} 
+                              />
+                              <View style={{ flex: 1 }}>
+                                <Text style={[typography.body, { color: colors.text, fontWeight: '600' }]}>
+                                  {building.buildingName}
+                                </Text>
+                                {building.address && (
+                                  <Text style={[typography.caption, { color: colors.textSecondary }]}>
+                                    {building.address}
+                                  </Text>
+                                )}
+                              </View>
+                            </View>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    );
+                  })}
+                  {buildings.length === 0 && (
+                    <Text style={[typography.caption, { color: colors.textSecondary, textAlign: 'center', padding: spacing.md }]}>
+                      No buildings available
+                    </Text>
+                  )}
+                </ScrollView>
+              )}
+
+              {/* Building Group Selector - Now Collapsible */}
+              {destinationType === 'group' && (
+                <ScrollView style={{ maxHeight: 300 }} showsVerticalScrollIndicator={false}>
+                  {Object.entries(groupsByClient).map(([clientName, clientGroups]) => {
+                    const isExpanded = expandedGroupClients.has(clientName);
+                    return (
+                      <View key={clientName} style={{ marginBottom: spacing.sm }}>
+                        <TouchableOpacity
+                          style={[
+                            commonStyles.card,
+                            { 
+                              marginBottom: spacing.xs,
+                              backgroundColor: colors.surface,
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                            }
+                          ]}
+                          onPress={() => toggleGroupClient(clientName)}
+                        >
+                          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                            <Icon 
+                              name={isExpanded ? 'chevron-down' : 'chevron-forward'} 
+                              size={20} 
+                              style={{ color: colors.primary, marginRight: spacing.sm }} 
+                            />
+                            <Text style={[typography.body, { color: colors.text, fontWeight: '700' }]}>
+                              {clientName}
+                            </Text>
+                          </View>
+                          <View style={{
+                            backgroundColor: colors.primary + '20',
+                            paddingHorizontal: spacing.sm,
+                            paddingVertical: spacing.xs,
+                            borderRadius: 12,
+                          }}>
+                            <Text style={[typography.caption, { color: colors.primary, fontWeight: '600' }]}>
+                              {clientGroups.length} {clientGroups.length === 1 ? 'group' : 'groups'}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                        
+                        {isExpanded && clientGroups.map(group => (
+                          <TouchableOpacity
+                            key={group.id}
+                            style={[
+                              commonStyles.card,
+                              { 
+                                marginBottom: spacing.xs,
+                                marginLeft: spacing.lg,
+                                backgroundColor: selectedGroupId === group.id ? colors.primary + '20' : colors.surface,
+                                borderWidth: selectedGroupId === group.id ? 2 : 1,
+                                borderColor: selectedGroupId === group.id ? colors.primary : colors.border,
+                              }
+                            ]}
+                            onPress={() => setSelectedGroupId(group.id)}
+                          >
+                            <View style={[commonStyles.row, { alignItems: 'center', marginBottom: spacing.xs }]}>
+                              <Icon 
+                                name={selectedGroupId === group.id ? 'radio-button-on' : 'radio-button-off'} 
+                                size={20} 
+                                style={{ color: selectedGroupId === group.id ? colors.primary : colors.textSecondary, marginRight: spacing.sm }} 
+                              />
+                              <View style={{ flex: 1 }}>
+                                <Text style={[typography.body, { color: colors.text, fontWeight: '600' }]}>
+                                  {group.group_name}
+                                </Text>
+                                {group.description && (
+                                  <Text style={[typography.caption, { color: colors.textSecondary }]}>
+                                    {group.description}
+                                  </Text>
+                                )}
+                                <Text style={[typography.caption, { color: colors.primary, marginTop: spacing.xs }]}>
+                                  {group.buildings.length} {group.buildings.length === 1 ? 'building' : 'buildings'}
+                                </Text>
+                              </View>
+                            </View>
+                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.xs }}>
+                              {group.buildings.map(building => (
+                                <View 
+                                  key={building.id}
+                                  style={{
+                                    backgroundColor: colors.primary + '15',
+                                    paddingHorizontal: spacing.sm,
+                                    paddingVertical: spacing.xs,
+                                    borderRadius: 12,
+                                  }}
+                                >
+                                  <Text style={[typography.caption, { color: colors.primary, fontSize: 10 }]}>
+                                    {building.buildingName}
+                                  </Text>
+                                </View>
+                              ))}
+                            </View>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    );
+                  })}
+                  {buildingGroups.length === 0 && (
+                    <Text style={[typography.caption, { color: colors.textSecondary, textAlign: 'center', padding: spacing.md }]}>
+                      No building groups available. Create groups in the Clients screen.
+                    </Text>
+                  )}
+                </ScrollView>
+              )}
             </View>
 
             {selectedItems.length > 0 && (
@@ -385,7 +851,7 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
             <Button
               text={sending ? 'Sending...' : `Send ${totalItems} Item${totalItems !== 1 ? 's' : ''}`}
               onPress={handleSendItems}
-              disabled={sending || !destination.trim() || selectedItems.length === 0}
+              disabled={sending || !getDestinationName().trim() || selectedItems.length === 0}
               variant="primary"
               style={{ marginBottom: spacing.lg }}
             />

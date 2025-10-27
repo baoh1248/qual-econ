@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Modal } from 'react-native';
 import { router } from 'expo-router';
 import { commonStyles, colors, spacing, typography, buttonStyles } from '../../styles/commonStyles';
 import Icon from '../../components/Icon';
@@ -11,6 +11,8 @@ import { useToast } from '../../hooks/useToast';
 import Toast from '../../components/Toast';
 import AnimatedCard from '../../components/AnimatedCard';
 import { supabase } from '../integrations/supabase/client';
+import DatabaseSetup from '../../components/DatabaseSetup';
+import { useDatabase } from '../../hooks/useDatabase';
 
 const PRESET_COLORS = [
   { name: 'Blue', color: '#0066FF' },
@@ -30,7 +32,9 @@ const PRESET_COLORS = [
 export default function SettingsScreen() {
   const { themeColor, setThemeColor } = useTheme();
   const { toast, showToast } = useToast();
+  const { config, syncStatus } = useDatabase();
   const [selectedColor, setSelectedColor] = useState(themeColor);
+  const [showDatabaseSetup, setShowDatabaseSetup] = useState(false);
 
   const handleColorSelect = async (color: string) => {
     setSelectedColor(color);
@@ -122,6 +126,43 @@ export default function SettingsScreen() {
           </View>
         </AnimatedCard>
 
+        {/* Database Section */}
+        <AnimatedCard delay={50}>
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Icon 
+                name={config.useSupabase && syncStatus.isOnline ? "cloud-done" : "cloud-offline"} 
+                size={24} 
+                color={config.useSupabase && syncStatus.isOnline ? colors.success : colors.warning} 
+              />
+              <Text style={styles.sectionTitle}>Database</Text>
+            </View>
+            <Text style={styles.sectionDescription}>
+              {config.useSupabase && syncStatus.isOnline 
+                ? 'Connected to Supabase - Your data is synced to the cloud' 
+                : 'Using local storage - Data is stored on this device only'
+              }
+            </Text>
+
+            <TouchableOpacity 
+              style={styles.settingItem}
+              onPress={() => setShowDatabaseSetup(true)}
+            >
+              <View style={styles.settingItemLeft}>
+                <Icon name="server" size={20} color={colors.textSecondary} />
+                <Text style={styles.settingItemText}>Database Setup</Text>
+              </View>
+              <Icon name="chevron-right" size={20} color={colors.textSecondary} />
+            </TouchableOpacity>
+
+            {syncStatus.lastSync && (
+              <Text style={styles.lastSyncText}>
+                Last sync: {syncStatus.lastSync.toLocaleString()}
+              </Text>
+            )}
+          </View>
+        </AnimatedCard>
+
         {/* Account Section */}
         <AnimatedCard delay={100}>
           <View style={styles.section}>
@@ -188,6 +229,15 @@ export default function SettingsScreen() {
 
         <View style={{ height: spacing.xxxl }} />
       </ScrollView>
+
+      {/* Database Setup Modal */}
+      <Modal
+        visible={showDatabaseSetup}
+        animationType="slide"
+        presentationStyle="pageSheet"
+      >
+        <DatabaseSetup onClose={() => setShowDatabaseSetup(false)} />
+      </Modal>
 
       <Toast
         message={toast.message}
@@ -283,5 +333,10 @@ const styles = StyleSheet.create({
   settingItemText: {
     ...typography.body,
     color: colors.text,
+  },
+  lastSyncText: {
+    ...typography.small,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
   },
 });

@@ -9,7 +9,6 @@ import AnimatedCard from '../../components/AnimatedCard';
 import ProgressRing from '../../components/ProgressRing';
 import CompanyLogo from '../../components/CompanyLogo';
 import Toast from '../../components/Toast';
-import DatabaseSetup from '../../components/DatabaseSetup';
 import LiveMap from '../../components/LiveMap';
 import { commonStyles, colors, spacing, typography, statusColors } from '../../styles/commonStyles';
 import { useToast } from '../../hooks/useToast';
@@ -54,7 +53,6 @@ const SupervisorDashboard = () => {
   const { cleaners = [] } = useClientData();
   
   const [refreshing, setRefreshing] = useState(false);
-  const [showDatabaseSetup, setShowDatabaseSetup] = useState(false);
   const [showLiveMap, setShowLiveMap] = useState(false);
 
   // Get current week schedule and stats
@@ -223,19 +221,6 @@ const SupervisorDashboard = () => {
             <Icon name="settings" size={20} style={{ color: colors.background }} />
           </TouchableOpacity>
           
-          {/* Database status indicator */}
-          <TouchableOpacity
-            onPress={() => setShowDatabaseSetup(true)}
-            style={[styles.databaseStatus, { 
-              backgroundColor: config.useSupabase && syncStatus.isOnline ? colors.success : colors.warning 
-            }]}
-          >
-            <Icon 
-              name={config.useSupabase && syncStatus.isOnline ? "cloud-done" : "cloud-offline"} 
-              size={16} 
-              style={{ color: colors.background }} 
-            />
-          </TouchableOpacity>
           <InventoryAlertBadge 
             lowStockCount={lowStockCount} 
             criticalStockCount={criticalStockCount}
@@ -507,15 +492,6 @@ const SupervisorDashboard = () => {
         </View>
       </ScrollView>
 
-      {/* Database Setup Modal */}
-      <Modal
-        visible={showDatabaseSetup}
-        animationType="slide"
-        presentationStyle="pageSheet"
-      >
-        <DatabaseSetup onClose={() => setShowDatabaseSetup(false)} />
-      </Modal>
-
       {/* Live Map Modal */}
       <Modal
         visible={showLiveMap}
@@ -569,13 +545,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  databaseStatus: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   content: {
     flex: 1,
