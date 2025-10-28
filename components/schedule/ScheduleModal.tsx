@@ -4,6 +4,7 @@ import { View, Text, Modal, ScrollView, TouchableOpacity, TextInput, StyleSheet,
 import { colors, spacing, typography, commonStyles } from '../../styles/commonStyles';
 import Button from '../Button';
 import Icon from '../Icon';
+import DateInput from '../DateInput';
 import type { ScheduleEntry } from '../../hooks/useScheduleStorage';
 import type { Client, ClientBuilding, Cleaner } from '../../hooks/useClientData';
 import { useTheme } from '../../hooks/useTheme';
@@ -67,6 +68,7 @@ interface ScheduleModalProps {
   onEditClient: () => void;
   onEditBuilding: () => void;
   onSwitchToEdit: () => void;
+  onOpenRecurringModal?: () => void; // NEW: Callback to open recurring modal
 }
 
 const ScheduleModal = memo(({
@@ -120,6 +122,7 @@ const ScheduleModal = memo(({
   onEditClient,
   onEditBuilding,
   onSwitchToEdit,
+  onOpenRecurringModal, // NEW
 }: ScheduleModalProps) => {
   console.log('ScheduleModal rendered with type:', modalType, 'visible:', visible);
 
@@ -134,10 +137,44 @@ const ScheduleModal = memo(({
   // Local state for save loading
   const [isSaving, setIsSaving] = useState(false);
 
+  // NEW: Date and recurring shift fields - Initialize with proper date format
+  const [scheduleDate, setScheduleDate] = useState(() => {
+    try {
+      if (selectedEntry?.date) {
+        // Ensure date is in YYYY-MM-DD format
+        const dateStr = selectedEntry.date.split('T')[0];
+        return dateStr;
+      }
+      return new Date().toISOString().split('T')[0];
+    } catch (error) {
+      console.error('Error initializing schedule date:', error);
+      return new Date().toISOString().split('T')[0];
+    }
+  });
+  
+  const [isRecurring, setIsRecurring] = useState(() => {
+    try {
+      return selectedEntry?.is_recurring || false;
+    } catch (error) {
+      console.error('Error initializing recurring state:', error);
+      return false;
+    }
+  });
+
+  // Update scheduleDate when selectedEntry changes
+  useEffect(() => {
+    if (selectedEntry?.date) {
+      const dateStr = selectedEntry.date.split('T')[0];
+      setScheduleDate(dateStr);
+    } else {
+      setScheduleDate(new Date().toISOString().split('T')[0]);
+    }
+  }, [selectedEntry]);
+
   // Payment-related state
   const [paymentType, setPaymentType] = useState<'hourly' | 'flat_rate'>(() => {
     try {
-      return selectedEntry?.paymentType || 'hourly';
+      return selectedEntry?.payment_type || 'hourly';
     } catch (error) {
       console.error('Error initializing payment type:', error);
       return 'hourly';
@@ -145,7 +182,7 @@ const ScheduleModal = memo(({
   });
   const [flatRateAmount, setFlatRateAmount] = useState(() => {
     try {
-      return selectedEntry?.flatRateAmount?.toString() || '100';
+      return selectedEntry?.flat_rate_amount?.toString() || '100';
     } catch (error) {
       console.error('Error initializing flat rate amount:', error);
       return '100';
@@ -342,6 +379,8 @@ const ScheduleModal = memo(({
         selectedCleaners,
         hours,
         startTime,
+        scheduleDate,
+        isRecurring,
         paymentType,
         flatRateAmount,
         estimatedPayment,
@@ -425,6 +464,10 @@ const ScheduleModal = memo(({
                   </Text>
                 </View>
                 <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Date:</Text>
+                  <Text style={styles.detailValue}>{selectedEntry.date.split('T')[0]}</Text>
+                </View>
+                <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Hours:</Text>
                   <Text style={styles.detailValue}>{selectedEntry.hours} hrs</Text>
                 </View>
@@ -434,24 +477,30 @@ const ScheduleModal = memo(({
                     {selectedEntry.startTime} - {selectedEntry.endTime}
                   </Text>
                 </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Recurring:</Text>
+                  <Text style={styles.detailValue}>
+                    {selectedEntry.is_recurring ? 'Yes' : 'No'}
+                  </Text>
+                </View>
                 
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Payment Type:</Text>
                   <View style={[styles.paymentTypeBadge, { 
-                    backgroundColor: selectedEntry.paymentType === 'flat_rate' ? colors.success + '20' : themeColor + '20' 
+                    backgroundColor: selectedEntry.payment_type === 'flat_rate' ? colors.success + '20' : themeColor + '20' 
                   }]}>
                     <Icon 
-                      name={selectedEntry.paymentType === 'flat_rate' ? 'cash' : 'time'} 
+                      name={selectedEntry.payment_type === 'flat_rate' ? 'cash' : 'time'} 
                       size={12} 
                       style={{ 
-                        color: selectedEntry.paymentType === 'flat_rate' ? colors.success : themeColor,
+                        color: selectedEntry.payment_type === 'flat_rate' ? colors.success : themeColor,
                         marginRight: spacing.xs 
                       }} 
                     />
                     <Text style={[styles.paymentTypeText, { 
-                      color: selectedEntry.paymentType === 'flat_rate' ? colors.success : themeColor 
+                      color: selectedEntry.payment_type === 'flat_rate' ? colors.success : themeColor 
                     }]}>
-                      {selectedEntry.paymentType === 'flat_rate' ? 'Flat Rate' : 'Hourly'}
+                      {selectedEntry.payment_type === 'flat_rate' ? 'Flat Rate' : 'Hourly'}
                     </Text>
                   </View>
                 </View>
@@ -459,17 +508,17 @@ const ScheduleModal = memo(({
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Payment Amount:</Text>
                   <Text style={[styles.detailValue, { color: colors.success, fontWeight: 'bold' }]}>
-                    ${selectedEntry.paymentType === 'flat_rate' 
-                      ? (selectedEntry.flatRateAmount || 0).toFixed(2)
-                      : ((selectedEntry.hourlyRate || 15) * selectedEntry.hours).toFixed(2)
+                    ${selectedEntry.payment_type === 'flat_rate' 
+                      ? (selectedEntry.flat_rate_amount || 0).toFixed(2)
+                      : ((selectedEntry.hourly_rate || 15) * selectedEntry.hours).toFixed(2)
                     }
                   </Text>
                 </View>
                 
-                {selectedEntry.paymentType === 'hourly' && (
+                {selectedEntry.payment_type === 'hourly' && (
                   <View style={styles.detailRow}>
                     <Text style={styles.detailLabel}>Hourly Rate:</Text>
-                    <Text style={styles.detailValue}>${(selectedEntry.hourlyRate || 15).toFixed(2)}/hr</Text>
+                    <Text style={styles.detailValue}>${(selectedEntry.hourly_rate || 15).toFixed(2)}/hr</Text>
                   </View>
                 )}
                 
@@ -587,6 +636,16 @@ const ScheduleModal = memo(({
                   </View>
                 </View>
               )}
+
+              {/* Date Field with Calendar */}
+              <DateInput
+                label="Date"
+                value={scheduleDate}
+                onChangeText={setScheduleDate}
+                placeholder="YYYY-MM-DD"
+                required
+                themeColor={themeColor}
+              />
 
               <Text style={styles.inputLabel}>Cleaners * (Select one or more)</Text>
               <TouchableOpacity
@@ -762,6 +821,49 @@ const ScheduleModal = memo(({
                 value={startTime}
                 onChangeText={setStartTime}
               />
+
+              {/* NEW: Recurring Shift Section with Customize Button */}
+              <View style={styles.recurringSection}>
+                <View style={styles.switchRow}>
+                  <Text style={styles.inputLabel}>Recurring Shift</Text>
+                  <Switch
+                    value={isRecurring}
+                    onValueChange={setIsRecurring}
+                    trackColor={{ false: colors.border, true: themeColor }}
+                    thumbColor={colors.background}
+                  />
+                </View>
+                
+                {isRecurring && onOpenRecurringModal && (
+                  <TouchableOpacity
+                    style={[styles.customizeRecurringButton, { backgroundColor: themeColor + '10', borderColor: themeColor }]}
+                    onPress={() => {
+                      console.log('Opening recurring task customization modal');
+                      onOpenRecurringModal();
+                    }}
+                  >
+                    <Icon name="settings" size={20} style={{ color: themeColor, marginRight: spacing.sm }} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.customizeRecurringButtonText, { color: themeColor }]}>
+                        Customize Recurring Pattern
+                      </Text>
+                      <Text style={[styles.customizeRecurringButtonSubtext, { color: themeColor }]}>
+                        Set frequency, days, end date, and more
+                      </Text>
+                    </View>
+                    <Icon name="chevron-forward" size={20} style={{ color: themeColor }} />
+                  </TouchableOpacity>
+                )}
+                
+                {isRecurring && !onOpenRecurringModal && (
+                  <View style={[styles.recurringNote, { backgroundColor: colors.warning + '10' }]}>
+                    <Icon name="information-circle" size={16} style={{ color: colors.warning }} />
+                    <Text style={[styles.recurringNoteText, { color: colors.warning }]}>
+                      Recurring shift customization is available. Contact support for advanced options.
+                    </Text>
+                  </View>
+                )}
+              </View>
 
               {/* Payment Configuration Section */}
               <View style={styles.paymentSection}>
@@ -1766,6 +1868,52 @@ const styles = StyleSheet.create({
     ...typography.small,
     color: colors.textSecondary,
     marginTop: 2,
+  },
+  switchRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  recurringSection: {
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 12,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  customizeRecurringButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginTop: spacing.sm,
+  },
+  customizeRecurringButtonText: {
+    ...typography.body,
+    fontWeight: '600',
+  },
+  customizeRecurringButtonSubtext: {
+    ...typography.small,
+    marginTop: 2,
+  },
+  recurringNote: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 8,
+    marginTop: spacing.sm,
+    gap: spacing.sm,
+  },
+  recurringNoteText: {
+    ...typography.caption,
+    fontWeight: '500',
+    flex: 1,
   },
 });
 

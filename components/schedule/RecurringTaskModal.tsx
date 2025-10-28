@@ -4,15 +4,18 @@ import { View, Text, Modal, ScrollView, TouchableOpacity, TextInput, StyleSheet,
 import { colors, spacing, typography, commonStyles } from '../../styles/commonStyles';
 import Button from '../Button';
 import Icon from '../Icon';
+import DateInput from '../DateInput';
 import type { ClientBuilding, Cleaner } from '../../hooks/useClientData';
 
 interface RecurringPattern {
-  type: 'daily' | 'weekly' | 'monthly';
+  type: 'daily' | 'weekly' | 'monthly' | 'custom';
   interval: number; // Every X days/weeks/months
   daysOfWeek?: number[]; // For weekly: 0=Sunday, 1=Monday, etc.
   dayOfMonth?: number; // For monthly: 1-31
+  customDays?: number; // For custom: every X days
   endDate?: string;
   maxOccurrences?: number;
+  startDate?: string; // When to start the recurrence
 }
 
 interface RecurringTaskData {
@@ -51,10 +54,12 @@ const RecurringTaskModal = memo(({
   const [notes, setNotes] = useState('');
 
   // Pattern state
-  const [patternType, setPatternType] = useState<'daily' | 'weekly' | 'monthly'>('weekly');
+  const [patternType, setPatternType] = useState<'daily' | 'weekly' | 'monthly' | 'custom'>('weekly');
   const [interval, setInterval] = useState(1);
   const [selectedDays, setSelectedDays] = useState<number[]>([1]); // Default to Monday
   const [dayOfMonth, setDayOfMonth] = useState(1);
+  const [customDays, setCustomDays] = useState(1); // For custom pattern
+  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]); // Start date for recurrence
   const [hasEndDate, setHasEndDate] = useState(false);
   const [endDate, setEndDate] = useState('');
   const [hasMaxOccurrences, setHasMaxOccurrences] = useState(false);
@@ -85,6 +90,8 @@ const RecurringTaskModal = memo(({
     setInterval(1);
     setSelectedDays([1]);
     setDayOfMonth(1);
+    setCustomDays(1);
+    setStartDate(new Date().toISOString().split('T')[0]);
     setHasEndDate(false);
     setEndDate('');
     setHasMaxOccurrences(false);
@@ -110,6 +117,8 @@ const RecurringTaskModal = memo(({
       interval,
       ...(patternType === 'weekly' && { daysOfWeek: selectedDays }),
       ...(patternType === 'monthly' && { dayOfMonth }),
+      ...(patternType === 'custom' && { customDays }),
+      startDate,
       ...(hasEndDate && endDate && { endDate }),
       ...(hasMaxOccurrences && maxOccurrences && { maxOccurrences: parseInt(maxOccurrences) }),
     };
@@ -177,21 +186,43 @@ const RecurringTaskModal = memo(({
   );
 
   const getPatternDescription = () => {
+    let description = '';
+    
     switch (patternType) {
       case 'daily':
-        return interval === 1 ? 'Every day' : `Every ${interval} days`;
+        description = interval === 1 ? 'Every day' : `Every ${interval} days`;
+        break;
       case 'weekly':
         const dayNames = selectedDays.map(d => daysOfWeek.find(day => day.value === d)?.name).join(', ');
-        return interval === 1 
+        description = interval === 1 
           ? `Every week on ${dayNames}`
           : `Every ${interval} weeks on ${dayNames}`;
+        break;
       case 'monthly':
-        return interval === 1 
+        description = interval === 1 
           ? `Every month on day ${dayOfMonth}`
           : `Every ${interval} months on day ${dayOfMonth}`;
+        break;
+      case 'custom':
+        description = customDays === 1 ? 'Every day' : `Every ${customDays} days`;
+        break;
       default:
-        return '';
+        description = '';
     }
+    
+    // Add start date
+    if (startDate) {
+      description += `, starting ${new Date(startDate).toLocaleDateString()}`;
+    }
+    
+    // Add end condition
+    if (hasEndDate && endDate) {
+      description += `, until ${new Date(endDate).toLocaleDateString()}`;
+    } else if (hasMaxOccurrences && maxOccurrences) {
+      description += `, for ${maxOccurrences} occurrence${maxOccurrences !== '1' ? 's' : ''}`;
+    }
+    
+    return description;
   };
 
   if (!visible) return null;
@@ -345,7 +376,7 @@ const RecurringTaskModal = memo(({
 
                 <Text style={styles.inputLabel}>Repeat Type</Text>
                 <View style={styles.patternTypeContainer}>
-                  {(['daily', 'weekly', 'monthly'] as const).map(type => (
+                  {(['daily', 'weekly', 'monthly', 'custom'] as const).map(type => (
                     <TouchableOpacity
                       key={type}
                       style={[
@@ -364,20 +395,40 @@ const RecurringTaskModal = memo(({
                   ))}
                 </View>
 
-                <Text style={styles.inputLabel}>Interval</Text>
-                <View style={styles.intervalContainer}>
-                  <Text style={styles.intervalLabel}>Every</Text>
-                  <TextInput
-                    style={styles.intervalInput}
-                    value={interval.toString()}
-                    onChangeText={(text) => setInterval(parseInt(text) || 1)}
-                    keyboardType="numeric"
-                  />
-                  <Text style={styles.intervalLabel}>
-                    {patternType === 'daily' ? 'day(s)' : 
-                     patternType === 'weekly' ? 'week(s)' : 'month(s)'}
-                  </Text>
-                </View>
+                {patternType !== 'custom' && (
+                  <>
+                    <Text style={styles.inputLabel}>Interval</Text>
+                    <View style={styles.intervalContainer}>
+                      <Text style={styles.intervalLabel}>Every</Text>
+                      <TextInput
+                        style={styles.intervalInput}
+                        value={interval.toString()}
+                        onChangeText={(text) => setInterval(parseInt(text) || 1)}
+                        keyboardType="numeric"
+                      />
+                      <Text style={styles.intervalLabel}>
+                        {patternType === 'daily' ? 'day(s)' : 
+                         patternType === 'weekly' ? 'week(s)' : 'month(s)'}
+                      </Text>
+                    </View>
+                  </>
+                )}
+
+                {patternType === 'custom' && (
+                  <>
+                    <Text style={styles.inputLabel}>Custom Interval (Days)</Text>
+                    <View style={styles.intervalContainer}>
+                      <Text style={styles.intervalLabel}>Every</Text>
+                      <TextInput
+                        style={styles.intervalInput}
+                        value={customDays.toString()}
+                        onChangeText={(text) => setCustomDays(parseInt(text) || 1)}
+                        keyboardType="numeric"
+                      />
+                      <Text style={styles.intervalLabel}>day(s)</Text>
+                    </View>
+                  </>
+                )}
 
                 {patternType === 'weekly' && (
                   <View>
@@ -407,15 +458,32 @@ const RecurringTaskModal = memo(({
                 {patternType === 'monthly' && (
                   <View>
                     <Text style={styles.inputLabel}>Day of Month</Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="1"
-                      value={dayOfMonth.toString()}
-                      onChangeText={(text) => setDayOfMonth(parseInt(text) || 1)}
-                      keyboardType="numeric"
-                    />
+                    <View style={styles.intervalContainer}>
+                      <Text style={styles.intervalLabel}>Day</Text>
+                      <TextInput
+                        style={styles.intervalInput}
+                        placeholder="1"
+                        value={dayOfMonth.toString()}
+                        onChangeText={(text) => {
+                          const day = parseInt(text) || 1;
+                          setDayOfMonth(Math.min(Math.max(day, 1), 31));
+                        }}
+                        keyboardType="numeric"
+                      />
+                      <Text style={styles.intervalLabel}>of the month</Text>
+                    </View>
                   </View>
                 )}
+
+                {/* Start Date */}
+                <DateInput
+                  label="Start Date"
+                  value={startDate}
+                  onChangeText={setStartDate}
+                  placeholder="YYYY-MM-DD"
+                  required
+                  themeColor={colors.primary}
+                />
 
                 <View style={styles.patternSummary}>
                   <Icon name="information-circle" size={20} style={{ color: colors.primary }} />
@@ -431,18 +499,24 @@ const RecurringTaskModal = memo(({
                   <Text style={styles.switchLabel}>Set end date</Text>
                   <Switch
                     value={hasEndDate}
-                    onValueChange={setHasEndDate}
+                    onValueChange={(value) => {
+                      setHasEndDate(value);
+                      if (value) {
+                        setHasMaxOccurrences(false);
+                      }
+                    }}
                     trackColor={{ false: colors.border, true: colors.primary + '40' }}
                     thumbColor={hasEndDate ? colors.primary : colors.textSecondary}
                   />
                 </View>
 
                 {hasEndDate && (
-                  <TextInput
-                    style={styles.input}
-                    placeholder="YYYY-MM-DD"
+                  <DateInput
+                    label="End Date"
                     value={endDate}
                     onChangeText={setEndDate}
+                    placeholder="YYYY-MM-DD"
+                    themeColor={colors.primary}
                   />
                 )}
 
@@ -450,20 +524,37 @@ const RecurringTaskModal = memo(({
                   <Text style={styles.switchLabel}>Limit occurrences</Text>
                   <Switch
                     value={hasMaxOccurrences}
-                    onValueChange={setHasMaxOccurrences}
+                    onValueChange={(value) => {
+                      setHasMaxOccurrences(value);
+                      if (value) {
+                        setHasEndDate(false);
+                      }
+                    }}
                     trackColor={{ false: colors.border, true: colors.primary + '40' }}
                     thumbColor={hasMaxOccurrences ? colors.primary : colors.textSecondary}
                   />
                 </View>
 
                 {hasMaxOccurrences && (
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Number of occurrences"
-                    value={maxOccurrences}
-                    onChangeText={setMaxOccurrences}
-                    keyboardType="numeric"
-                  />
+                  <>
+                    <Text style={styles.inputLabel}>Number of Occurrences</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="e.g., 10"
+                      value={maxOccurrences}
+                      onChangeText={setMaxOccurrences}
+                      keyboardType="numeric"
+                    />
+                  </>
+                )}
+
+                {!hasEndDate && !hasMaxOccurrences && (
+                  <View style={[styles.patternSummary, { backgroundColor: colors.warning + '10' }]}>
+                    <Icon name="alert-circle" size={20} style={{ color: colors.warning }} />
+                    <Text style={[styles.patternSummaryText, { color: colors.warning }]}>
+                      This recurring task will continue indefinitely until manually stopped.
+                    </Text>
+                  </View>
                 )}
               </View>
 

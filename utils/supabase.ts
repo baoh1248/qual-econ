@@ -2,9 +2,9 @@
 import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Supabase configuration - using hardcoded values since env vars are not set
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || "https://qyskfuxvuzshdtzbtygx.supabase.co";
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF5c2tmdXh2dXpzaGR0emJ0eWd4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkyMDMwOTksImV4cCI6MjA3NDc3OTA5OX0.QyU5Zn9qMErS2zds-rho5BPXQADsF8oyz83kknjNsrs";
+// Supabase configuration
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
+const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
 
 // Create Supabase client with AsyncStorage for session persistence
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
@@ -21,11 +21,6 @@ export const TABLES = {
   CLIENTS: 'clients',
   CLIENT_BUILDINGS: 'client_buildings',
   CLEANERS: 'cleaners',
-  CLIENT_PROJECTS: 'client_projects',
-  PROJECT_LABOR: 'project_labor',
-  PROJECT_EQUIPMENT: 'project_equipment',
-  PROJECT_VEHICLES: 'project_vehicles',
-  PROJECT_SUPPLIES: 'project_supplies',
   SCHEDULE_ENTRIES: 'schedule_entries',
   INVENTORY_ITEMS: 'inventory_items',
   INVENTORY_TRANSACTIONS: 'inventory_transactions',
@@ -181,11 +176,6 @@ export const DATABASE_SCHEMA = `
 ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
 ALTER TABLE client_buildings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cleaners ENABLE ROW LEVEL SECURITY;
-ALTER TABLE client_projects ENABLE ROW LEVEL SECURITY;
-ALTER TABLE project_labor ENABLE ROW LEVEL SECURITY;
-ALTER TABLE project_equipment ENABLE ROW LEVEL SECURITY;
-ALTER TABLE project_vehicles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE project_supplies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE schedule_entries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE inventory_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE inventory_transactions ENABLE ROW LEVEL SECURITY;
@@ -225,97 +215,17 @@ CREATE TABLE IF NOT EXISTS client_buildings (
 CREATE TABLE IF NOT EXISTS cleaners (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   name TEXT NOT NULL,
-  legal_name TEXT,
-  go_by TEXT,
-  dob DATE,
   is_active BOOLEAN DEFAULT true,
   avatar TEXT,
-  photo_url TEXT,
   specialties TEXT[] DEFAULT '{}',
   employee_id TEXT UNIQUE NOT NULL,
   security_level TEXT CHECK (security_level IN ('low', 'medium', 'high')) DEFAULT 'low',
   phone_number TEXT NOT NULL,
   email TEXT,
   hire_date DATE,
-  term_date DATE,
-  rehire_date DATE,
-  employment_status TEXT CHECK (employment_status IN ('active', 'terminated', 'on-leave', 'suspended')) DEFAULT 'active',
-  pay_type TEXT CHECK (pay_type IN ('hourly', 'salary', 'contract')) DEFAULT 'hourly',
-  default_hourly_rate DECIMAL DEFAULT 15,
-  notes TEXT,
   emergency_contact_name TEXT,
   emergency_contact_phone TEXT,
   emergency_contact_relationship TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS client_projects (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  client_name TEXT NOT NULL,
-  building_name TEXT,
-  project_name TEXT NOT NULL,
-  description TEXT,
-  frequency TEXT CHECK (frequency IN ('one-time', 'weekly', 'bi-weekly', 'monthly', 'quarterly', 'yearly')) DEFAULT 'one-time',
-  is_included_in_contract BOOLEAN DEFAULT false,
-  billing_amount DECIMAL DEFAULT 0,
-  status TEXT CHECK (status IN ('active', 'completed', 'cancelled', 'on-hold')) DEFAULT 'active',
-  client_status TEXT CHECK (client_status IN ('not-sent', 'sent', 'approved', 'declined')) DEFAULT 'not-sent',
-  declined_reason TEXT,
-  next_scheduled_date DATE,
-  notes TEXT,
-  work_order_number TEXT,
-  invoice_number TEXT,
-  estimated_price DECIMAL DEFAULT 0,
-  estimated_profitability DECIMAL DEFAULT 0,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS project_labor (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  project_id UUID REFERENCES client_projects(id) ON DELETE CASCADE,
-  laborer_name TEXT NOT NULL,
-  skill_level TEXT CHECK (skill_level IN ('beginner', 'intermediate', 'advanced')) DEFAULT 'intermediate',
-  hours_worked DECIMAL DEFAULT 0,
-  hourly_rate DECIMAL DEFAULT 15,
-  notes TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS project_equipment (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  project_id UUID REFERENCES client_projects(id) ON DELETE CASCADE,
-  equipment_type TEXT NOT NULL,
-  hours_used DECIMAL DEFAULT 0,
-  cost_per_hour DECIMAL DEFAULT 0,
-  notes TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS project_vehicles (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  project_id UUID REFERENCES client_projects(id) ON DELETE CASCADE,
-  vehicle_type TEXT NOT NULL,
-  hours_used DECIMAL DEFAULT 0,
-  mileage DECIMAL DEFAULT 0,
-  cost_per_hour DECIMAL DEFAULT 0,
-  cost_per_mile DECIMAL DEFAULT 0,
-  notes TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS project_supplies (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  project_id UUID REFERENCES client_projects(id) ON DELETE CASCADE,
-  supply_type TEXT NOT NULL,
-  quantity DECIMAL DEFAULT 0,
-  unit TEXT NOT NULL,
-  cost_per_unit DECIMAL DEFAULT 0,
-  notes TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -417,11 +327,6 @@ $$ language 'plpgsql';
 CREATE TRIGGER update_clients_updated_at BEFORE UPDATE ON clients FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_client_buildings_updated_at BEFORE UPDATE ON client_buildings FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_cleaners_updated_at BEFORE UPDATE ON cleaners FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_client_projects_updated_at BEFORE UPDATE ON client_projects FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_project_labor_updated_at BEFORE UPDATE ON project_labor FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_project_equipment_updated_at BEFORE UPDATE ON project_equipment FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_project_vehicles_updated_at BEFORE UPDATE ON project_vehicles FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_project_supplies_updated_at BEFORE UPDATE ON project_supplies FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_schedule_entries_updated_at BEFORE UPDATE ON schedule_entries FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_inventory_items_updated_at BEFORE UPDATE ON inventory_items FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_restock_requests_updated_at BEFORE UPDATE ON restock_requests FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -430,11 +335,6 @@ CREATE TRIGGER update_restock_requests_updated_at BEFORE UPDATE ON restock_reque
 CREATE POLICY "Allow all operations" ON clients FOR ALL USING (true);
 CREATE POLICY "Allow all operations" ON client_buildings FOR ALL USING (true);
 CREATE POLICY "Allow all operations" ON cleaners FOR ALL USING (true);
-CREATE POLICY "Allow all operations" ON client_projects FOR ALL USING (true);
-CREATE POLICY "Allow all operations" ON project_labor FOR ALL USING (true);
-CREATE POLICY "Allow all operations" ON project_equipment FOR ALL USING (true);
-CREATE POLICY "Allow all operations" ON project_vehicles FOR ALL USING (true);
-CREATE POLICY "Allow all operations" ON project_supplies FOR ALL USING (true);
 CREATE POLICY "Allow all operations" ON schedule_entries FOR ALL USING (true);
 CREATE POLICY "Allow all operations" ON inventory_items FOR ALL USING (true);
 CREATE POLICY "Allow all operations" ON inventory_transactions FOR ALL USING (true);

@@ -12,6 +12,8 @@ import AnimatedCard from '../../components/AnimatedCard';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import Icon from '../../components/Icon';
 import CompanyLogo from '../../components/CompanyLogo';
+import DateInput from '../../components/DateInput';
+import PricingCalculator from '../../components/PricingCalculator';
 import { commonStyles, colors, spacing, typography, buttonStyles } from '../../styles/commonStyles';
 
 // Predefined options for dropdowns
@@ -196,6 +198,7 @@ const ProjectsScreen = () => {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
+  const [showPricingCalculator, setShowPricingCalculator] = useState(false);
   const [selectedProject, setSelectedProject] = useState<ClientProject | null>(null);
   const [projectCompletions, setProjectCompletions] = useState<ProjectCompletion[]>([]);
 
@@ -316,6 +319,15 @@ const ProjectsScreen = () => {
     return profitability.toFixed(2);
   }, [calculateEstimatedPrice, formData.billing_amount]);
 
+  // Handle pricing calculator result
+  const handlePriceCalculated = useCallback((totalPrice: number, selectedOption: number) => {
+    console.log('Price calculated:', totalPrice, 'Option:', selectedOption);
+    setFormData(prev => ({
+      ...prev,
+      billing_amount: totalPrice.toFixed(2),
+    }));
+  }, []);
+
   // Load projects and inventory from database
   const loadProjects = useCallback(async () => {
     try {
@@ -421,6 +433,7 @@ const ProjectsScreen = () => {
       vehicles: [],
       supplies: [],
     });
+    setShowPricingCalculator(false);
   }, []);
 
   const handleAddProject = useCallback(async () => {
@@ -563,16 +576,12 @@ const ProjectsScreen = () => {
         updated_at: new Date().toISOString(),
       };
 
-      console.log('📝 Project update data:', updatedProject);
-
-      const result = await executeQuery<ClientProject>(
+      await executeQuery<ClientProject>(
         'update',
         'client_projects',
         updatedProject,
         { id: selectedProject.id }
       );
-
-      console.log('📥 Project update result:', result);
 
       // Delete existing resources
       await executeQuery('delete', 'project_labor', undefined, { project_id: selectedProject.id });
@@ -647,7 +656,6 @@ const ProjectsScreen = () => {
       console.log('✓ Project updated successfully');
       showToast('Project updated successfully', 'success');
       
-      // Force refresh the projects data to ensure UI updates
       await loadProjects();
       
       setShowEditModal(false);
@@ -1394,6 +1402,24 @@ const ProjectsScreen = () => {
       top: '50%',
       transform: [{ translateY: -12 }],
     },
+    calculatorToggleButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.sm,
+      paddingVertical: spacing.md,
+      paddingHorizontal: spacing.lg,
+      backgroundColor: themeColor + '15',
+      borderRadius: 8,
+      borderWidth: 2,
+      borderColor: themeColor,
+      marginVertical: spacing.md,
+    },
+    calculatorToggleText: {
+      ...typography.body,
+      color: themeColor,
+      fontWeight: '600',
+    },
   });
 
   // Get available buildings for the selected client
@@ -1608,7 +1634,7 @@ const ProjectsScreen = () => {
         )}
       </ScrollView>
 
-      {/* Add/Edit Modal - Continued in next part due to length */}
+      {/* Add/Edit Modal */}
       <Modal
         visible={showAddModal || showEditModal}
         animationType="slide"
@@ -1625,6 +1651,34 @@ const ProjectsScreen = () => {
             </Text>
             
             <ScrollView showsVerticalScrollIndicator={false}>
+              {/* Pricing Calculator Toggle */}
+              <TouchableOpacity
+                style={styles.calculatorToggleButton}
+                onPress={() => setShowPricingCalculator(!showPricingCalculator)}
+              >
+                <Icon 
+                  name={showPricingCalculator ? 'calculator' : 'calculator-outline'} 
+                  size={24} 
+                  style={{ color: themeColor }} 
+                />
+                <Text style={styles.calculatorToggleText}>
+                  {showPricingCalculator ? 'Hide Pricing Calculator' : 'Show Pricing Calculator'}
+                </Text>
+                <Icon 
+                  name={showPricingCalculator ? 'chevron-up' : 'chevron-down'} 
+                  size={20} 
+                  style={{ color: themeColor }} 
+                />
+              </TouchableOpacity>
+
+              {/* Pricing Calculator */}
+              {showPricingCalculator && (
+                <PricingCalculator 
+                  themeColor={themeColor} 
+                  onPriceCalculated={handlePriceCalculated}
+                />
+              )}
+
               {/* Basic Information */}
               <Text style={styles.inputLabel}>Client Name *</Text>
               <TouchableOpacity
@@ -1832,13 +1886,12 @@ const ProjectsScreen = () => {
                 keyboardType="decimal-pad"
               />
 
-              <Text style={styles.inputLabel}>Next Scheduled Date</Text>
-              <TextInput
-                style={styles.input}
+              <DateInput
+                label="Next Scheduled Date"
                 value={formData.next_scheduled_date}
                 onChangeText={(text) => setFormData({ ...formData, next_scheduled_date: text })}
                 placeholder="YYYY-MM-DD"
-                placeholderTextColor={colors.textSecondary}
+                themeColor={themeColor}
               />
 
               <Text style={styles.inputLabel}>Work Order Number</Text>
@@ -1879,477 +1932,6 @@ const ProjectsScreen = () => {
                   <Icon name="refresh" size={16} style={{ color: colors.background }} />
                   <Text style={styles.generateButtonText}>Generate</Text>
                 </TouchableOpacity>
-              </View>
-
-              {/* Labor Section with Dropdown + Manual Input */}
-              <Text style={styles.sectionHeader}>Labor</Text>
-              {formData.labor.map((labor, index) => (
-                <View key={index} style={styles.resourceCard}>
-                  <View style={styles.resourceHeader}>
-                    <Text style={styles.resourceTitle}>Laborer {index + 1}</Text>
-                    <TouchableOpacity style={styles.removeButton} onPress={() => removeLabor(index)}>
-                      <Icon name="close-circle" size={24} style={{ color: colors.danger }} />
-                    </TouchableOpacity>
-                  </View>
-                  
-                  <Text style={styles.inputLabel}>Laborer Name</Text>
-                  <View style={styles.inputWithDropdown}>
-                    <TextInput
-                      style={styles.input}
-                      value={labor.laborer_name}
-                      onChangeText={(text) => {
-                        const newLabor = [...formData.labor];
-                        newLabor[index].laborer_name = text;
-                        setFormData({ ...formData, labor: newLabor });
-                      }}
-                      placeholder="Type or select from dropdown"
-                      placeholderTextColor={colors.textSecondary}
-                    />
-                    <TouchableOpacity
-                      style={styles.dropdownToggle}
-                      onPress={() => setShowLaborDropdown(showLaborDropdown === index ? null : index)}
-                    >
-                      <Icon name="chevron-down" size={20} style={{ color: colors.textSecondary }} />
-                    </TouchableOpacity>
-                  </View>
-                  {showLaborDropdown === index && (
-                    <View style={styles.dropdown}>
-                      <ScrollView style={styles.dropdownScroll} nestedScrollEnabled={true}>
-                        {cleaners.filter(c => c.isActive).map((cleaner) => (
-                          <TouchableOpacity
-                            key={cleaner.id}
-                            style={styles.dropdownItem}
-                            onPress={() => {
-                              const newLabor = [...formData.labor];
-                              newLabor[index].laborer_name = cleaner.name;
-                              newLabor[index].hourly_rate = (cleaner.defaultHourlyRate || 15).toString();
-                              setFormData({ ...formData, labor: newLabor });
-                              setShowLaborDropdown(null);
-                            }}
-                          >
-                            <Text style={styles.dropdownText}>
-                              {cleaner.name} - ${(cleaner.defaultHourlyRate || 15).toFixed(2)}/hr
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                        {cleaners.filter(c => c.isActive).length === 0 && (
-                          <View style={styles.dropdownItem}>
-                            <Text style={[styles.dropdownText, { fontStyle: 'italic', color: colors.textSecondary }]}>
-                              No active cleaners available
-                            </Text>
-                          </View>
-                        )}
-                      </ScrollView>
-                    </View>
-                  )}
-                  
-                  <Text style={styles.inputLabel}>Skill Level</Text>
-                  <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-                    {['low', 'medium', 'high'].map((level) => (
-                      <TouchableOpacity
-                        key={level}
-                        style={[
-                          styles.filterChip,
-                          labor.skill_level === level && styles.filterChipActive
-                        ]}
-                        onPress={() => {
-                          const newLabor = [...formData.labor];
-                          newLabor[index].skill_level = level as any;
-                          setFormData({ ...formData, labor: newLabor });
-                        }}
-                      >
-                        <Text style={[
-                          styles.filterChipText,
-                          labor.skill_level === level && styles.filterChipTextActive
-                        ]}>
-                          {level.charAt(0).toUpperCase() + level.slice(1)}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                  <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.inputLabel}>Hours</Text>
-                      <TextInput
-                        style={styles.input}
-                        value={labor.hours_worked}
-                        onChangeText={(text) => {
-                          const newLabor = [...formData.labor];
-                          newLabor[index].hours_worked = text;
-                          setFormData({ ...formData, labor: newLabor });
-                        }}
-                        placeholder="0"
-                        placeholderTextColor={colors.textSecondary}
-                        keyboardType="decimal-pad"
-                      />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.inputLabel}>Rate ($/hr)</Text>
-                      <TextInput
-                        style={styles.input}
-                        value={labor.hourly_rate}
-                        onChangeText={(text) => {
-                          const newLabor = [...formData.labor];
-                          newLabor[index].hourly_rate = text;
-                          setFormData({ ...formData, labor: newLabor });
-                        }}
-                        placeholder="15.00"
-                        placeholderTextColor={colors.textSecondary}
-                        keyboardType="decimal-pad"
-                      />
-                    </View>
-                  </View>
-                </View>
-              ))}
-              <TouchableOpacity style={styles.addButton} onPress={addLabor}>
-                <Icon name="add" size={16} style={{ color: colors.background }} />
-                <Text style={styles.addButtonText}>Add Labor</Text>
-              </TouchableOpacity>
-
-              {/* Equipment Section with Dropdown + Manual Input */}
-              <Text style={styles.sectionHeader}>Equipment</Text>
-              {formData.equipment.map((equip, index) => (
-                <View key={index} style={styles.resourceCard}>
-                  <View style={styles.resourceHeader}>
-                    <Text style={styles.resourceTitle}>Equipment {index + 1}</Text>
-                    <TouchableOpacity style={styles.removeButton} onPress={() => removeEquipment(index)}>
-                      <Icon name="close-circle" size={24} style={{ color: colors.danger }} />
-                    </TouchableOpacity>
-                  </View>
-                  
-                  <Text style={styles.inputLabel}>Equipment Type</Text>
-                  <View style={styles.inputWithDropdown}>
-                    <TextInput
-                      style={styles.input}
-                      value={equip.equipment_type}
-                      onChangeText={(text) => {
-                        const newEquipment = [...formData.equipment];
-                        newEquipment[index].equipment_type = text;
-                        setFormData({ ...formData, equipment: newEquipment });
-                      }}
-                      placeholder="Type or select from dropdown"
-                      placeholderTextColor={colors.textSecondary}
-                    />
-                    <TouchableOpacity
-                      style={styles.dropdownToggle}
-                      onPress={() => setShowEquipmentDropdown(showEquipmentDropdown === index ? null : index)}
-                    >
-                      <Icon name="chevron-down" size={20} style={{ color: colors.textSecondary }} />
-                    </TouchableOpacity>
-                  </View>
-                  {showEquipmentDropdown === index && (
-                    <View style={styles.dropdown}>
-                      <ScrollView style={styles.dropdownScroll} nestedScrollEnabled={true}>
-                        {inventoryItems.filter(item => item.category === 'equipment').map((item) => (
-                          <TouchableOpacity
-                            key={item.id}
-                            style={styles.dropdownItem}
-                            onPress={() => {
-                              const newEquipment = [...formData.equipment];
-                              newEquipment[index].equipment_type = item.name;
-                              setFormData({ ...formData, equipment: newEquipment });
-                              setShowEquipmentDropdown(null);
-                            }}
-                          >
-                            <Text style={styles.dropdownText}>{item.name}</Text>
-                          </TouchableOpacity>
-                        ))}
-                        {inventoryItems.filter(item => item.category === 'equipment').length === 0 && (
-                          <View style={styles.dropdownItem}>
-                            <Text style={[styles.dropdownText, { fontStyle: 'italic', color: colors.textSecondary }]}>
-                              No equipment items in inventory
-                            </Text>
-                          </View>
-                        )}
-                      </ScrollView>
-                    </View>
-                  )}
-                  
-                  <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.inputLabel}>Hours</Text>
-                      <TextInput
-                        style={styles.input}
-                        value={equip.hours_used}
-                        onChangeText={(text) => {
-                          const newEquipment = [...formData.equipment];
-                          newEquipment[index].hours_used = text;
-                          setFormData({ ...formData, equipment: newEquipment });
-                        }}
-                        placeholder="0"
-                        placeholderTextColor={colors.textSecondary}
-                        keyboardType="decimal-pad"
-                      />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.inputLabel}>Cost ($/hr)</Text>
-                      <TextInput
-                        style={styles.input}
-                        value={equip.cost_per_hour}
-                        onChangeText={(text) => {
-                          const newEquipment = [...formData.equipment];
-                          newEquipment[index].cost_per_hour = text;
-                          setFormData({ ...formData, equipment: newEquipment });
-                        }}
-                        placeholder="0.00"
-                        placeholderTextColor={colors.textSecondary}
-                        keyboardType="decimal-pad"
-                      />
-                    </View>
-                  </View>
-                </View>
-              ))}
-              <TouchableOpacity style={styles.addButton} onPress={addEquipment}>
-                <Icon name="add" size={16} style={{ color: colors.background }} />
-                <Text style={styles.addButtonText}>Add Equipment</Text>
-              </TouchableOpacity>
-
-              {/* Vehicle Section with Dropdown + Manual Input */}
-              <Text style={styles.sectionHeader}>Vehicles</Text>
-              {formData.vehicles.map((vehicle, index) => (
-                <View key={index} style={styles.resourceCard}>
-                  <View style={styles.resourceHeader}>
-                    <Text style={styles.resourceTitle}>Vehicle {index + 1}</Text>
-                    <TouchableOpacity style={styles.removeButton} onPress={() => removeVehicle(index)}>
-                      <Icon name="close-circle" size={24} style={{ color: colors.danger }} />
-                    </TouchableOpacity>
-                  </View>
-                  
-                  <Text style={styles.inputLabel}>Vehicle Type</Text>
-                  <View style={styles.inputWithDropdown}>
-                    <TextInput
-                      style={styles.input}
-                      value={vehicle.vehicle_type}
-                      onChangeText={(text) => {
-                        const newVehicles = [...formData.vehicles];
-                        newVehicles[index].vehicle_type = text;
-                        setFormData({ ...formData, vehicles: newVehicles });
-                      }}
-                      placeholder="Type or select from dropdown"
-                      placeholderTextColor={colors.textSecondary}
-                    />
-                    <TouchableOpacity
-                      style={styles.dropdownToggle}
-                      onPress={() => setShowVehicleDropdown(showVehicleDropdown === index ? null : index)}
-                    >
-                      <Icon name="chevron-down" size={20} style={{ color: colors.textSecondary }} />
-                    </TouchableOpacity>
-                  </View>
-                  {showVehicleDropdown === index && (
-                    <View style={styles.dropdown}>
-                      <ScrollView style={styles.dropdownScroll} nestedScrollEnabled={true}>
-                        {PREDEFINED_VEHICLES.map((option) => (
-                          <TouchableOpacity
-                            key={option}
-                            style={styles.dropdownItem}
-                            onPress={() => {
-                              const newVehicles = [...formData.vehicles];
-                              newVehicles[index].vehicle_type = option;
-                              setFormData({ ...formData, vehicles: newVehicles });
-                              setShowVehicleDropdown(null);
-                            }}
-                          >
-                            <Text style={styles.dropdownText}>{option}</Text>
-                          </TouchableOpacity>
-                        ))}
-                      </ScrollView>
-                    </View>
-                  )}
-                  
-                  <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.inputLabel}>Hours</Text>
-                      <TextInput
-                        style={styles.input}
-                        value={vehicle.hours_used}
-                        onChangeText={(text) => {
-                          const newVehicles = [...formData.vehicles];
-                          newVehicles[index].hours_used = text;
-                          setFormData({ ...formData, vehicles: newVehicles });
-                        }}
-                        placeholder="0"
-                        placeholderTextColor={colors.textSecondary}
-                        keyboardType="decimal-pad"
-                      />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.inputLabel}>$/hr</Text>
-                      <TextInput
-                        style={styles.input}
-                        value={vehicle.cost_per_hour}
-                        onChangeText={(text) => {
-                          const newVehicles = [...formData.vehicles];
-                          newVehicles[index].cost_per_hour = text;
-                          setFormData({ ...formData, vehicles: newVehicles });
-                        }}
-                        placeholder="0.00"
-                        placeholderTextColor={colors.textSecondary}
-                        keyboardType="decimal-pad"
-                      />
-                    </View>
-                  </View>
-                  <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.inputLabel}>Mileage</Text>
-                      <TextInput
-                        style={styles.input}
-                        value={vehicle.mileage}
-                        onChangeText={(text) => {
-                          const newVehicles = [...formData.vehicles];
-                          newVehicles[index].mileage = text;
-                          setFormData({ ...formData, vehicles: newVehicles });
-                        }}
-                        placeholder="0"
-                        placeholderTextColor={colors.textSecondary}
-                        keyboardType="decimal-pad"
-                      />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.inputLabel}>$/mile</Text>
-                      <TextInput
-                        style={styles.input}
-                        value={vehicle.cost_per_mile}
-                        onChangeText={(text) => {
-                          const newVehicles = [...formData.vehicles];
-                          newVehicles[index].cost_per_mile = text;
-                          setFormData({ ...formData, vehicles: newVehicles });
-                        }}
-                        placeholder="0.00"
-                        placeholderTextColor={colors.textSecondary}
-                        keyboardType="decimal-pad"
-                      />
-                    </View>
-                  </View>
-                </View>
-              ))}
-              <TouchableOpacity style={styles.addButton} onPress={addVehicle}>
-                <Icon name="add" size={16} style={{ color: colors.background }} />
-                <Text style={styles.addButtonText}>Add Vehicle</Text>
-              </TouchableOpacity>
-
-              {/* Supply Section with Dropdown + Manual Input */}
-              <Text style={styles.sectionHeader}>Supplies</Text>
-              {formData.supplies.map((supply, index) => (
-                <View key={index} style={styles.resourceCard}>
-                  <View style={styles.resourceHeader}>
-                    <Text style={styles.resourceTitle}>Supply {index + 1}</Text>
-                    <TouchableOpacity style={styles.removeButton} onPress={() => removeSupply(index)}>
-                      <Icon name="close-circle" size={24} style={{ color: colors.danger }} />
-                    </TouchableOpacity>
-                  </View>
-                  
-                  <Text style={styles.inputLabel}>Supply Type</Text>
-                  <View style={styles.inputWithDropdown}>
-                    <TextInput
-                      style={styles.input}
-                      value={supply.supply_type}
-                      onChangeText={(text) => {
-                        const newSupplies = [...formData.supplies];
-                        newSupplies[index].supply_type = text;
-                        setFormData({ ...formData, supplies: newSupplies });
-                      }}
-                      placeholder="Type or select from dropdown"
-                      placeholderTextColor={colors.textSecondary}
-                    />
-                    <TouchableOpacity
-                      style={styles.dropdownToggle}
-                      onPress={() => setShowSupplyDropdown(showSupplyDropdown === index ? null : index)}
-                    >
-                      <Icon name="chevron-down" size={20} style={{ color: colors.textSecondary }} />
-                    </TouchableOpacity>
-                  </View>
-                  {showSupplyDropdown === index && (
-                    <View style={styles.dropdown}>
-                      <ScrollView style={styles.dropdownScroll} nestedScrollEnabled={true}>
-                        {inventoryItems.filter(item => item.category === 'cleaning-supplies').map((item) => (
-                          <TouchableOpacity
-                            key={item.id}
-                            style={styles.dropdownItem}
-                            onPress={() => {
-                              const newSupplies = [...formData.supplies];
-                              newSupplies[index].supply_type = item.name;
-                              setFormData({ ...formData, supplies: newSupplies });
-                              setShowSupplyDropdown(null);
-                            }}
-                          >
-                            <Text style={styles.dropdownText}>{item.name}</Text>
-                          </TouchableOpacity>
-                        ))}
-                        {inventoryItems.filter(item => item.category === 'cleaning-supplies').length === 0 && (
-                          <View style={styles.dropdownItem}>
-                            <Text style={[styles.dropdownText, { fontStyle: 'italic', color: colors.textSecondary }]}>
-                              No supply items in inventory
-                            </Text>
-                          </View>
-                        )}
-                      </ScrollView>
-                    </View>
-                  )}
-                  
-                  <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.inputLabel}>Quantity</Text>
-                      <TextInput
-                        style={styles.input}
-                        value={supply.quantity}
-                        onChangeText={(text) => {
-                          const newSupplies = [...formData.supplies];
-                          newSupplies[index].quantity = text;
-                          setFormData({ ...formData, supplies: newSupplies });
-                        }}
-                        placeholder="0"
-                        placeholderTextColor={colors.textSecondary}
-                        keyboardType="decimal-pad"
-                      />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.inputLabel}>Unit</Text>
-                      <TextInput
-                        style={styles.input}
-                        value={supply.unit}
-                        onChangeText={(text) => {
-                          const newSupplies = [...formData.supplies];
-                          newSupplies[index].unit = text;
-                          setFormData({ ...formData, supplies: newSupplies });
-                        }}
-                        placeholder="ea, box, etc"
-                        placeholderTextColor={colors.textSecondary}
-                      />
-                    </View>
-                  </View>
-                  <Text style={styles.inputLabel}>Cost per Unit ($)</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={supply.cost_per_unit}
-                    onChangeText={(text) => {
-                      const newSupplies = [...formData.supplies];
-                      newSupplies[index].cost_per_unit = text;
-                      setFormData({ ...formData, supplies: newSupplies });
-                    }}
-                    placeholder="0.00"
-                    placeholderTextColor={colors.textSecondary}
-                    keyboardType="decimal-pad"
-                  />
-                </View>
-              ))}
-              <TouchableOpacity style={styles.addButton} onPress={addSupply}>
-                <Icon name="add" size={16} style={{ color: colors.background }} />
-                <Text style={styles.addButtonText}>Add Supply</Text>
-              </TouchableOpacity>
-
-              {/* Estimated Price & Profit */}
-              <Text style={styles.sectionHeader}>Financial Summary</Text>
-              
-              <Text style={styles.inputLabel}>Estimated Price (Calculated)</Text>
-              <View style={styles.calculatedField}>
-                <Text style={styles.inputText}>Total Cost</Text>
-                <Text style={styles.calculatedValue}>${calculateEstimatedPrice()}</Text>
-              </View>
-
-              <Text style={styles.inputLabel}>Estimated Profitability (Calculated)</Text>
-              <View style={styles.calculatedField}>
-                <Text style={styles.inputText}>Profit Margin</Text>
-                <Text style={styles.calculatedValue}>{calculateEstimatedProfit()}%</Text>
               </View>
 
               <Text style={styles.inputLabel}>Notes</Text>

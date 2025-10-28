@@ -311,6 +311,14 @@ export default function ScheduleView() {
     setShowBuildingDropdown(false);
   }, []);
 
+  const handleOpenRecurringModal = useCallback(() => {
+    console.log('Opening recurring task modal from schedule modal');
+    // Close the schedule modal first
+    setModalVisible(false);
+    // Open the recurring task modal
+    setRecurringModalVisible(true);
+  }, []);
+
   const handleModalSave = useCallback(async () => {
     console.log('=== SCHEDULE MODAL SAVE HANDLER ===');
     console.log('Modal type:', modalType);
@@ -585,6 +593,27 @@ export default function ScheduleView() {
       setModalType('edit');
     }
   }, [selectedEntry]);
+
+  const handleRecurringTaskSave = useCallback(async (taskData: any) => {
+    console.log('=== RECURRING TASK SAVE HANDLER ===');
+    console.log('Task data:', taskData);
+
+    try {
+      // TODO: Implement recurring task creation logic
+      // This would create multiple schedule entries based on the recurring pattern
+      
+      showToast('Recurring task feature coming soon!', 'info');
+      setRecurringModalVisible(false);
+      
+      // Restore the schedule modal state if needed
+      if (selectedClientBuilding) {
+        setModalVisible(true);
+      }
+    } catch (error) {
+      console.error('Error creating recurring task:', error);
+      showToast('Failed to create recurring task', 'error');
+    }
+  }, [selectedClientBuilding, showToast]);
 
   const renderDailyView = () => {
     const daySchedule = currentWeekSchedule.filter(entry => {
@@ -1022,6 +1051,22 @@ export default function ScheduleView() {
         onEditClient={handleEditClient}
         onEditBuilding={handleEditBuilding}
         onSwitchToEdit={handleSwitchToEdit}
+        onOpenRecurringModal={handleOpenRecurringModal}
+      />
+
+      {/* Recurring Task Modal */}
+      <RecurringTaskModal
+        visible={recurringModalVisible}
+        clientBuildings={clientBuildings}
+        cleaners={cleaners}
+        onClose={() => {
+          setRecurringModalVisible(false);
+          // Restore the schedule modal if there was a selected building
+          if (selectedClientBuilding) {
+            setModalVisible(true);
+          }
+        }}
+        onSave={handleRecurringTaskSave}
       />
 
       {/* Building Group Schedule Modal */}
