@@ -506,120 +506,144 @@ export const useClientData = () => {
     await saveBuildings(updatedBuildings);
   }, [clientBuildings, saveBuildings]);
 
-  const addCleaner = useCallback(async (cleaner: Omit<Cleaner, 'id'> | Cleaner) => {
-    const newCleaner = 'id' in cleaner ? cleaner : { ...cleaner, id: `cleaner-${Date.now()}` };
-    
-    try {
-      console.log('🔄 Adding cleaner to Supabase:', newCleaner.name);
-      
-      const { error } = await supabase
-        .from('cleaners')
-        .insert({
-          id: newCleaner.id,
-          name: newCleaner.name,
-          legal_name: newCleaner.legal_name || null,
-          go_by: newCleaner.go_by || null,
-          dob: newCleaner.dob || null,
-          employee_id: newCleaner.employeeId,
-          security_level: newCleaner.securityLevel,
-          phone_number: newCleaner.phoneNumber,
-          email: newCleaner.email || null,
-          specialties: newCleaner.specialties || [],
-          hire_date: newCleaner.hireDate || null,
-          term_date: newCleaner.term_date || null,
-          rehire_date: newCleaner.rehire_date || null,
-          employment_status: newCleaner.employment_status || 'active',
-          notes: newCleaner.notes || null,
-          photo_url: newCleaner.photo_url || null,
-          pay_type: newCleaner.pay_type || 'hourly',
-          default_hourly_rate: newCleaner.defaultHourlyRate || 15.00,
-          emergency_contact_name: newCleaner.emergencyContact?.name || null,
-          emergency_contact_phone: newCleaner.emergencyContact?.phone || null,
-          emergency_contact_relationship: newCleaner.emergencyContact?.relationship || null,
-          is_active: newCleaner.isActive !== false,
-          user_id: newCleaner.user_id || null,
-        });
+  // --- ADD CLEANER ---
+const addCleaner = useCallback(async (cleaner: Omit<Cleaner, 'id'> | Cleaner) => {
+  const newCleaner = 'id' in cleaner ? cleaner : { ...cleaner, id: `cleaner-${Date.now()}` };
 
-      if (error) {
-        console.error('❌ Error adding cleaner to Supabase:', error);
-        throw error;
-      }
+  try {
+    console.log('🟢 Adding cleaner to Supabase:', newCleaner.name);
 
-      console.log('✅ Cleaner added to Supabase successfully');
-      
-      await refreshData();
-    } catch (error) {
-      console.error('❌ Failed to add cleaner to Supabase, saving locally:', error);
-      const updatedCleaners = [...cleaners, newCleaner];
-      await saveCleaners(updatedCleaners);
+    const { data, error } = await supabase
+      .from('cleaners')
+      .insert({
+        id: newCleaner.id,
+        name: newCleaner.name,
+        legal_name: newCleaner.legal_name || null,
+        go_by: newCleaner.go_by || null,
+        dob: newCleaner.dob || null,
+        employee_id: newCleaner.employeeId,
+        security_level: newCleaner.securityLevel,
+        phone_number: newCleaner.phoneNumber,
+        email: newCleaner.email || null,
+        specialties: newCleaner.specialties || [],
+        hire_date: newCleaner.hireDate || null,
+        term_date: newCleaner.term_date || null,
+        rehire_date: newCleaner.rehire_date || null,
+        employment_status: newCleaner.employment_status || 'active',
+        notes: newCleaner.notes || null,
+        photo_url: newCleaner.photo_url || null,
+        pay_type: newCleaner.pay_type || 'hourly',
+        default_hourly_rate: newCleaner.defaultHourlyRate || 15,
+        emergency_contact_name: newCleaner.emergencyContact?.name || null,
+        emergency_contact_phone: newCleaner.emergencyContact?.phone || null,
+        emergency_contact_relationship: newCleaner.emergencyContact?.relationship || null,
+        is_active: newCleaner.isActive ?? true,
+        user_id: newCleaner.user_id || null,
+      })
+      .select()
+      .limit(1);
+
+    if (error) throw error;
+
+    const row = data?.[0];
+    if (!row) throw new Error('No cleaner returned after insert');
+
+    // Map DB row → app cleaner
+    const mapped: Cleaner = {
+      id: row.id,
+      name: row.name,
+      legal_name: row.legal_name || undefined,
+      go_by: row.go_by || undefined,
+      dob: row.dob || undefined,
+      employeeId: row.employee_id || `EMP-${row.id.slice(-6)}`,
+      securityLevel: row.security_level as any,
+      phoneNumber: row.phone_number || '',
+      email: row.email || undefined,
+      specialties: row.specialties || [],
+      hireDate: row.hire_date || undefined,
+      term_date: row.term_date || undefined,
+      rehire_date: row.rehire_date || undefined,
+      employment_status: row.employment_status || 'active',
+      notes: row.notes || undefined,
+      photo_url: row.photo_url || undefined,
+      pay_type: row.pay_type || 'hourly',
+      defaultHourlyRate: row.default_hourly_rate || 15,
+      emergencyContact: row.emergency_contact_name
+        ? {
+            name: row.emergency_contact_name,
+            phone: row.emergency_contact_phone || '',
+            relationship: row.emergency_contact_relationship || undefined,
+          }
+        : undefined,
+      isActive: row.is_active !== false,
+      user_id: row.user_id || null,
+      createdAt: row.created_at ? new Date(row.created_at) : undefined,
+      updatedAt: row.updated_at ? new Date(row.updated_at) : undefined,
+    };
+
+    const updated = [mapped, ...cleaners];
+    await saveCleaners(updated);
+    console.log('✅ Cleaner added & UI updated');
+    return mapped;
+  } catch (err) {
+    console.error('❌ addCleaner failed:', err);
+    const updated = [...cleaners, newCleaner];
+    await saveCleaners(updated);
+    throw err;
+  }
+}, [cleaners, saveCleaners]);
+
+
+  // --- UPDATE CLEANER ---
+const updateCleaner = useCallback(async (cleanerId: string, updates: Partial<Cleaner>) => {
+  try {
+    console.log('🟢 Updating cleaner in Supabase:', cleanerId);
+
+    const updateData: Record<string, any> = {};
+    if (updates.name !== undefined) updateData.name = updates.name;
+    if (updates.phoneNumber !== undefined) updateData.phone_number = updates.phoneNumber;
+    if (updates.email !== undefined) updateData.email = updates.email;
+    if (updates.specialties !== undefined) updateData.specialties = updates.specialties;
+    if (updates.employment_status !== undefined) updateData.employment_status = updates.employment_status;
+    if (updates.isActive !== undefined) updateData.is_active = updates.isActive;
+    if (updates.notes !== undefined) updateData.notes = updates.notes;
+    if (updates.photo_url !== undefined) updateData.photo_url = updates.photo_url;
+    if (updates.defaultHourlyRate !== undefined)
+      updateData.default_hourly_rate = updates.defaultHourlyRate;
+    if (updates.emergencyContact) {
+      updateData.emergency_contact_name = updates.emergencyContact.name;
+      updateData.emergency_contact_phone = updates.emergencyContact.phone;
+      updateData.emergency_contact_relationship = updates.emergencyContact.relationship;
     }
-  }, [cleaners, saveCleaners, refreshData]);
 
-  const updateCleaner = useCallback(async (cleanerId: string, updates: Partial<Cleaner>) => {
-    try {
-      console.log('🔄 Updating cleaner in Supabase:', cleanerId);
-      console.log('📝 Update data:', updates);
-      
-      const updateData: any = {};
-      if (updates.name !== undefined) updateData.name = updates.name;
-      if (updates.legal_name !== undefined) updateData.legal_name = updates.legal_name || null;
-      if (updates.go_by !== undefined) updateData.go_by = updates.go_by || null;
-      if (updates.dob !== undefined) updateData.dob = updates.dob || null;
-      if (updates.employeeId !== undefined) updateData.employee_id = updates.employeeId;
-      if (updates.securityLevel !== undefined) updateData.security_level = updates.securityLevel;
-      if (updates.phoneNumber !== undefined) updateData.phone_number = updates.phoneNumber;
-      if (updates.email !== undefined) updateData.email = updates.email || null;
-      if (updates.specialties !== undefined) updateData.specialties = updates.specialties;
-      if (updates.hireDate !== undefined) updateData.hire_date = updates.hireDate || null;
-      if (updates.term_date !== undefined) updateData.term_date = updates.term_date || null;
-      if (updates.rehire_date !== undefined) updateData.rehire_date = updates.rehire_date || null;
-      if (updates.employment_status !== undefined) updateData.employment_status = updates.employment_status;
-      if (updates.notes !== undefined) updateData.notes = updates.notes || null;
-      if (updates.photo_url !== undefined) updateData.photo_url = updates.photo_url || null;
-      if (updates.pay_type !== undefined) updateData.pay_type = updates.pay_type;
-      if (updates.defaultHourlyRate !== undefined) updateData.default_hourly_rate = updates.defaultHourlyRate;
-      if (updates.emergencyContact !== undefined) {
-        updateData.emergency_contact_name = updates.emergencyContact?.name || null;
-        updateData.emergency_contact_phone = updates.emergencyContact?.phone || null;
-        updateData.emergency_contact_relationship = updates.emergencyContact?.relationship || null;
-      }
-      if (updates.isActive !== undefined) updateData.is_active = updates.isActive;
-      
-      updateData.updated_at = new Date().toISOString();
+    const { data, error } = await supabase
+      .from('cleaners')
+      .update(updateData)
+      .eq('id', cleanerId)
+      .select()
+      .limit(1);
 
-      console.log('📤 Sending to Supabase:', updateData);
+    if (error) throw error;
 
-      const { data, error } = await supabase
-        .from('cleaners')
-        .update(updateData)
-        .eq('id', cleanerId)
-        .select();
+    const row = data?.[0];
+    if (!row) throw new Error('No cleaner returned after update');
 
-      if (error) {
-        console.error('❌ Error updating cleaner in Supabase:', error);
-        console.error('❌ Error details:', JSON.stringify(error, null, 2));
-        throw error;
-      }
+    const mapped = {
+      ...updates,
+      id: row.id,
+      updatedAt: row.updated_at ? new Date(row.updated_at) : new Date(),
+    } as Cleaner;
 
-      console.log('✅ Cleaner updated in Supabase successfully');
-      console.log('📥 Response data:', data);
-      
-      // Update local state immediately for better UX
-      const updatedCleaners = cleaners.map(cleaner =>
-        cleaner.id === cleanerId ? { ...cleaner, ...updates, updatedAt: new Date() } : cleaner
-      );
-      setCleaners(updatedCleaners);
-      
-      // Also refresh from database to ensure consistency
-      await refreshData();
-    } catch (error) {
-      console.error('❌ Failed to update cleaner in Supabase, updating locally:', error);
-      const updatedCleaners = cleaners.map(cleaner =>
-        cleaner.id === cleanerId ? { ...cleaner, ...updates, updatedAt: new Date() } : cleaner
-      );
-      await saveCleaners(updatedCleaners);
-    }
-  }, [cleaners, saveCleaners, refreshData]);
+    const updatedList = cleaners.map(c => (c.id === cleanerId ? { ...c, ...mapped } : c));
+    await saveCleaners(updatedList);
+    console.log('✅ Cleaner updated & UI synced');
+    return mapped;
+  } catch (err) {
+    console.error('❌ updateCleaner failed:', err);
+    throw err;
+  }
+}, [cleaners, saveCleaners]);
+
 
   const deleteCleaner = useCallback(async (cleanerId: string) => {
     try {
