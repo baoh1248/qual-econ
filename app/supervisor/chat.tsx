@@ -11,7 +11,7 @@ import { useClientData } from '../../hooks/useClientData';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import Button from '../../components/Button';
 
-export default function ChatScreen() {
+export default function SupervisorChatScreen() {
   const { themeColor } = useTheme();
   const {
     chatRooms,
@@ -37,7 +37,7 @@ export default function ChatScreen() {
   const [isCreating, setIsCreating] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
 
-  console.log('ChatScreen rendered');
+  console.log('SupervisorChatScreen rendered');
   console.log('Is authenticated:', isAuthenticated);
   console.log('Current user ID:', currentUserId);
 
@@ -359,7 +359,7 @@ export default function ChatScreen() {
             </Text>
           </View>
         </View>
-        <TouchableOpacity onPress={() => router.push(`/cleaner/chat-room-settings?roomId=${selectedRoom}`)}>
+        <TouchableOpacity onPress={() => router.push(`/supervisor/chat-room-settings?roomId=${selectedRoom}`)}>
           <Icon name="ellipsis-vertical" size={24} style={{ color: colors.background }} />
         </TouchableOpacity>
       </View>
@@ -424,11 +424,11 @@ export default function ChatScreen() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           <View style={[commonStyles.row, { gap: spacing.sm }]}>
             {[
-              'Task completed ✅',
-              'Need assistance 🆘',
-              'Running late ⏰',
-              'All good 👍',
-              'Break time ☕',
+              'Great work! 👏',
+              'Please check schedule 📅',
+              'Meeting at 3pm 🕒',
+              'Approved ✅',
+              'Need update 📝',
             ].map((quickMsg, index) => (
               <TouchableOpacity
                 key={index}
@@ -494,7 +494,8 @@ export default function ChatScreen() {
           <Icon 
             name="send" 
             size={20} 
-            style={{ color: messageText.trim() ? colors.background : colors.textSecondary }} />
+            style={{ color: messageText.trim() ? colors.background : colors.textSecondary }} 
+          />
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>

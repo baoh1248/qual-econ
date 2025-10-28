@@ -17,6 +17,7 @@ export default function CleanerLayout() {
       >
         <Stack.Screen name="index" />
         <Stack.Screen name="chat" />
+        <Stack.Screen name="chat-room-settings" />
         <Stack.Screen name="inventory" />
         <Stack.Screen name="task/[id]" />
         <Stack.Screen name="settings" />

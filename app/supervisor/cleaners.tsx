@@ -8,7 +8,7 @@ import { useClientData, type Cleaner, type EmploymentHistory } from '../../hooks
 import { commonStyles, colors, spacing, typography, buttonStyles } from '../../styles/commonStyles';
 import { useDatabase } from '../../hooks/useDatabase';
 import CompanyLogo from '../../components/CompanyLogo';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import DateInput from '../../components/DateInput';
 import { useTheme } from '../../hooks/useTheme';
 import Button from '../../components/Button';
 import AnimatedCard from '../../components/AnimatedCard';
@@ -38,8 +38,6 @@ export default function CleanersScreen() {
   const [selectedCleaner, setSelectedCleaner] = useState<Cleaner | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('all');
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [datePickerField, setDatePickerField] = useState<'hireDate' | 'termDate' | 'rehireDate' | 'dob' | null>(null);
   const [employmentHistory, setEmploymentHistory] = useState<EmploymentHistory[]>([]);
   const [compensationHistory, setCompensationHistory] = useState<CompensationRecord[]>([]);
 
@@ -308,25 +306,7 @@ export default function CleanersScreen() {
     }));
   }, []);
 
-  const handleDateChange = useCallback((event: any, selectedDate?: Date) => {
-    setShowDatePicker(Platform.OS === 'ios');
-    
-    if (selectedDate && datePickerField) {
-      const dateStr = selectedDate.toISOString().split('T')[0];
-      
-      if (datePickerField === 'hireDate') {
-        setFormData(prev => ({ ...prev, hireDate: dateStr }));
-      } else if (datePickerField === 'termDate') {
-        setFormData(prev => ({ ...prev, termDate: dateStr }));
-      } else if (datePickerField === 'rehireDate') {
-        setFormData(prev => ({ ...prev, rehireDate: dateStr }));
-      } else if (datePickerField === 'dob') {
-        setFormData(prev => ({ ...prev, dob: dateStr }));
-      }
-      
-      setDatePickerField(null);
-    }
-  }, [datePickerField]);
+
 
   const filteredCleaners = cleaners.filter(cleaner => {
     const matchesSearch = cleaner.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -960,18 +940,13 @@ export default function CleanersScreen() {
                 placeholderTextColor={colors.textSecondary}
               />
 
-              <Text style={styles.inputLabel}>Date of Birth</Text>
-              <TouchableOpacity
-                style={styles.dateButton}
-                onPress={() => {
-                  setDatePickerField('dob');
-                  setShowDatePicker(true);
-                }}
-              >
-                <Text style={styles.dateButtonText}>
-                  {formData.dob ? new Date(formData.dob).toLocaleDateString() : 'Select date'}
-                </Text>
-              </TouchableOpacity>
+              <DateInput
+                label="Date of Birth"
+                value={formData.dob}
+                onChangeText={(text) => setFormData({ ...formData, dob: text })}
+                placeholder="YYYY-MM-DD"
+                themeColor={themeColor}
+              />
 
               <Text style={styles.inputLabel}>Employee ID</Text>
               <TextInput
@@ -1003,44 +978,29 @@ export default function CleanersScreen() {
                 autoCapitalize="none"
               />
 
-              <Text style={styles.inputLabel}>Hire Date</Text>
-              <TouchableOpacity
-                style={styles.dateButton}
-                onPress={() => {
-                  setDatePickerField('hireDate');
-                  setShowDatePicker(true);
-                }}
-              >
-                <Text style={styles.dateButtonText}>
-                  {formData.hireDate ? new Date(formData.hireDate).toLocaleDateString() : 'Select date'}
-                </Text>
-              </TouchableOpacity>
+              <DateInput
+                label="Hire Date"
+                value={formData.hireDate}
+                onChangeText={(text) => setFormData({ ...formData, hireDate: text })}
+                placeholder="YYYY-MM-DD"
+                themeColor={themeColor}
+              />
 
-              <Text style={styles.inputLabel}>Term Date</Text>
-              <TouchableOpacity
-                style={styles.dateButton}
-                onPress={() => {
-                  setDatePickerField('termDate');
-                  setShowDatePicker(true);
-                }}
-              >
-                <Text style={styles.dateButtonText}>
-                  {formData.termDate ? new Date(formData.termDate).toLocaleDateString() : 'Select date'}
-                </Text>
-              </TouchableOpacity>
+              <DateInput
+                label="Term Date"
+                value={formData.termDate}
+                onChangeText={(text) => setFormData({ ...formData, termDate: text })}
+                placeholder="YYYY-MM-DD"
+                themeColor={themeColor}
+              />
 
-              <Text style={styles.inputLabel}>Rehire Date</Text>
-              <TouchableOpacity
-                style={styles.dateButton}
-                onPress={() => {
-                  setDatePickerField('rehireDate');
-                  setShowDatePicker(true);
-                }}
-              >
-                <Text style={styles.dateButtonText}>
-                  {formData.rehireDate ? new Date(formData.rehireDate).toLocaleDateString() : 'Select date'}
-                </Text>
-              </TouchableOpacity>
+              <DateInput
+                label="Rehire Date"
+                value={formData.rehireDate}
+                onChangeText={(text) => setFormData({ ...formData, rehireDate: text })}
+                placeholder="YYYY-MM-DD"
+                themeColor={themeColor}
+              />
 
               <Text style={styles.inputLabel}>Employment Status</Text>
               <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm, flexWrap: 'wrap' }}>
@@ -1380,16 +1340,6 @@ export default function CleanersScreen() {
           </View>
         </View>
       </Modal>
-
-      {/* Date Picker */}
-      {showDatePicker && (
-        <DateTimePicker
-          value={new Date()}
-          mode="date"
-          display="default"
-          onChange={handleDateChange}
-        />
-      )}
 
       <Toast />
     </View>

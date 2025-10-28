@@ -1,10 +1,11 @@
 
 import React, { memo, useState, useEffect } from 'react';
-import { View, Text, Modal, ScrollView, TouchableOpacity, TextInput, StyleSheet, Platform, Alert } from 'react-native';
+import { View, Text, Modal, ScrollView, TouchableOpacity, TextInput, StyleSheet, Platform, Alert, Switch } from 'react-native';
 import { colors, spacing, typography, commonStyles } from '../../styles/commonStyles';
 import Button from '../Button';
 import Icon from '../Icon';
 import IconButton from '../IconButton';
+import DateInput from '../DateInput';
 import { supabase } from '../../app/integrations/supabase/client';
 import type { ClientBuilding, Cleaner } from '../../hooks/useClientData';
 import uuid from 'react-native-uuid';
@@ -37,7 +38,7 @@ const BuildingGroupScheduleModal = memo<BuildingGroupScheduleModalProps>(({
   day,
   date
 }) => {
-  console.log('BuildingGroupScheduleModal rendered');
+  console.log('BuildingGroupScheduleModal rendered with date:', date);
   
   const [buildingGroups, setBuildingGroups] = useState<BuildingGroup[]>([]);
   const [buildings, setBuildings] = useState<ClientBuilding[]>([]);
@@ -46,6 +47,19 @@ const BuildingGroupScheduleModal = memo<BuildingGroupScheduleModalProps>(({
   const [selectedCleaners, setSelectedCleaners] = useState<string[]>([]);
   const [hours, setHours] = useState('8');
   const [startTime, setStartTime] = useState('09:00');
+  const [scheduleDate, setScheduleDate] = useState(() => {
+    // Ensure date is in YYYY-MM-DD format
+    try {
+      if (date) {
+        return date.split('T')[0];
+      }
+      return new Date().toISOString().split('T')[0];
+    } catch (error) {
+      console.error('Error parsing date:', error);
+      return new Date().toISOString().split('T')[0];
+    }
+  });
+  const [isRecurring, setIsRecurring] = useState(false);
   const [paymentType, setPaymentType] = useState<'hourly' | 'flat_rate'>('hourly');
   const [flatRateAmount, setFlatRateAmount] = useState('100');
   const [notes, setNotes] = useState('');
@@ -54,17 +68,24 @@ const BuildingGroupScheduleModal = memo<BuildingGroupScheduleModalProps>(({
   useEffect(() => {
     if (visible) {
       loadBuildingGroups();
+      // Reset date when modal opens - ensure proper format
+      const formattedDate = date ? date.split('T')[0] : new Date().toISOString().split('T')[0];
+      setScheduleDate(formattedDate);
+      console.log('Modal opened with formatted date:', formattedDate);
     } else {
       // Reset form
       setSelectedGroupId(null);
       setSelectedCleaners([]);
       setHours('8');
       setStartTime('09:00');
+      const formattedDate = date ? date.split('T')[0] : new Date().toISOString().split('T')[0];
+      setScheduleDate(formattedDate);
+      setIsRecurring(false);
       setPaymentType('hourly');
       setFlatRateAmount('100');
       setNotes('');
     }
-  }, [visible]);
+  }, [visible, date]);
 
   const loadBuildingGroups = async () => {
     try {
@@ -100,7 +121,7 @@ const BuildingGroupScheduleModal = memo<BuildingGroupScheduleModalProps>(({
       const { data: groupsData, error: groupsError } = await supabase
         .from('building_groups')
         .select('*')
-        .order('client_name', { ascending: true });
+        .order('client_name', { ascending: true});
 
       if (groupsError) {
         console.error('❌ Error loading building groups:', groupsError);
@@ -164,6 +185,11 @@ const BuildingGroupScheduleModal = memo<BuildingGroupScheduleModalProps>(({
       return;
     }
 
+    if (!scheduleDate) {
+      Alert.alert('Error', 'Please enter a valid date');
+      return;
+    }
+
     const selectedGroup = buildingGroups.find(g => g.id === selectedGroupId);
     if (!selectedGroup) {
       Alert.alert('Error', 'Selected group not found');
@@ -178,6 +204,7 @@ const BuildingGroupScheduleModal = memo<BuildingGroupScheduleModalProps>(({
     try {
       setSaving(true);
       console.log('🔄 Creating schedule entries for building group:', selectedGroup.group_name);
+      console.log('Using date:', scheduleDate);
 
       const hoursNum = parseFloat(hours) || 8;
       const cleanerIds = selectedCleaners.map(name => {
@@ -200,6 +227,13 @@ const BuildingGroupScheduleModal = memo<BuildingGroupScheduleModalProps>(({
         hourlyRate = cleaner?.defaultHourlyRate || 15;
       }
 
+      // Parse the date to get the day of week - ensure proper format
+      const dateObj = new Date(scheduleDate + 'T00:00:00');
+      const dayOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][dateObj.getDay()];
+      
+      console.log('Date object:', dateObj);
+      console.log('Day of week:', dayOfWeek);
+
       // Create schedule entries for each building in the group
       const scheduleEntries = selectedGroup.buildings.map(building => ({
         id: uuid.v4() as string,
@@ -209,15 +243,15 @@ const BuildingGroupScheduleModal = memo<BuildingGroupScheduleModalProps>(({
         cleaner_names: selectedCleaners,
         cleaner_ids: cleanerIds,
         hours: hoursNum,
-        day: day,
-        date: date,
+        day: dayOfWeek,
+        date: scheduleDate, // Store in YYYY-MM-DD format
         start_time: startTime,
         end_time: endTime,
         status: 'scheduled',
         week_id: weekId,
         notes: notes.trim() || `Scheduled as part of ${selectedGroup.group_name}`,
         priority: 'medium',
-        is_recurring: false,
+        is_recurring: isRecurring,
         payment_type: paymentType,
         flat_rate_amount: paymentType === 'flat_rate' ? flatRate : 0,
         hourly_rate: paymentType === 'hourly' ? hourlyRate : 15,
@@ -226,6 +260,7 @@ const BuildingGroupScheduleModal = memo<BuildingGroupScheduleModalProps>(({
       }));
 
       console.log(`Creating ${scheduleEntries.length} schedule entries...`);
+      console.log('Sample entry:', scheduleEntries[0]);
 
       const { error } = await supabase
         .from('schedule_entries')
@@ -240,7 +275,7 @@ const BuildingGroupScheduleModal = memo<BuildingGroupScheduleModalProps>(({
       
       Alert.alert(
         'Success',
-        `Created ${scheduleEntries.length} schedule entries for ${selectedGroup.group_name}`,
+        `Created ${scheduleEntries.length} schedule entries for ${selectedGroup.group_name}${isRecurring ? ' (Recurring)' : ''}`,
         [
           {
             text: 'OK',
@@ -393,6 +428,16 @@ const BuildingGroupScheduleModal = memo<BuildingGroupScheduleModalProps>(({
               </View>
             )}
 
+            {/* Date Field with Calendar */}
+            <DateInput
+              label="Date"
+              value={scheduleDate}
+              onChangeText={setScheduleDate}
+              placeholder="YYYY-MM-DD"
+              required
+              themeColor={colors.primary}
+            />
+
             {/* Cleaner Selection */}
             <View style={{ marginBottom: spacing.lg }}>
               <Text style={styles.label}>Select Cleaners *</Text>
@@ -449,6 +494,17 @@ const BuildingGroupScheduleModal = memo<BuildingGroupScheduleModalProps>(({
                 placeholderTextColor={colors.textSecondary}
                 value={startTime}
                 onChangeText={setStartTime}
+              />
+            </View>
+
+            {/* Recurring Shift Toggle */}
+            <View style={styles.switchRow}>
+              <Text style={styles.label}>Recurring Shift</Text>
+              <Switch
+                value={isRecurring}
+                onValueChange={setIsRecurring}
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor={colors.background}
               />
             </View>
 
@@ -673,6 +729,13 @@ const styles = StyleSheet.create({
     color: colors.text,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  switchRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.lg,
   },
   paymentTypeButton: {
     flex: 1,

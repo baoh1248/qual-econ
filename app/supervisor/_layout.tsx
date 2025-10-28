@@ -22,6 +22,8 @@ export default function SupervisorLayout() {
         <Stack.Screen name="projects" />
         <Stack.Screen name="cleaners" />
         <Stack.Screen name="payroll" />
+        <Stack.Screen name="chat" />
+        <Stack.Screen name="chat-room-settings" />
         <Stack.Screen name="settings" />
       </Stack>
       <BottomNavigation role="supervisor" />
