@@ -65,7 +65,7 @@ export default function CompanyLogo({
                 fontWeight: '700'
               }
             ]}>
-              CleanPro
+              QualEcon
             </Text>
           )}
         </View>
@@ -77,7 +77,7 @@ export default function CompanyLogo({
     return (
       <View style={[styles.container, style]}>
         <Text style={[styles.companyText, { color: colors.text }]}>
-          CleanPro
+          QualEcon
         </Text>
       </View>
     );
