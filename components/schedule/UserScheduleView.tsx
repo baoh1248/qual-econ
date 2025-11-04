@@ -6,6 +6,7 @@ import Icon from '../Icon';
 import type { ScheduleEntry } from '../../hooks/useScheduleStorage';
 import type { Cleaner } from '../../hooks/useClientData';
 import { useVacationCheck } from '../../hooks/useVacationCheck';
+import { formatTimeRange } from '../../utils/timeFormatter';
 
 interface UserScheduleViewProps {
   cleaners: Cleaner[];
@@ -175,7 +176,7 @@ const UserScheduleView = memo(({
       >
         <View style={styles.taskHeader}>
           <Text style={[styles.taskTime, { color: statusColor }]} numberOfLines={1}>
-            {entry.startTime || '09:00'} - {entry.endTime || '17:00'}
+            {formatTimeRange(entry.startTime || '09:00', entry.endTime || '17:00')}
           </Text>
           {isCompleted && (
             <Icon name="checkmark-circle" size={14} style={{ color: colors.success }} />

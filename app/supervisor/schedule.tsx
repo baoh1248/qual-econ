@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, StyleSheet, Platform } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, StyleSheet, Platform, TextInput } from 'react-native';
 import { router } from 'expo-router';
 import { useTheme } from '../../hooks/useTheme';
 import { useScheduleStorage, type ScheduleEntry } from '../../hooks/useScheduleStorage';
@@ -22,11 +22,41 @@ import LoadingSpinner from '../../components/LoadingSpinner';
 import CompanyLogo from '../../components/CompanyLogo';
 import IconButton from '../../components/IconButton';
 import DraggableButton from '../../components/DraggableButton';
+import FilterDropdown from '../../components/FilterDropdown';
 import { projectToScheduleEntry, scheduleEntryExistsForProject } from '../../utils/projectScheduleSync';
+import { formatTimeRange } from '../../utils/timeFormatter';
+import { supabase } from '../integrations/supabase/client';
 
 type ModalType = 'add' | 'edit' | 'addClient' | 'addBuilding' | 'addCleaner' | 'editClient' | 'editBuilding' | 'details' | null;
 type ViewType = 'daily' | 'weekly' | 'monthly';
 type ScheduleViewMode = 'building' | 'user';
+
+interface ScheduleFilters {
+  shiftType: 'all' | 'project' | 'regular';
+  clientName: string;
+  buildingName: string;
+  cleanerName: string;
+  buildingGroupName: string;
+  cleanerGroupName: string;
+  status: 'all' | 'scheduled' | 'in-progress' | 'completed' | 'cancelled';
+}
+
+interface BuildingGroup {
+  id: string;
+  client_name: string;
+  group_name: string;
+  description?: string;
+  building_ids: string[];
+  highlight_color?: string;
+}
+
+interface CleanerGroup {
+  id: string;
+  group_name: string;
+  description?: string;
+  cleaner_ids: string[];
+  highlight_color?: string;
+}
 
 export default function ScheduleView() {
   const { themeColor } = useTheme();
@@ -60,6 +90,20 @@ export default function ScheduleView() {
   const [recurringModalVisible, setRecurringModalVisible] = useState(false);
   const [buildingGroupModalVisible, setBuildingGroupModalVisible] = useState(false);
   const [selectedDay, setSelectedDay] = useState<string>('');
+  const [buildingGroups, setBuildingGroups] = useState<BuildingGroup[]>([]);
+  const [cleanerGroups, setCleanerGroups] = useState<CleanerGroup[]>([]);
+  
+  // Filter states
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState<ScheduleFilters>({
+    shiftType: 'all',
+    clientName: '',
+    buildingName: '',
+    cleanerName: '',
+    buildingGroupName: '',
+    cleanerGroupName: '',
+    status: 'all',
+  });
 
   const { showToast } = useToast();
   const { executeQuery } = useDatabase();
@@ -78,11 +122,351 @@ export default function ScheduleView() {
     return getWeekIdFromDate(currentDate);
   }, [currentDate, getWeekIdFromDate]);
 
+  // Load building groups using direct Supabase query
+  const loadBuildingGroups = useCallback(async () => {
+    try {
+      console.log('🔄 Loading building groups...');
+      
+      // Load groups
+      const { data: groupsData, error: groupsError } = await supabase
+        .from('building_groups')
+        .select('*')
+        .order('group_name', { ascending: true });
+
+      if (groupsError) {
+        console.error('❌ Error loading building groups:', groupsError);
+        throw groupsError;
+      }
+
+      console.log(`📦 Loaded ${groupsData?.length || 0} building groups from database`);
+
+      if (!groupsData || groupsData.length === 0) {
+        console.log('ℹ️ No building groups found');
+        setBuildingGroups([]);
+        return;
+      }
+
+      // Load members for each group
+      const groupsWithMembers: BuildingGroup[] = [];
+      
+      for (const group of groupsData) {
+        console.log(`🔍 Loading members for group "${group.group_name}" (${group.id})`);
+        
+        const { data: membersData, error: membersError } = await supabase
+          .from('building_group_members')
+          .select('building_id')
+          .eq('group_id', group.id);
+
+        if (membersError) {
+          console.error(`❌ Error loading members for group "${group.group_name}":`, membersError);
+          continue;
+        }
+
+        const buildingIds = membersData?.map(m => m.building_id) || [];
+        console.log(`  ✅ Group "${group.group_name}" has ${buildingIds.length} buildings:`, buildingIds);
+
+        groupsWithMembers.push({
+          id: group.id,
+          client_name: group.client_name,
+          group_name: group.group_name,
+          description: group.description,
+          building_ids: buildingIds,
+          highlight_color: group.highlight_color || '#3B82F6',
+        });
+      }
+
+      console.log(`✅ Successfully loaded ${groupsWithMembers.length} building groups with members`);
+      console.log('📊 Building groups summary:', groupsWithMembers.map(g => ({
+        name: g.group_name,
+        buildings: g.building_ids.length,
+        color: g.highlight_color
+      })));
+      
+      setBuildingGroups(groupsWithMembers);
+    } catch (error) {
+      console.error('❌ Failed to load building groups:', error);
+      setBuildingGroups([]);
+    }
+  }, []);
+
+  // Load cleaner groups using direct Supabase query
+  const loadCleanerGroups = useCallback(async () => {
+    try {
+      console.log('🔄 Loading cleaner groups...');
+      
+      // Load groups
+      const { data: groupsData, error: groupsError } = await supabase
+        .from('cleaner_groups')
+        .select('*')
+        .order('group_name', { ascending: true });
+
+      if (groupsError) {
+        console.error('❌ Error loading cleaner groups:', groupsError);
+        throw groupsError;
+      }
+
+      console.log(`📦 Loaded ${groupsData?.length || 0} cleaner groups from database`);
+
+      if (!groupsData || groupsData.length === 0) {
+        console.log('ℹ️ No cleaner groups found');
+        setCleanerGroups([]);
+        return;
+      }
+
+      // Load members for each group
+      const groupsWithMembers: CleanerGroup[] = [];
+      
+      for (const group of groupsData) {
+        console.log(`🔍 Loading members for group "${group.group_name}" (${group.id})`);
+        
+        const { data: membersData, error: membersError } = await supabase
+          .from('cleaner_group_members')
+          .select('cleaner_id')
+          .eq('group_id', group.id);
+
+        if (membersError) {
+          console.error(`❌ Error loading members for group "${group.group_name}":`, membersError);
+          continue;
+        }
+
+        const cleanerIds = membersData?.map(m => m.cleaner_id) || [];
+        console.log(`  ✅ Group "${group.group_name}" has ${cleanerIds.length} cleaners:`, cleanerIds);
+
+        groupsWithMembers.push({
+          id: group.id,
+          group_name: group.group_name,
+          description: group.description,
+          cleaner_ids: cleanerIds,
+          highlight_color: group.highlight_color || '#3B82F6',
+        });
+      }
+
+      console.log(`✅ Successfully loaded ${groupsWithMembers.length} cleaner groups with members`);
+      console.log('📊 Cleaner groups summary:', groupsWithMembers.map(g => ({
+        name: g.group_name,
+        cleaners: g.cleaner_ids.length,
+        color: g.highlight_color
+      })));
+      
+      setCleanerGroups(groupsWithMembers);
+    } catch (error) {
+      console.error('❌ Failed to load cleaner groups:', error);
+      setCleanerGroups([]);
+    }
+  }, []);
+
+  // Get unique building group names from building groups
+  const uniqueBuildingGroupNames = useMemo(() => {
+    const names = new Set(buildingGroups.map(group => group.group_name));
+    return Array.from(names).sort();
+  }, [buildingGroups]);
+
+  // Get unique cleaner group names from cleaner groups
+  const uniqueCleanerGroupNames = useMemo(() => {
+    const names = new Set(cleanerGroups.map(group => group.group_name));
+    return Array.from(names).sort();
+  }, [cleanerGroups]);
+
+  // Get unique client names from schedule
+  const uniqueClientNames = useMemo(() => {
+    const names = new Set(currentWeekSchedule.map(entry => entry.clientName));
+    return Array.from(names).sort();
+  }, [currentWeekSchedule]);
+
+  // Get unique building names from schedule (filtered by selected client if any)
+  const uniqueBuildingNames = useMemo(() => {
+    let entries = currentWeekSchedule;
+    if (filters.clientName) {
+      entries = entries.filter(entry => entry.clientName === filters.clientName);
+    }
+    const names = new Set(entries.map(entry => entry.buildingName));
+    return Array.from(names).sort();
+  }, [currentWeekSchedule, filters.clientName]);
+
+  // Get unique cleaner names from schedule
+  const uniqueCleanerNames = useMemo(() => {
+    const names = new Set<string>();
+    currentWeekSchedule.forEach(entry => {
+      if (entry.cleanerNames) {
+        entry.cleanerNames.forEach(name => names.add(name));
+      } else {
+        names.add(entry.cleanerName);
+      }
+    });
+    return Array.from(names).sort();
+  }, [currentWeekSchedule]);
+
+  // Apply filters to schedule
+  const filteredSchedule = useMemo(() => {
+    let filtered = [...currentWeekSchedule];
+
+    // Filter by shift type
+    if (filters.shiftType !== 'all') {
+      if (filters.shiftType === 'project') {
+        filtered = filtered.filter(entry => entry.isProject === true);
+      } else {
+        filtered = filtered.filter(entry => !entry.isProject);
+      }
+    }
+
+    // Filter by client name (supports both exact match and partial match)
+    if (filters.clientName.trim()) {
+      filtered = filtered.filter(entry => 
+        entry.clientName.toLowerCase().includes(filters.clientName.toLowerCase())
+      );
+    }
+
+    // Filter by building name (supports both exact match and partial match)
+    if (filters.buildingName.trim()) {
+      filtered = filtered.filter(entry => 
+        entry.buildingName.toLowerCase().includes(filters.buildingName.toLowerCase())
+      );
+    }
+
+    // Filter by cleaner name (supports both exact match and partial match)
+    if (filters.cleanerName.trim()) {
+      filtered = filtered.filter(entry => {
+        const cleanerNames = entry.cleanerNames || [entry.cleanerName];
+        return cleanerNames.some(name => 
+          name.toLowerCase().includes(filters.cleanerName.toLowerCase())
+        );
+      });
+    }
+
+    // Filter by building group
+    if (filters.buildingGroupName.trim()) {
+      const selectedGroup = buildingGroups.find(g => 
+        g.group_name.toLowerCase().includes(filters.buildingGroupName.toLowerCase())
+      );
+      
+      if (selectedGroup) {
+        const groupBuildingIds = selectedGroup.building_ids;
+        const groupBuildingNames = clientBuildings
+          .filter(b => groupBuildingIds.includes(b.id))
+          .map(b => b.buildingName);
+        
+        filtered = filtered.filter(entry => 
+          groupBuildingNames.includes(entry.buildingName)
+        );
+      }
+    }
+
+    // Filter by cleaner group
+    if (filters.cleanerGroupName.trim()) {
+      const selectedGroup = cleanerGroups.find(g => 
+        g.group_name.toLowerCase().includes(filters.cleanerGroupName.toLowerCase())
+      );
+      
+      if (selectedGroup) {
+        const groupCleanerIds = selectedGroup.cleaner_ids;
+        const groupCleanerNames = cleaners
+          .filter(c => groupCleanerIds.includes(c.id))
+          .map(c => c.name);
+        
+        filtered = filtered.filter(entry => {
+          const entryCleanerNames = entry.cleanerNames || [entry.cleanerName];
+          return entryCleanerNames.some(name => groupCleanerNames.includes(name));
+        });
+      }
+    }
+
+    // Filter by status
+    if (filters.status !== 'all') {
+      filtered = filtered.filter(entry => entry.status === filters.status);
+    }
+
+    return filtered;
+  }, [currentWeekSchedule, filters, buildingGroups, clientBuildings]);
+
+  // Check if any filters are active
+  const hasActiveFilters = useMemo(() => {
+    return filters.shiftType !== 'all' ||
+           filters.clientName.trim() !== '' ||
+           filters.buildingName.trim() !== '' ||
+           filters.cleanerName.trim() !== '' ||
+           filters.buildingGroupName.trim() !== '' ||
+           filters.cleanerGroupName.trim() !== '' ||
+           filters.status !== 'all';
+  }, [filters]);
+
+  // Count active filters
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (filters.shiftType !== 'all') count++;
+    if (filters.clientName.trim() !== '') count++;
+    if (filters.buildingName.trim() !== '') count++;
+    if (filters.cleanerName.trim() !== '') count++;
+    if (filters.buildingGroupName.trim() !== '') count++;
+    if (filters.cleanerGroupName.trim() !== '') count++;
+    if (filters.status !== 'all') count++;
+    return count;
+  }, [filters]);
+
+  // Clear all filters
+  const clearFilters = useCallback(() => {
+    setFilters({
+      shiftType: 'all',
+      clientName: '',
+      buildingName: '',
+      cleanerName: '',
+      buildingGroupName: '',
+      cleanerGroupName: '',
+      status: 'all',
+    });
+  }, []);
+
+  // Get count for filter options
+  const getClientCount = useCallback((clientName: string) => {
+    if (!clientName) return currentWeekSchedule.length;
+    return currentWeekSchedule.filter(entry => entry.clientName === clientName).length;
+  }, [currentWeekSchedule]);
+
+  const getBuildingCount = useCallback((buildingName: string) => {
+    if (!buildingName) return uniqueBuildingNames.length;
+    return currentWeekSchedule.filter(entry => entry.buildingName === buildingName).length;
+  }, [currentWeekSchedule, uniqueBuildingNames]);
+
+  const getCleanerCount = useCallback((cleanerName: string) => {
+    if (!cleanerName) return currentWeekSchedule.length;
+    return currentWeekSchedule.filter(entry => {
+      const cleanerNames = entry.cleanerNames || [entry.cleanerName];
+      return cleanerNames.includes(cleanerName);
+    }).length;
+  }, [currentWeekSchedule]);
+
+  const getBuildingGroupCount = useCallback((groupName: string) => {
+    if (!groupName) return buildingGroups.length;
+    const group = buildingGroups.find(g => g.group_name === groupName);
+    if (!group) return 0;
+    
+    const groupBuildingNames = clientBuildings
+      .filter(b => group.building_ids.includes(b.id))
+      .map(b => b.buildingName);
+    
+    return currentWeekSchedule.filter(entry => 
+      groupBuildingNames.includes(entry.buildingName)
+    ).length;
+  }, [buildingGroups, clientBuildings, currentWeekSchedule]);
+
+  const getCleanerGroupCount = useCallback((groupName: string) => {
+    if (!groupName) return cleanerGroups.length;
+    const group = cleanerGroups.find(g => g.group_name === groupName);
+    if (!group) return 0;
+    
+    const groupCleanerNames = cleaners
+      .filter(c => group.cleaner_ids.includes(c.id))
+      .map(c => c.name);
+    
+    return currentWeekSchedule.filter(entry => {
+      const entryCleanerNames = entry.cleanerNames || [entry.cleanerName];
+      return entryCleanerNames.some(name => groupCleanerNames.includes(name));
+    }).length;
+  }, [cleanerGroups, cleaners, currentWeekSchedule]);
+
   const syncProjectsToSchedule = useCallback(async () => {
     try {
       console.log('=== AUTO-SYNCING PROJECTS TO SCHEDULE ===');
       
-      // Load all active projects with scheduled dates
       const projects = await executeQuery<{
         id: string;
         client_name: string;
@@ -95,7 +479,6 @@ export default function ScheduleView() {
       
       console.log('Loaded projects:', projects.length);
       
-      // Filter projects that have scheduled dates and are active
       const scheduledProjects = projects.filter(p => 
         p.next_scheduled_date && 
         p.status === 'active'
@@ -103,12 +486,10 @@ export default function ScheduleView() {
       
       console.log('Projects with scheduled dates:', scheduledProjects.length);
       
-      // Get current schedule entries
       const currentSchedule = getWeekSchedule(currentWeekId);
       
       let addedCount = 0;
       
-      // Add schedule entries for projects that don't have them yet
       for (const project of scheduledProjects) {
         if (!scheduleEntryExistsForProject(currentSchedule, project as any)) {
           const scheduleEntry = projectToScheduleEntry(project as any);
@@ -143,23 +524,25 @@ export default function ScheduleView() {
     setIsLoading(true);
     try {
       const weekId = getWeekIdFromDate(currentDate);
-      const schedule = getWeekSchedule(weekId, true); // Force refresh
+      const schedule = getWeekSchedule(weekId, true);
       setCurrentWeekSchedule(schedule);
       console.log('Loaded schedule for week', weekId, ':', schedule.length, 'entries');
       
-      // Automatically sync projects to schedule
       await syncProjectsToSchedule();
       
-      // Reload schedule after sync
       const updatedSchedule = getWeekSchedule(weekId, true);
       setCurrentWeekSchedule(updatedSchedule);
+      
+      // Load building groups and cleaner groups
+      await loadBuildingGroups();
+      await loadCleanerGroups();
     } catch (error) {
       console.error('Error loading schedule:', error);
       showToast('Failed to load schedule', 'error');
     } finally {
       setIsLoading(false);
     }
-  }, [currentDate, getWeekSchedule, getWeekIdFromDate, showToast, syncProjectsToSchedule]);
+  }, [currentDate, getWeekSchedule, getWeekIdFromDate, showToast, syncProjectsToSchedule, loadBuildingGroups]);
 
   useEffect(() => {
     loadCurrentWeekSchedule();
@@ -313,9 +696,7 @@ export default function ScheduleView() {
 
   const handleOpenRecurringModal = useCallback(() => {
     console.log('Opening recurring task modal from schedule modal');
-    // Close the schedule modal first
     setModalVisible(false);
-    // Open the recurring task modal
     setRecurringModalVisible(true);
   }, []);
 
@@ -345,7 +726,6 @@ export default function ScheduleView() {
 
         const endTime = addHoursToTime(startTime, parseFloat(hours));
         
-        // Calculate the date for this day
         const weekStart = new Date(currentDate);
         const dayOfWeek = weekStart.getDay();
         const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
@@ -599,13 +979,9 @@ export default function ScheduleView() {
     console.log('Task data:', taskData);
 
     try {
-      // TODO: Implement recurring task creation logic
-      // This would create multiple schedule entries based on the recurring pattern
-      
       showToast('Recurring task feature coming soon!', 'info');
       setRecurringModalVisible(false);
       
-      // Restore the schedule modal state if needed
       if (selectedClientBuilding) {
         setModalVisible(true);
       }
@@ -616,7 +992,7 @@ export default function ScheduleView() {
   }, [selectedClientBuilding, showToast]);
 
   const renderDailyView = () => {
-    const daySchedule = currentWeekSchedule.filter(entry => {
+    const daySchedule = filteredSchedule.filter(entry => {
       const entryDate = new Date(entry.date);
       return entryDate.toDateString() === currentDate.toDateString();
     });
@@ -625,7 +1001,14 @@ export default function ScheduleView() {
       return (
         <View style={styles.emptyState}>
           <Icon name="calendar" size={64} color={colors.textTertiary} />
-          <Text style={styles.emptyStateText}>No schedule entries for this day</Text>
+          <Text style={styles.emptyStateText}>
+            {hasActiveFilters ? 'No shifts match your filters' : 'No schedule entries for this day'}
+          </Text>
+          {hasActiveFilters && (
+            <TouchableOpacity onPress={clearFilters} style={styles.clearFiltersButton}>
+              <Text style={styles.clearFiltersButtonText}>Clear Filters</Text>
+            </TouchableOpacity>
+          )}
         </View>
       );
     }
@@ -643,7 +1026,7 @@ export default function ScheduleView() {
               {entry.cleanerNames?.join(', ') || entry.cleanerName}
             </Text>
             <Text style={styles.dayEntryTime}>
-              {entry.startTime} - {entry.endTime} ({entry.hours}h)
+              {formatTimeRange(entry.startTime || '09:00', entry.endTime || '17:00')} ({entry.hours}h)
             </Text>
           </TouchableOpacity>
         ))}
@@ -652,6 +1035,18 @@ export default function ScheduleView() {
   };
 
   const renderWeeklyView = () => {
+    if (filteredSchedule.length === 0 && hasActiveFilters) {
+      return (
+        <View style={styles.emptyState}>
+          <Icon name="filter" size={64} color={colors.textTertiary} />
+          <Text style={styles.emptyStateText}>No shifts match your filters</Text>
+          <TouchableOpacity onPress={clearFilters} style={styles.clearFiltersButton}>
+            <Text style={styles.clearFiltersButtonText}>Clear Filters</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
     return (
       <ErrorBoundary>
         <GestureHandlerRootView style={{ flex: 1 }}>
@@ -659,7 +1054,8 @@ export default function ScheduleView() {
             clientBuildings={clientBuildings}
             clients={clients}
             cleaners={cleaners}
-            schedule={currentWeekSchedule}
+            schedule={filteredSchedule}
+            buildingGroups={buildingGroups}
             onCellPress={handleCellPress}
             onCellLongPress={handleCellLongPress}
             onClientLongPress={handleClientLongPress}
@@ -680,7 +1076,7 @@ export default function ScheduleView() {
 
   const renderMonthlyView = () => {
     const markedDates: any = {};
-    currentWeekSchedule.forEach(entry => {
+    filteredSchedule.forEach(entry => {
       if (!markedDates[entry.date]) {
         markedDates[entry.date] = { marked: true, dotColor: themeColor };
       }
@@ -857,6 +1253,108 @@ export default function ScheduleView() {
       color: themeColor,
       fontWeight: '500',
     },
+    filterContainer: {
+      backgroundColor: colors.backgroundAlt,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.md,
+    },
+    filterHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: spacing.md,
+    },
+    filterHeaderText: {
+      ...typography.h3,
+      color: colors.text,
+      fontWeight: '600',
+    },
+    filterGrid: {
+      gap: spacing.md,
+    },
+    filterRow: {
+      flexDirection: 'row',
+      gap: spacing.md,
+    },
+    filterItem: {
+      flex: 1,
+    },
+    filterLabel: {
+      ...typography.small,
+      color: colors.textSecondary,
+      marginBottom: spacing.xs,
+      fontWeight: '600',
+    },
+    filterInput: {
+      backgroundColor: colors.background,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 8,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      ...typography.body,
+      color: colors.text,
+    },
+    filterButtonGroup: {
+      flexDirection: 'row',
+      gap: spacing.xs,
+    },
+    filterButton: {
+      flex: 1,
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.md,
+      borderRadius: 8,
+      backgroundColor: colors.background,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+    },
+    filterButtonActive: {
+      borderWidth: 2,
+    },
+    filterButtonText: {
+      ...typography.small,
+      color: colors.text,
+      fontWeight: '500',
+    },
+    filterButtonTextActive: {
+      fontWeight: '700',
+    },
+    filterActions: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+      marginTop: spacing.md,
+    },
+    clearFiltersButton: {
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.lg,
+      borderRadius: 8,
+      backgroundColor: colors.danger,
+      marginTop: spacing.md,
+    },
+    clearFiltersButtonText: {
+      ...typography.bodyMedium,
+      color: colors.textInverse,
+      fontWeight: '600',
+    },
+    filterBadge: {
+      backgroundColor: colors.danger,
+      borderRadius: 12,
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      marginLeft: spacing.xs,
+      minWidth: 20,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    filterBadgeText: {
+      ...typography.small,
+      color: colors.textInverse,
+      fontWeight: '700',
+      fontSize: 10,
+    },
   });
 
   return (
@@ -873,9 +1371,203 @@ export default function ScheduleView() {
           <Text style={styles.headerTitle}>Schedule</Text>
         </View>
         <View style={styles.headerRight}>
+          <TouchableOpacity
+            onPress={() => setShowFilters(!showFilters)}
+            style={[buttonStyles.backButton, { backgroundColor: 'rgba(255,255,255,0.2)' }]}
+          >
+            <Icon name="filter" size={24} color="#FFFFFF" />
+            {activeFilterCount > 0 && (
+              <View style={styles.filterBadge}>
+                <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
           <CompanyLogo size={40} />
         </View>
       </View>
+
+      {/* Filter Panel */}
+      {showFilters && (
+        <View style={styles.filterContainer}>
+          <View style={styles.filterHeader}>
+            <Text style={styles.filterHeaderText}>Filters</Text>
+            {hasActiveFilters && (
+              <TouchableOpacity onPress={clearFilters}>
+                <Text style={{ ...typography.small, color: colors.danger, fontWeight: '600' }}>
+                  Clear All
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          <View style={styles.filterGrid}>
+            {/* Shift Type Filter */}
+            <View style={styles.filterItem}>
+              <Text style={styles.filterLabel}>Shift Type</Text>
+              <View style={styles.filterButtonGroup}>
+                <TouchableOpacity
+                  style={[
+                    styles.filterButton,
+                    filters.shiftType === 'all' && [styles.filterButtonActive, { borderColor: themeColor }]
+                  ]}
+                  onPress={() => setFilters({ ...filters, shiftType: 'all' })}
+                >
+                  <Text style={[
+                    styles.filterButtonText,
+                    filters.shiftType === 'all' && [styles.filterButtonTextActive, { color: themeColor }]
+                  ]}>
+                    All
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.filterButton,
+                    filters.shiftType === 'regular' && [styles.filterButtonActive, { borderColor: themeColor }]
+                  ]}
+                  onPress={() => setFilters({ ...filters, shiftType: 'regular' })}
+                >
+                  <Text style={[
+                    styles.filterButtonText,
+                    filters.shiftType === 'regular' && [styles.filterButtonTextActive, { color: themeColor }]
+                  ]}>
+                    Regular
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.filterButton,
+                    filters.shiftType === 'project' && [styles.filterButtonActive, { borderColor: themeColor }]
+                  ]}
+                  onPress={() => setFilters({ ...filters, shiftType: 'project' })}
+                >
+                  <Text style={[
+                    styles.filterButtonText,
+                    filters.shiftType === 'project' && [styles.filterButtonTextActive, { color: themeColor }]
+                  ]}>
+                    Project
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Status Filter */}
+            <View style={styles.filterItem}>
+              <Text style={styles.filterLabel}>Status</Text>
+              <View style={styles.filterButtonGroup}>
+                <TouchableOpacity
+                  style={[
+                    styles.filterButton,
+                    filters.status === 'all' && [styles.filterButtonActive, { borderColor: themeColor }]
+                  ]}
+                  onPress={() => setFilters({ ...filters, status: 'all' })}
+                >
+                  <Text style={[
+                    styles.filterButtonText,
+                    filters.status === 'all' && [styles.filterButtonTextActive, { color: themeColor }]
+                  ]}>
+                    All
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.filterButton,
+                    filters.status === 'scheduled' && [styles.filterButtonActive, { borderColor: themeColor }]
+                  ]}
+                  onPress={() => setFilters({ ...filters, status: 'scheduled' })}
+                >
+                  <Text style={[
+                    styles.filterButtonText,
+                    filters.status === 'scheduled' && [styles.filterButtonTextActive, { color: themeColor }]
+                  ]}>
+                    Scheduled
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.filterButton,
+                    filters.status === 'completed' && [styles.filterButtonActive, { borderColor: themeColor }]
+                  ]}
+                  onPress={() => setFilters({ ...filters, status: 'completed' })}
+                >
+                  <Text style={[
+                    styles.filterButtonText,
+                    filters.status === 'completed' && [styles.filterButtonTextActive, { color: themeColor }]
+                  ]}>
+                    Completed
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Enhanced Dropdown Filters with Manual Input */}
+            <View style={styles.filterRow}>
+              <FilterDropdown
+                label="Client"
+                value={filters.clientName}
+                onValueChange={(value) => setFilters({ ...filters, clientName: value, buildingName: '' })}
+                options={uniqueClientNames}
+                placeholder="All Clients or type..."
+                themeColor={themeColor}
+                allowManualInput={true}
+                showCount={true}
+                getOptionCount={getClientCount}
+              />
+
+              <FilterDropdown
+                label="Building"
+                value={filters.buildingName}
+                onValueChange={(value) => setFilters({ ...filters, buildingName: value })}
+                options={uniqueBuildingNames}
+                placeholder="All Buildings or type..."
+                themeColor={themeColor}
+                allowManualInput={true}
+                showCount={true}
+                getOptionCount={getBuildingCount}
+              />
+            </View>
+
+            <View style={styles.filterRow}>
+              <FilterDropdown
+                label="Cleaner"
+                value={filters.cleanerName}
+                onValueChange={(value) => setFilters({ ...filters, cleanerName: value })}
+                options={uniqueCleanerNames}
+                placeholder="All Cleaners or type..."
+                themeColor={themeColor}
+                allowManualInput={true}
+                showCount={true}
+                getOptionCount={getCleanerCount}
+              />
+
+              <FilterDropdown
+                label="Cleaner Group"
+                value={filters.cleanerGroupName}
+                onValueChange={(value) => setFilters({ ...filters, cleanerGroupName: value })}
+                options={uniqueCleanerGroupNames}
+                placeholder="All Cleaner Groups or type..."
+                themeColor={themeColor}
+                allowManualInput={true}
+                showCount={true}
+                getOptionCount={getCleanerGroupCount}
+              />
+            </View>
+
+            <View style={styles.filterRow}>
+              <FilterDropdown
+                label="Building Group"
+                value={filters.buildingGroupName}
+                onValueChange={(value) => setFilters({ ...filters, buildingGroupName: value })}
+                options={uniqueBuildingGroupNames}
+                placeholder="All Building Groups or type..."
+                themeColor={themeColor}
+                allowManualInput={true}
+                showCount={true}
+                getOptionCount={getBuildingGroupCount}
+              />
+            </View>
+          </View>
+        </View>
+      )}
 
       {/* Controls */}
       <View style={styles.controls}>
@@ -1061,7 +1753,6 @@ export default function ScheduleView() {
         cleaners={cleaners}
         onClose={() => {
           setRecurringModalVisible(false);
-          // Restore the schedule modal if there was a selected building
           if (selectedClientBuilding) {
             setModalVisible(true);
           }

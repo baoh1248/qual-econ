@@ -40,6 +40,9 @@ export default function SupervisorChatScreen() {
   console.log('SupervisorChatScreen rendered');
   console.log('Is authenticated:', isAuthenticated);
   console.log('Current user ID:', currentUserId);
+  console.log('Total cleaners:', cleaners.length);
+  console.log('Cleaners with user_id:', cleaners.filter(c => c.user_id).length);
+  console.log('Cleaners without user_id:', cleaners.filter(c => !c.user_id).length);
 
   const currentRoomMessages = selectedRoom ? messages[selectedRoom] || [] : [];
   const currentRoom = chatRooms.find(room => room.id === selectedRoom);
@@ -95,6 +98,26 @@ export default function SupervisorChatScreen() {
       return;
     }
 
+    // Check if any selected members don't have user_id
+    const membersWithoutUserId = selectedMembers.filter(memberId => {
+      const cleaner = cleaners.find(c => c.id === memberId);
+      return cleaner && !cleaner.user_id;
+    });
+
+    if (membersWithoutUserId.length > 0) {
+      const cleanerNames = membersWithoutUserId
+        .map(id => cleaners.find(c => c.id === id)?.name)
+        .filter(Boolean)
+        .join(', ');
+      
+      Alert.alert(
+        'Missing User Accounts',
+        `The following cleaners don't have user accounts yet and cannot be added to chat rooms: ${cleanerNames}\n\nPlease create user accounts for them first in the Cleaners screen.`,
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     try {
       setIsCreating(true);
       console.log('Creating chat room with:', {
@@ -103,7 +126,17 @@ export default function SupervisorChatScreen() {
         members: selectedMembers,
       });
       
-      await createChatRoom(newChatName, newChatType, selectedMembers);
+      // Get user_ids for selected members
+      const memberUserIds = selectedMembers
+        .map(cleanerId => {
+          const cleaner = cleaners.find(c => c.id === cleanerId);
+          return cleaner?.user_id;
+        })
+        .filter((userId): userId is string => !!userId);
+      
+      console.log('Member user IDs:', memberUserIds);
+      
+      await createChatRoom(newChatName, newChatType, memberUserIds);
       
       setShowNewChatModal(false);
       setNewChatName('');
@@ -118,11 +151,11 @@ export default function SupervisorChatScreen() {
     }
   };
 
-  const toggleMemberSelection = (userId: string) => {
+  const toggleMemberSelection = (cleanerId: string) => {
     setSelectedMembers(prev =>
-      prev.includes(userId)
-        ? prev.filter(id => id !== userId)
-        : [...prev, userId]
+      prev.includes(cleanerId)
+        ? prev.filter(id => id !== cleanerId)
+        : [...prev, cleanerId]
     );
   };
 
@@ -300,8 +333,24 @@ export default function SupervisorChatScreen() {
               </View>
 
               <Text style={[typography.body, { color: colors.text, marginBottom: spacing.sm }]}>
-                Select Members
+                Select Members ({cleaners.filter(c => c.user_id).length} available)
               </Text>
+              
+              {cleaners.filter(c => !c.user_id).length > 0 && (
+                <View style={{
+                  backgroundColor: colors.warning + '20',
+                  padding: spacing.sm,
+                  borderRadius: 8,
+                  marginBottom: spacing.sm,
+                  borderWidth: 1,
+                  borderColor: colors.warning,
+                }}>
+                  <Text style={[typography.caption, { color: colors.warning }]}>
+                    ⚠️ {cleaners.filter(c => !c.user_id).length} cleaner(s) don&apos;t have user accounts yet and won&apos;t appear in this list.
+                  </Text>
+                </View>
+              )}
+              
               <ScrollView style={{ maxHeight: 200, marginBottom: spacing.md }}>
                 {cleaners
                   .filter(cleaner => cleaner.user_id && cleaner.user_id !== currentUserId)
@@ -310,18 +359,31 @@ export default function SupervisorChatScreen() {
                       key={cleaner.id}
                       style={[
                         styles.memberItem,
-                        selectedMembers.includes(cleaner.user_id!) && { backgroundColor: themeColor + '20' }
+                        selectedMembers.includes(cleaner.id) && { backgroundColor: themeColor + '20' }
                       ]}
-                      onPress={() => cleaner.user_id && toggleMemberSelection(cleaner.user_id)}
+                      onPress={() => toggleMemberSelection(cleaner.id)}
                     >
-                      <Text style={[typography.body, { color: colors.text }]}>
-                        {cleaner.name}
-                      </Text>
-                      {selectedMembers.includes(cleaner.user_id!) && (
+                      <View style={{ flex: 1 }}>
+                        <Text style={[typography.body, { color: colors.text }]}>
+                          {cleaner.name}
+                        </Text>
+                        <Text style={[typography.caption, { color: colors.textSecondary }]}>
+                          {cleaner.email || cleaner.phoneNumber}
+                        </Text>
+                      </View>
+                      {selectedMembers.includes(cleaner.id) && (
                         <Icon name="checkmark-circle" size={20} style={{ color: themeColor }} />
                       )}
                     </TouchableOpacity>
                   ))}
+                {cleaners.filter(c => c.user_id && c.user_id !== currentUserId).length === 0 && (
+                  <View style={{ padding: spacing.md, alignItems: 'center' }}>
+                    <Text style={[typography.body, { color: colors.textSecondary, textAlign: 'center' }]}>
+                      No cleaners with user accounts available.{'\n'}
+                      Please create user accounts for cleaners in the Cleaners screen.
+                    </Text>
+                  </View>
+                )}
               </ScrollView>
 
               <Button

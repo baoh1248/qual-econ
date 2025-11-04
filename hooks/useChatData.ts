@@ -44,6 +44,7 @@ export interface Message {
   updated_at: string;
   is_deleted: boolean;
   reply_to_id?: string;
+  delivery_status?: 'sending' | 'sent' | 'delivered' | 'failed';
 }
 
 const STORAGE_KEYS = {
@@ -62,8 +63,10 @@ export const useChatData = () => {
   const [error, setError] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [typingUsers, setTypingUsers] = useState<{ [roomId: string]: string[] }>({});
   
   const subscriptionsRef = useRef<{ [key: string]: any }>({});
+  const typingTimeoutRef = useRef<{ [key: string]: NodeJS.Timeout }>({});
 
   // Get or create test user ID
   const getTestUserId = async () => {
@@ -98,7 +101,6 @@ export const useChatData = () => {
 
         console.log('🔐 Checking authentication status...');
         
-        // Get the current session
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         
         if (sessionError) {
@@ -119,7 +121,6 @@ export const useChatData = () => {
         setCurrentUserId(session.user.id);
         setIsAuthenticated(true);
 
-        // Also get user to double-check
         const { data: { user }, error: userError } = await supabase.auth.getUser();
         
         if (userError) {
@@ -148,7 +149,6 @@ export const useChatData = () => {
     getCurrentUser();
 
     if (!TEST_MODE) {
-      // Listen for auth state changes
       const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
         console.log('🔄 Auth state changed:', _event, session?.user?.id);
         if (session?.user) {
@@ -213,7 +213,6 @@ export const useChatData = () => {
         return [];
       }
 
-      // Get last message for each room
       const roomsWithMessages = await Promise.all(
         roomsData.map(async (room) => {
           const { data: lastMessage } = await supabase
@@ -225,7 +224,6 @@ export const useChatData = () => {
             .limit(1)
             .single();
 
-          // Get unread count
           const { data: unreadData } = await supabase
             .rpc('get_unread_count', {
               p_room_id: room.id,
@@ -260,7 +258,6 @@ export const useChatData = () => {
       console.error('❌ Failed to load chat rooms:', error);
       setError(error instanceof Error ? error.message : 'Failed to load chat rooms');
       
-      // Try to load from local storage
       const localData = await AsyncStorage.getItem(STORAGE_KEYS.CHAT_ROOMS);
       if (localData) {
         const rooms = JSON.parse(localData);
@@ -289,7 +286,6 @@ export const useChatData = () => {
         throw messagesError;
       }
 
-      // Get sender names
       const messagesWithNames = await Promise.all(
         (messagesData || []).map(async (msg) => {
           const { data: userData } = await supabase
@@ -301,6 +297,7 @@ export const useChatData = () => {
           return {
             ...msg,
             sender_name: userData?.name || 'Test User',
+            delivery_status: 'delivered' as const,
           };
         })
       );
@@ -340,7 +337,6 @@ export const useChatData = () => {
       console.log('Test mode:', TEST_MODE);
       
       if (!TEST_MODE) {
-        // Verify session before creating
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         
         if (sessionError || !session) {
@@ -375,7 +371,6 @@ export const useChatData = () => {
 
       console.log('✅ Chat room created:', roomData.id);
 
-      // Add members
       const members = [
         { 
           id: uuid.v4() as string,
@@ -474,6 +469,28 @@ export const useChatData = () => {
     messageType: 'text' | 'image' | 'location' | 'alert' | 'system' = 'text',
     metadata?: any
   ) => {
+    const tempId = `temp-${Date.now()}`;
+    
+    // Optimistically add message to UI
+    const tempMessage: Message = {
+      id: tempId,
+      room_id: roomId,
+      sender_id: currentUserId!,
+      sender_name: 'You',
+      content,
+      message_type: messageType,
+      metadata,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      is_deleted: false,
+      delivery_status: 'sending',
+    };
+
+    setMessages(prev => ({
+      ...prev,
+      [roomId]: [...(prev[roomId] || []), tempMessage],
+    }));
+
     try {
       console.log('🔄 Sending message to room:', roomId);
       
@@ -492,10 +509,27 @@ export const useChatData = () => {
 
       if (error) {
         console.error('❌ Error sending message:', error);
+        
+        // Update message status to failed
+        setMessages(prev => ({
+          ...prev,
+          [roomId]: prev[roomId].map(msg =>
+            msg.id === tempId ? { ...msg, delivery_status: 'failed' as const } : msg
+          ),
+        }));
+        
         throw error;
       }
 
       console.log('✅ Message sent successfully');
+      
+      // Replace temp message with real message
+      setMessages(prev => ({
+        ...prev,
+        [roomId]: prev[roomId].map(msg =>
+          msg.id === tempId ? { ...data, sender_name: 'You', delivery_status: 'sent' as const } : msg
+        ),
+      }));
       
       // Update room's updated_at
       await supabase
@@ -524,7 +558,6 @@ export const useChatData = () => {
         throw error;
       }
 
-      // Update local state
       setChatRooms(prev =>
         prev.map(room =>
           room.id === roomId ? { ...room, unread_count: 0 } : room
@@ -532,6 +565,23 @@ export const useChatData = () => {
       );
     } catch (error) {
       console.error('❌ Failed to mark as read:', error);
+    }
+  }, [currentUserId]);
+
+  // Send typing indicator
+  const sendTypingIndicator = useCallback((roomId: string, isTyping: boolean) => {
+    if (!currentUserId) return;
+
+    const channel = subscriptionsRef.current[`${roomId}-typing`];
+    if (channel) {
+      channel.send({
+        type: 'broadcast',
+        event: 'typing',
+        payload: {
+          user_id: currentUserId,
+          is_typing: isTyping,
+        },
+      });
     }
   }, [currentUserId]);
 
@@ -544,7 +594,8 @@ export const useChatData = () => {
 
     console.log('🔄 Subscribing to room:', roomId);
 
-    const channel = supabase
+    // Subscribe to messages
+    const messageChannel = supabase
       .channel(`room:${roomId}`)
       .on(
         'postgres_changes',
@@ -557,7 +608,6 @@ export const useChatData = () => {
         async (payload) => {
           console.log('📨 New message received:', payload);
           
-          // Get sender name
           const { data: userData } = await supabase
             .from('cleaners')
             .select('name')
@@ -567,6 +617,7 @@ export const useChatData = () => {
           const newMessage = {
             ...payload.new,
             sender_name: userData?.name || 'Test User',
+            delivery_status: 'delivered' as const,
           } as Message;
 
           setMessages(prev => ({
@@ -574,14 +625,53 @@ export const useChatData = () => {
             [roomId]: [...(prev[roomId] || []), newMessage],
           }));
 
-          // Update chat room list
           await loadChatRooms();
         }
       )
       .subscribe();
 
-    subscriptionsRef.current[roomId] = channel;
-  }, [loadChatRooms]);
+    subscriptionsRef.current[roomId] = messageChannel;
+
+    // Subscribe to typing indicators
+    const typingChannel = supabase
+      .channel(`room:${roomId}-typing`)
+      .on('broadcast', { event: 'typing' }, (payload) => {
+        const { user_id, is_typing } = payload.payload;
+        
+        if (user_id === currentUserId) return;
+
+        setTypingUsers(prev => {
+          const roomTyping = prev[roomId] || [];
+          
+          if (is_typing) {
+            if (!roomTyping.includes(user_id)) {
+              return { ...prev, [roomId]: [...roomTyping, user_id] };
+            }
+          } else {
+            return { ...prev, [roomId]: roomTyping.filter(id => id !== user_id) };
+          }
+          
+          return prev;
+        });
+
+        // Clear typing indicator after 3 seconds
+        if (typingTimeoutRef.current[user_id]) {
+          clearTimeout(typingTimeoutRef.current[user_id]);
+        }
+        
+        if (is_typing) {
+          typingTimeoutRef.current[user_id] = setTimeout(() => {
+            setTypingUsers(prev => ({
+              ...prev,
+              [roomId]: (prev[roomId] || []).filter(id => id !== user_id),
+            }));
+          }, 3000);
+        }
+      })
+      .subscribe();
+
+    subscriptionsRef.current[`${roomId}-typing`] = typingChannel;
+  }, [loadChatRooms, currentUserId]);
 
   // Unsubscribe from room
   const unsubscribeFromRoom = useCallback((roomId: string) => {
@@ -589,6 +679,11 @@ export const useChatData = () => {
       console.log('🔄 Unsubscribing from room:', roomId);
       supabase.removeChannel(subscriptionsRef.current[roomId]);
       delete subscriptionsRef.current[roomId];
+    }
+    
+    if (subscriptionsRef.current[`${roomId}-typing`]) {
+      supabase.removeChannel(subscriptionsRef.current[`${roomId}-typing`]);
+      delete subscriptionsRef.current[`${roomId}-typing`];
     }
   }, []);
 
@@ -605,6 +700,9 @@ export const useChatData = () => {
       Object.keys(subscriptionsRef.current).forEach(roomId => {
         unsubscribeFromRoom(roomId);
       });
+      Object.values(typingTimeoutRef.current).forEach(timeout => {
+        clearTimeout(timeout);
+      });
     };
   }, [unsubscribeFromRoom]);
 
@@ -615,6 +713,7 @@ export const useChatData = () => {
     error,
     currentUserId,
     isAuthenticated: TEST_MODE ? true : isAuthenticated,
+    typingUsers,
     loadChatRooms,
     loadMessages,
     createChatRoom,
@@ -624,5 +723,6 @@ export const useChatData = () => {
     markAsRead,
     subscribeToRoom,
     unsubscribeFromRoom,
+    sendTypingIndicator,
   };
 };

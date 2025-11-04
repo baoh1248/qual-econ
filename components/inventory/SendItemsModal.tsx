@@ -56,7 +56,7 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
   const [buildingGroups, setBuildingGroups] = useState<BuildingGroup[]>([]);
   const [loadingDestinations, setLoadingDestinations] = useState(false);
   
-  // State for collapsible sections
+  // State for collapsible sections - START EXPANDED BY DEFAULT
   const [expandedBuildingClients, setExpandedBuildingClients] = useState<Set<string>>(new Set());
   const [expandedGroupClients, setExpandedGroupClients] = useState<Set<string>>(new Set());
 
@@ -115,6 +115,10 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
         }));
         setBuildings(buildingsList);
         console.log(`✅ Loaded ${buildingsList.length} buildings`);
+        
+        // Auto-expand all building clients
+        const buildingClients = new Set(buildingsList.map(b => b.clientName));
+        setExpandedBuildingClients(buildingClients);
       }
 
       // Load building groups
@@ -155,6 +159,10 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
         setBuildingGroups(groupsWithBuildings);
         console.log(`✅ Loaded ${groupsWithBuildings.length} building groups`);
         console.log('Building groups:', groupsWithBuildings);
+        
+        // Auto-expand all group clients
+        const groupClients = new Set(groupsWithBuildings.map(g => g.client_name));
+        setExpandedGroupClients(groupClients);
       }
     } catch (error) {
       console.error('❌ Failed to load destinations:', error);
@@ -520,7 +528,7 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
                 </>
               )}
 
-              {/* Building Selector - Now Collapsible */}
+              {/* Building Selector - Collapsible by Client */}
               {destinationType === 'building' && (
                 <ScrollView style={{ maxHeight: 300 }} showsVerticalScrollIndicator={false}>
                   {Object.entries(buildingsByClient).map(([clientName, clientBuildings]) => {
@@ -607,7 +615,7 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
                 </ScrollView>
               )}
 
-              {/* Building Group Selector - Now Collapsible */}
+              {/* Building Group Selector - Collapsible by Client */}
               {destinationType === 'group' && (
                 <ScrollView style={{ maxHeight: 300 }} showsVerticalScrollIndicator={false}>
                   {Object.entries(groupsByClient).map(([clientName, clientGroups]) => {

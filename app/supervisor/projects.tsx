@@ -14,6 +14,7 @@ import Icon from '../../components/Icon';
 import CompanyLogo from '../../components/CompanyLogo';
 import DateInput from '../../components/DateInput';
 import PricingCalculator from '../../components/PricingCalculator';
+import RecurringProjectModal from '../../components/RecurringProjectModal';
 import { commonStyles, colors, spacing, typography, buttonStyles } from '../../styles/commonStyles';
 
 // Predefined options for dropdowns
@@ -82,8 +83,26 @@ interface ClientProject {
   invoice_number?: string;
   estimated_price?: number;
   estimated_profitability?: number;
+  is_recurring?: boolean;
+  recurring_pattern_id?: string;
   created_at?: string;
   updated_at?: string;
+}
+
+interface RecurringPattern {
+  id: string;
+  project_id: string;
+  pattern_type: 'daily' | 'weekly' | 'monthly' | 'custom';
+  interval: number;
+  days_of_week?: number[];
+  day_of_month?: number;
+  custom_days?: number;
+  start_date: string;
+  end_date?: string;
+  max_occurrences?: number;
+  is_active: boolean;
+  last_generated_date?: string;
+  next_occurrence_date?: string;
 }
 
 interface ProjectCompletion {
@@ -199,8 +218,11 @@ const ProjectsScreen = () => {
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [showPricingCalculator, setShowPricingCalculator] = useState(false);
+  const [showRecurringModal, setShowRecurringModal] = useState(false);
   const [selectedProject, setSelectedProject] = useState<ClientProject | null>(null);
   const [projectCompletions, setProjectCompletions] = useState<ProjectCompletion[]>([]);
+  const [recurringPattern, setRecurringPattern] = useState<RecurringPattern | null>(null);
+  const [isRecurring, setIsRecurring] = useState(false);
 
   // Filter states
   const [searchQuery, setSearchQuery] = useState('');
@@ -328,6 +350,25 @@ const ProjectsScreen = () => {
     }));
   }, []);
 
+  const handleRecurringPatternSave = useCallback((pattern: any) => {
+    console.log('Recurring pattern saved:', pattern);
+    setRecurringPattern({
+      id: recurringPattern?.id || `recurring-${Date.now()}`,
+      project_id: selectedProject?.id || '',
+      pattern_type: pattern.type,
+      interval: pattern.interval,
+      days_of_week: pattern.daysOfWeek,
+      day_of_month: pattern.dayOfMonth,
+      custom_days: pattern.customDays,
+      start_date: pattern.startDate,
+      end_date: pattern.endDate,
+      max_occurrences: pattern.maxOccurrences,
+      is_active: true,
+      next_occurrence_date: pattern.startDate,
+    });
+    setShowRecurringModal(false);
+  }, [recurringPattern, selectedProject]);
+
   // Load projects and inventory from database
   const loadProjects = useCallback(async () => {
     try {
@@ -434,6 +475,8 @@ const ProjectsScreen = () => {
       supplies: [],
     });
     setShowPricingCalculator(false);
+    setIsRecurring(false);
+    setRecurringPattern(null);
   }, []);
 
   const handleAddProject = useCallback(async () => {
@@ -446,6 +489,8 @@ const ProjectsScreen = () => {
       console.log('Adding project...');
 
       const projectId = `project-${Date.now()}`;
+      const recurringPatternId = isRecurring && recurringPattern ? `recurring-${Date.now()}` : undefined;
+      
       const newProject: ClientProject = {
         id: projectId,
         client_name: formData.client_name,
@@ -464,11 +509,33 @@ const ProjectsScreen = () => {
         invoice_number: formData.invoice_number || undefined,
         estimated_price: parseFloat(formData.estimated_price) || 0,
         estimated_profitability: parseFloat(formData.estimated_profitability) || 0,
+        is_recurring: isRecurring,
+        recurring_pattern_id: recurringPatternId,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
 
       await executeQuery<ClientProject>('insert', 'client_projects', newProject);
+
+      // Save recurring pattern if enabled
+      if (isRecurring && recurringPattern && recurringPatternId) {
+        const recurringData = {
+          id: recurringPatternId,
+          project_id: projectId,
+          pattern_type: recurringPattern.type,
+          interval: recurringPattern.interval,
+          days_of_week: recurringPattern.daysOfWeek || null,
+          day_of_month: recurringPattern.dayOfMonth || null,
+          custom_days: recurringPattern.customDays || null,
+          start_date: recurringPattern.startDate,
+          end_date: recurringPattern.endDate || null,
+          max_occurrences: recurringPattern.maxOccurrences || null,
+          is_active: true,
+          next_occurrence_date: recurringPattern.startDate,
+        };
+        await executeQuery('insert', 'recurring_projects', recurringData);
+        console.log('✓ Recurring pattern saved');
+      }
 
       // Add labor entries
       for (const labor of formData.labor) {
@@ -535,7 +602,12 @@ const ProjectsScreen = () => {
       }
 
       console.log('✓ Project added successfully');
-      showToast('Project added successfully', 'success');
+      showToast(
+        isRecurring 
+          ? 'Recurring project created successfully' 
+          : 'Project added successfully', 
+        'success'
+      );
       
       await loadProjects();
       
@@ -545,7 +617,7 @@ const ProjectsScreen = () => {
       console.error('Error adding project:', error);
       showToast(`Failed to add project: ${error?.message || 'Unknown error'}`, 'error');
     }
-  }, [formData, executeQuery, showToast, loadProjects, resetForm]);
+  }, [formData, executeQuery, showToast, loadProjects, resetForm, isRecurring, recurringPattern]);
 
   const handleUpdateProject = useCallback(async () => {
     try {
@@ -555,6 +627,10 @@ const ProjectsScreen = () => {
       }
 
       console.log('Updating project...');
+
+      const recurringPatternId = isRecurring && recurringPattern 
+        ? (selectedProject.recurring_pattern_id || `recurring-${Date.now()}`)
+        : undefined;
 
       const updatedProject = {
         client_name: formData.client_name,
@@ -573,6 +649,8 @@ const ProjectsScreen = () => {
         invoice_number: formData.invoice_number || undefined,
         estimated_price: parseFloat(formData.estimated_price) || 0,
         estimated_profitability: parseFloat(formData.estimated_profitability) || 0,
+        is_recurring: isRecurring,
+        recurring_pattern_id: recurringPatternId,
         updated_at: new Date().toISOString(),
       };
 
@@ -582,6 +660,45 @@ const ProjectsScreen = () => {
         updatedProject,
         { id: selectedProject.id }
       );
+
+      // Handle recurring pattern
+      if (isRecurring && recurringPattern && recurringPatternId) {
+        // Check if pattern exists
+        const existingPattern = await executeQuery(
+          'select',
+          'recurring_projects',
+          undefined,
+          { id: recurringPatternId }
+        );
+
+        const recurringData = {
+          id: recurringPatternId,
+          project_id: selectedProject.id,
+          pattern_type: recurringPattern.type,
+          interval: recurringPattern.interval,
+          days_of_week: recurringPattern.daysOfWeek || null,
+          day_of_month: recurringPattern.dayOfMonth || null,
+          custom_days: recurringPattern.customDays || null,
+          start_date: recurringPattern.startDate,
+          end_date: recurringPattern.endDate || null,
+          max_occurrences: recurringPattern.maxOccurrences || null,
+          is_active: true,
+          next_occurrence_date: recurringPattern.startDate,
+          updated_at: new Date().toISOString(),
+        };
+
+        if (existingPattern && existingPattern.length > 0) {
+          await executeQuery('update', 'recurring_projects', recurringData, { id: recurringPatternId });
+          console.log('✓ Recurring pattern updated');
+        } else {
+          await executeQuery('insert', 'recurring_projects', recurringData);
+          console.log('✓ Recurring pattern created');
+        }
+      } else if (!isRecurring && selectedProject.recurring_pattern_id) {
+        // Remove recurring pattern if disabled
+        await executeQuery('delete', 'recurring_projects', undefined, { id: selectedProject.recurring_pattern_id });
+        console.log('✓ Recurring pattern removed');
+      }
 
       // Delete existing resources
       await executeQuery('delete', 'project_labor', undefined, { project_id: selectedProject.id });
@@ -665,7 +782,7 @@ const ProjectsScreen = () => {
       console.error('Error updating project:', error);
       showToast(`Failed to update project: ${error?.message || 'Unknown error'}`, 'error');
     }
-  }, [selectedProject, formData, executeQuery, showToast, loadProjects, resetForm]);
+  }, [selectedProject, formData, executeQuery, showToast, loadProjects, resetForm, isRecurring, recurringPattern]);
 
   const handleDeleteProject = useCallback(async (projectId: string) => {
     Alert.alert(
@@ -773,6 +890,23 @@ const ProjectsScreen = () => {
       const vehicleData = await executeQuery<ProjectVehicle>('select', 'project_vehicles', undefined, { project_id: project.id });
       const supplyData = await executeQuery<ProjectSupply>('select', 'project_supplies', undefined, { project_id: project.id });
       
+      // Load recurring pattern if exists
+      setIsRecurring(project.is_recurring || false);
+      if (project.is_recurring && project.recurring_pattern_id) {
+        const patternData = await executeQuery<RecurringPattern>(
+          'select',
+          'recurring_projects',
+          undefined,
+          { id: project.recurring_pattern_id }
+        );
+        if (patternData && patternData.length > 0) {
+          setRecurringPattern(patternData[0]);
+          console.log('✓ Loaded recurring pattern');
+        }
+      } else {
+        setRecurringPattern(null);
+      }
+      
       setFormData({
         client_name: project.client_name,
         building_name: project.building_name || '',
@@ -826,12 +960,33 @@ const ProjectsScreen = () => {
     }
   }, [executeQuery, showToast]);
 
-  const openDetailsModal = useCallback((project: ClientProject) => {
+  const openDetailsModal = useCallback(async (project: ClientProject) => {
     console.log('Opening details modal for project:', project.id);
     setSelectedProject(project);
     loadProjectCompletions(project.id);
+    
+    // Load recurring pattern if exists
+    if (project.is_recurring && project.recurring_pattern_id) {
+      try {
+        const patternData = await executeQuery<RecurringPattern>(
+          'select',
+          'recurring_projects',
+          undefined,
+          { id: project.recurring_pattern_id }
+        );
+        if (patternData && patternData.length > 0) {
+          setRecurringPattern(patternData[0]);
+          console.log('✓ Loaded recurring pattern for details');
+        }
+      } catch (error) {
+        console.error('Error loading recurring pattern:', error);
+      }
+    } else {
+      setRecurringPattern(null);
+    }
+    
     setShowDetailsModal(true);
-  }, [loadProjectCompletions]);
+  }, [loadProjectCompletions, executeQuery]);
 
   const openCompletionModal = useCallback((project: ClientProject) => {
     console.log('Opening completion modal for project:', project.id);
@@ -901,6 +1056,47 @@ const ProjectsScreen = () => {
     if (!dateStr) return 'Not set';
     const date = new Date(dateStr);
     return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  };
+
+  const getRecurringPatternDescription = (pattern: RecurringPattern) => {
+    const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    let description = '';
+
+    switch (pattern.pattern_type) {
+      case 'daily':
+        description = pattern.interval === 1 ? 'Every day' : `Every ${pattern.interval} days`;
+        break;
+      case 'weekly':
+        const dayNames = pattern.days_of_week
+          ?.map(d => daysOfWeek[d])
+          .join(', ') || '';
+        description =
+          pattern.interval === 1
+            ? `Every week on ${dayNames}`
+            : `Every ${pattern.interval} weeks on ${dayNames}`;
+        break;
+      case 'monthly':
+        description =
+          pattern.interval === 1
+            ? `Every month on day ${pattern.day_of_month}`
+            : `Every ${pattern.interval} months on day ${pattern.day_of_month}`;
+        break;
+      case 'custom':
+        description = pattern.custom_days === 1 ? 'Every day' : `Every ${pattern.custom_days} days`;
+        break;
+    }
+
+    if (pattern.start_date) {
+      description += `, starting ${formatDate(pattern.start_date)}`;
+    }
+
+    if (pattern.end_date) {
+      description += `, until ${formatDate(pattern.end_date)}`;
+    } else if (pattern.max_occurrences) {
+      description += `, for ${pattern.max_occurrences} occurrence${pattern.max_occurrences !== 1 ? 's' : ''}`;
+    }
+
+    return description;
   };
 
   // Get buildings for selected client
@@ -1420,6 +1616,22 @@ const ProjectsScreen = () => {
       color: themeColor,
       fontWeight: '600',
     },
+    patternSummary: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: themeColor + '10',
+      padding: spacing.md,
+      borderRadius: 8,
+      marginTop: spacing.sm,
+      marginBottom: spacing.md,
+    },
+    patternSummaryText: {
+      ...typography.body,
+      color: colors.text,
+      marginLeft: spacing.sm,
+      fontWeight: '500',
+      flex: 1,
+    },
   });
 
   // Get available buildings for the selected client
@@ -1529,7 +1741,12 @@ const ProjectsScreen = () => {
               <TouchableOpacity onPress={() => openDetailsModal(project)} activeOpacity={0.7}>
                 <View style={styles.projectHeader}>
                   <View style={styles.projectTitleRow}>
-                    <Text style={styles.projectName}>{project.project_name}</Text>
+                    <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
+                      {project.is_recurring && (
+                        <Icon name="repeat" size={20} style={{ color: themeColor }} />
+                      )}
+                      <Text style={[styles.projectName, { flex: 1 }]}>{project.project_name}</Text>
+                    </View>
                     <View
                       style={[styles.statusBadge, { backgroundColor: getStatusColor(project.status) + '20' }]}
                     >
@@ -1943,6 +2160,49 @@ const ProjectsScreen = () => {
                 placeholderTextColor={colors.textSecondary}
                 multiline
               />
+
+              {/* Recurring Project Option */}
+              <View style={styles.switchRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>Make this a recurring project</Text>
+                  <Text style={[styles.inputLabel, { fontSize: 12, color: colors.textSecondary, fontWeight: '400' }]}>
+                    Automatically schedule this project on a repeating basis
+                  </Text>
+                </View>
+                <Switch
+                  value={isRecurring}
+                  onValueChange={(value) => {
+                    setIsRecurring(value);
+                    if (value && !recurringPattern) {
+                      setShowRecurringModal(true);
+                    }
+                  }}
+                  trackColor={{ false: colors.border, true: themeColor }}
+                  thumbColor={colors.background}
+                />
+              </View>
+
+              {isRecurring && (
+                <TouchableOpacity
+                  style={[styles.calculatorToggleButton, { borderColor: themeColor, backgroundColor: themeColor + '15' }]}
+                  onPress={() => setShowRecurringModal(true)}
+                >
+                  <Icon name="calendar" size={24} style={{ color: themeColor }} />
+                  <Text style={[styles.calculatorToggleText, { color: themeColor }]}>
+                    {recurringPattern ? 'Edit Recurring Pattern' : 'Set Recurring Pattern'}
+                  </Text>
+                  <Icon name="chevron-forward" size={20} style={{ color: themeColor }} />
+                </TouchableOpacity>
+              )}
+
+              {isRecurring && recurringPattern && (
+                <View style={[styles.patternSummary, { backgroundColor: themeColor + '10' }]}>
+                  <Icon name="information-circle" size={20} style={{ color: themeColor }} />
+                  <Text style={styles.patternSummaryText}>
+                    {getRecurringPatternDescription(recurringPattern)}
+                  </Text>
+                </View>
+              )}
             </ScrollView>
 
             <View style={styles.modalActions}>
@@ -2087,7 +2347,25 @@ const ProjectsScreen = () => {
                       <Text style={styles.detailValue}>{selectedProject.notes}</Text>
                     </View>
                   )}
+                  {selectedProject.is_recurring && (
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Recurring:</Text>
+                      <Text style={[styles.detailValue, { color: themeColor, fontWeight: '600' }]}>Yes</Text>
+                    </View>
+                  )}
                 </View>
+
+                {selectedProject.is_recurring && recurringPattern && (
+                  <View style={styles.detailsSection}>
+                    <Text style={styles.inputLabel}>Recurring Pattern</Text>
+                    <View style={[styles.patternSummary, { backgroundColor: themeColor + '10' }]}>
+                      <Icon name="repeat" size={20} style={{ color: themeColor }} />
+                      <Text style={styles.patternSummaryText}>
+                        {getRecurringPatternDescription(recurringPattern)}
+                      </Text>
+                    </View>
+                  </View>
+                )}
 
                 {projectCompletions.length > 0 && (
                   <View style={styles.historySection}>
@@ -2200,6 +2478,24 @@ const ProjectsScreen = () => {
           </View>
         </View>
       </Modal>
+
+      {/* Recurring Project Modal */}
+      <RecurringProjectModal
+        visible={showRecurringModal}
+        onClose={() => setShowRecurringModal(false)}
+        onSave={handleRecurringPatternSave}
+        themeColor={themeColor}
+        initialPattern={recurringPattern ? {
+          type: recurringPattern.pattern_type,
+          interval: recurringPattern.interval,
+          daysOfWeek: recurringPattern.days_of_week || undefined,
+          dayOfMonth: recurringPattern.day_of_month || undefined,
+          customDays: recurringPattern.custom_days || undefined,
+          startDate: recurringPattern.start_date,
+          endDate: recurringPattern.end_date || undefined,
+          maxOccurrences: recurringPattern.max_occurrences || undefined,
+        } : undefined}
+      />
 
       <Toast />
     </View>

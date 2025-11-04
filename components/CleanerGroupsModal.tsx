@@ -7,25 +7,23 @@ import Button from './Button';
 import IconButton from './IconButton';
 import { supabase } from '../app/integrations/supabase/client';
 import uuid from 'react-native-uuid';
-import type { ClientBuilding } from '../hooks/useClientData';
+import type { Cleaner } from '../hooks/useClientData';
 
-interface BuildingGroup {
+interface CleanerGroup {
   id: string;
-  client_name: string;
   group_name: string;
   description?: string;
-  building_ids: string[];
-  buildings: ClientBuilding[];
+  cleaner_ids: string[];
+  cleaners: Cleaner[];
   highlight_color?: string;
   created_at?: string;
   updated_at?: string;
 }
 
-interface BuildingGroupsModalProps {
+interface CleanerGroupsModalProps {
   visible: boolean;
   onClose: () => void;
-  clientName: string;
-  buildings: ClientBuilding[];
+  cleaners: Cleaner[];
   onRefresh?: () => void;
 }
 
@@ -68,7 +66,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: spacing.sm,
   },
-  buildingChip: {
+  cleanerChip: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.primary + '20',
@@ -78,12 +76,12 @@ const styles = StyleSheet.create({
     marginRight: spacing.xs,
     marginBottom: spacing.xs,
   },
-  buildingChipText: {
+  cleanerChipText: {
     fontSize: typography.sizes.xs,
     color: colors.primary,
     fontWeight: typography.weights.semibold as any,
   },
-  buildingsList: {
+  cleanersList: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     marginTop: spacing.xs,
@@ -106,7 +104,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  buildingSelector: {
+  cleanerSelector: {
     backgroundColor: colors.background,
     borderRadius: 8,
     padding: spacing.sm,
@@ -114,7 +112,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     maxHeight: 200,
   },
-  buildingOption: {
+  cleanerOption: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: spacing.sm,
@@ -122,10 +120,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginBottom: spacing.xs,
   },
-  buildingOptionSelected: {
+  cleanerOptionSelected: {
     backgroundColor: colors.primary + '20',
   },
-  buildingOptionText: {
+  cleanerOptionText: {
     fontSize: typography.sizes.md,
     color: colors.text,
     marginLeft: spacing.sm,
@@ -205,19 +203,19 @@ const styles = StyleSheet.create({
   },
 });
 
-const BuildingGroupsModal = memo<BuildingGroupsModalProps>(({ visible, onClose, clientName, buildings, onRefresh }) => {
-  console.log('BuildingGroupsModal rendered');
+const CleanerGroupsModal = memo<CleanerGroupsModalProps>(({ visible, onClose, cleaners, onRefresh }) => {
+  console.log('CleanerGroupsModal rendered');
   
-  const [groups, setGroups] = useState<BuildingGroup[]>([]);
+  const [groups, setGroups] = useState<CleanerGroup[]>([]);
   const [loading, setLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
-  const [selectedGroup, setSelectedGroup] = useState<BuildingGroup | null>(null);
+  const [selectedGroup, setSelectedGroup] = useState<CleanerGroup | null>(null);
   
   const [formData, setFormData] = useState({
     group_name: '',
     description: '',
-    building_ids: [] as string[],
+    cleaner_ids: [] as string[],
     highlight_color: PREDEFINED_COLORS[0],
   });
 
@@ -225,32 +223,31 @@ const BuildingGroupsModal = memo<BuildingGroupsModalProps>(({ visible, onClose, 
     if (visible) {
       loadGroups();
     }
-  }, [visible, clientName]);
+  }, [visible]);
 
   const loadGroups = async () => {
     try {
       setLoading(true);
-      console.log('🔄 Loading building groups for client:', clientName);
+      console.log('🔄 Loading cleaner groups');
 
       // Load groups
       const { data: groupsData, error: groupsError } = await supabase
-        .from('building_groups')
+        .from('cleaner_groups')
         .select('*')
-        .eq('client_name', clientName)
         .order('created_at', { ascending: false });
 
       if (groupsError) {
-        console.error('❌ Error loading building groups:', groupsError);
+        console.error('❌ Error loading cleaner groups:', groupsError);
         throw groupsError;
       }
 
       // Load group members
-      const groupsWithBuildings: BuildingGroup[] = [];
+      const groupsWithCleaners: CleanerGroup[] = [];
       
       for (const group of groupsData || []) {
         const { data: membersData, error: membersError } = await supabase
-          .from('building_group_members')
-          .select('building_id')
+          .from('cleaner_group_members')
+          .select('cleaner_id')
           .eq('group_id', group.id);
 
         if (membersError) {
@@ -258,21 +255,21 @@ const BuildingGroupsModal = memo<BuildingGroupsModalProps>(({ visible, onClose, 
           continue;
         }
 
-        const buildingIds = membersData?.map(m => m.building_id) || [];
-        const groupBuildings = buildings.filter(b => buildingIds.includes(b.id));
+        const cleanerIds = membersData?.map(m => m.cleaner_id) || [];
+        const groupCleaners = cleaners.filter(c => cleanerIds.includes(c.id));
 
-        groupsWithBuildings.push({
+        groupsWithCleaners.push({
           ...group,
-          building_ids: buildingIds,
-          buildings: groupBuildings,
+          cleaner_ids: cleanerIds,
+          cleaners: groupCleaners,
           highlight_color: group.highlight_color || PREDEFINED_COLORS[0],
         });
       }
 
-      console.log(`✅ Loaded ${groupsWithBuildings.length} building groups`);
-      setGroups(groupsWithBuildings);
+      console.log(`✅ Loaded ${groupsWithCleaners.length} cleaner groups`);
+      setGroups(groupsWithCleaners);
     } catch (error) {
-      console.error('❌ Failed to load building groups:', error);
+      console.error('❌ Failed to load cleaner groups:', error);
     } finally {
       setLoading(false);
     }
@@ -284,22 +281,21 @@ const BuildingGroupsModal = memo<BuildingGroupsModalProps>(({ visible, onClose, 
       return;
     }
 
-    if (formData.building_ids.length === 0) {
-      Alert.alert('Error', 'Please select at least one building');
+    if (formData.cleaner_ids.length === 0) {
+      Alert.alert('Error', 'Please select at least one cleaner');
       return;
     }
 
     try {
-      console.log('🔄 Adding building group:', formData.group_name);
+      console.log('🔄 Adding cleaner group:', formData.group_name);
 
       const groupId = uuid.v4() as string;
 
       // Insert group
       const { error: groupError } = await supabase
-        .from('building_groups')
+        .from('cleaner_groups')
         .insert({
           id: groupId,
-          client_name: clientName,
           group_name: formData.group_name.trim(),
           description: formData.description.trim() || null,
           highlight_color: formData.highlight_color,
@@ -308,20 +304,20 @@ const BuildingGroupsModal = memo<BuildingGroupsModalProps>(({ visible, onClose, 
         });
 
       if (groupError) {
-        console.error('❌ Error adding building group:', groupError);
+        console.error('❌ Error adding cleaner group:', groupError);
         throw groupError;
       }
 
       // Insert group members
-      const members = formData.building_ids.map(buildingId => ({
+      const members = formData.cleaner_ids.map(cleanerId => ({
         id: uuid.v4() as string,
         group_id: groupId,
-        building_id: buildingId,
+        cleaner_id: cleanerId,
         created_at: new Date().toISOString(),
       }));
 
       const { error: membersError } = await supabase
-        .from('building_group_members')
+        .from('cleaner_group_members')
         .insert(members);
 
       if (membersError) {
@@ -329,21 +325,21 @@ const BuildingGroupsModal = memo<BuildingGroupsModalProps>(({ visible, onClose, 
         throw membersError;
       }
 
-      console.log('✅ Building group added successfully');
-      Alert.alert('Success', 'Building group created successfully');
+      console.log('✅ Cleaner group added successfully');
+      Alert.alert('Success', 'Cleaner group created successfully');
       
       setShowAddModal(false);
       setFormData({ 
         group_name: '', 
         description: '', 
-        building_ids: [],
+        cleaner_ids: [],
         highlight_color: PREDEFINED_COLORS[0],
       });
       await loadGroups();
       onRefresh?.();
     } catch (error) {
-      console.error('❌ Failed to add building group:', error);
-      Alert.alert('Error', 'Failed to create building group');
+      console.error('❌ Failed to add cleaner group:', error);
+      Alert.alert('Error', 'Failed to create cleaner group');
     }
   };
 
@@ -353,17 +349,17 @@ const BuildingGroupsModal = memo<BuildingGroupsModalProps>(({ visible, onClose, 
       return;
     }
 
-    if (formData.building_ids.length === 0) {
-      Alert.alert('Error', 'Please select at least one building');
+    if (formData.cleaner_ids.length === 0) {
+      Alert.alert('Error', 'Please select at least one cleaner');
       return;
     }
 
     try {
-      console.log('🔄 Updating building group:', selectedGroup.id);
+      console.log('🔄 Updating cleaner group:', selectedGroup.id);
 
       // Update group
       const { error: groupError } = await supabase
-        .from('building_groups')
+        .from('cleaner_groups')
         .update({
           group_name: formData.group_name.trim(),
           description: formData.description.trim() || null,
@@ -373,13 +369,13 @@ const BuildingGroupsModal = memo<BuildingGroupsModalProps>(({ visible, onClose, 
         .eq('id', selectedGroup.id);
 
       if (groupError) {
-        console.error('❌ Error updating building group:', groupError);
+        console.error('❌ Error updating cleaner group:', groupError);
         throw groupError;
       }
 
       // Delete existing members
       const { error: deleteError } = await supabase
-        .from('building_group_members')
+        .from('cleaner_group_members')
         .delete()
         .eq('group_id', selectedGroup.id);
 
@@ -389,15 +385,15 @@ const BuildingGroupsModal = memo<BuildingGroupsModalProps>(({ visible, onClose, 
       }
 
       // Insert new members
-      const members = formData.building_ids.map(buildingId => ({
+      const members = formData.cleaner_ids.map(cleanerId => ({
         id: uuid.v4() as string,
         group_id: selectedGroup.id,
-        building_id: buildingId,
+        cleaner_id: cleanerId,
         created_at: new Date().toISOString(),
       }));
 
       const { error: membersError } = await supabase
-        .from('building_group_members')
+        .from('cleaner_group_members')
         .insert(members);
 
       if (membersError) {
@@ -405,26 +401,26 @@ const BuildingGroupsModal = memo<BuildingGroupsModalProps>(({ visible, onClose, 
         throw membersError;
       }
 
-      console.log('✅ Building group updated successfully');
-      Alert.alert('Success', 'Building group updated successfully');
+      console.log('✅ Cleaner group updated successfully');
+      Alert.alert('Success', 'Cleaner group updated successfully');
       
       setShowEditModal(false);
       setSelectedGroup(null);
       setFormData({ 
         group_name: '', 
         description: '', 
-        building_ids: [],
+        cleaner_ids: [],
         highlight_color: PREDEFINED_COLORS[0],
       });
       await loadGroups();
       onRefresh?.();
     } catch (error) {
-      console.error('❌ Failed to update building group:', error);
-      Alert.alert('Error', 'Failed to update building group');
+      console.error('❌ Failed to update cleaner group:', error);
+      Alert.alert('Error', 'Failed to update cleaner group');
     }
   };
 
-  const handleDeleteGroup = (group: BuildingGroup) => {
+  const handleDeleteGroup = (group: CleanerGroup) => {
     Alert.alert(
       'Delete Group',
       `Are you sure you want to delete the group "${group.group_name}"?`,
@@ -435,26 +431,26 @@ const BuildingGroupsModal = memo<BuildingGroupsModalProps>(({ visible, onClose, 
           style: 'destructive',
           onPress: async () => {
             try {
-              console.log('🔄 Deleting building group:', group.id);
+              console.log('🔄 Deleting cleaner group:', group.id);
 
               const { error } = await supabase
-                .from('building_groups')
+                .from('cleaner_groups')
                 .delete()
                 .eq('id', group.id);
 
               if (error) {
-                console.error('❌ Error deleting building group:', error);
+                console.error('❌ Error deleting cleaner group:', error);
                 throw error;
               }
 
-              console.log('✅ Building group deleted successfully');
-              Alert.alert('Success', 'Building group deleted successfully');
+              console.log('✅ Cleaner group deleted successfully');
+              Alert.alert('Success', 'Cleaner group deleted successfully');
               
               await loadGroups();
               onRefresh?.();
             } catch (error) {
-              console.error('❌ Failed to delete building group:', error);
-              Alert.alert('Error', 'Failed to delete building group');
+              console.error('❌ Failed to delete cleaner group:', error);
+              Alert.alert('Error', 'Failed to delete cleaner group');
             }
           },
         },
@@ -462,23 +458,23 @@ const BuildingGroupsModal = memo<BuildingGroupsModalProps>(({ visible, onClose, 
     );
   };
 
-  const openEditModal = (group: BuildingGroup) => {
+  const openEditModal = (group: CleanerGroup) => {
     setSelectedGroup(group);
     setFormData({
       group_name: group.group_name,
       description: group.description || '',
-      building_ids: group.building_ids,
+      cleaner_ids: group.cleaner_ids,
       highlight_color: group.highlight_color || PREDEFINED_COLORS[0],
     });
     setShowEditModal(true);
   };
 
-  const toggleBuilding = (buildingId: string) => {
+  const toggleCleaner = (cleanerId: string) => {
     setFormData(prev => ({
       ...prev,
-      building_ids: prev.building_ids.includes(buildingId)
-        ? prev.building_ids.filter(id => id !== buildingId)
-        : [...prev.building_ids, buildingId],
+      cleaner_ids: prev.cleaner_ids.includes(cleanerId)
+        ? prev.cleaner_ids.filter(id => id !== cleanerId)
+        : [...prev.cleaner_ids, cleanerId],
     }));
   };
 
@@ -504,7 +500,7 @@ const BuildingGroupsModal = memo<BuildingGroupsModalProps>(({ visible, onClose, 
       </View>
       <View style={styles.colorPreview}>
         <Text style={styles.colorPreviewText}>
-          Buildings in this group will be highlighted in the schedule
+          Cleaners in this group will be highlighted in the schedule
         </Text>
         <View style={[styles.colorPreviewSwatch, { backgroundColor: formData.highlight_color }]} />
       </View>
@@ -553,14 +549,14 @@ const BuildingGroupsModal = memo<BuildingGroupsModalProps>(({ visible, onClose, 
                 onPress={onClose} 
                 variant="white"
               />
-              <Text style={commonStyles.headerTitle}>Building Groups</Text>
+              <Text style={commonStyles.headerTitle}>Cleaner Groups</Text>
               <IconButton 
                 icon="add-circle" 
                 onPress={() => {
                   setFormData({ 
                     group_name: '', 
                     description: '', 
-                    building_ids: [],
+                    cleaner_ids: [],
                     highlight_color: PREDEFINED_COLORS[0],
                   });
                   setShowAddModal(true);
@@ -571,16 +567,16 @@ const BuildingGroupsModal = memo<BuildingGroupsModalProps>(({ visible, onClose, 
 
             <View style={commonStyles.content}>
               <Text style={[typography.body, { color: colors.textSecondary, marginBottom: spacing.md }]}>
-                Group buildings together for easier scheduling and management. Buildings in the same group will be sorted together and highlighted in the schedule.
+                Group cleaners together by location or team. For example, create a &quot;Sparks Team&quot; for cleaners who work in the Sparks area, or an &quot;Out-of-City Team&quot; for cleaners who travel to other cities.
               </Text>
 
               <ScrollView showsVerticalScrollIndicator={false}>
                 {groups.length === 0 ? (
                   <View style={styles.emptyState}>
-                    <Icon name="business-outline" size={64} color={colors.textSecondary} />
+                    <Icon name="people-outline" size={64} color={colors.textSecondary} />
                     <Text style={styles.emptyStateText}>
-                      No building groups yet.{'\n'}
-                      Create a group to organize buildings that are cleaned together.
+                      No cleaner groups yet.{'\n'}
+                      Create a group to organize cleaners by location or team.
                     </Text>
                   </View>
                 ) : (
@@ -621,11 +617,11 @@ const BuildingGroupsModal = memo<BuildingGroupsModalProps>(({ visible, onClose, 
                         </Text>
                       </View>
 
-                      <View style={styles.buildingsList}>
-                        {group.buildings.map((building) => (
-                          <View key={building.id} style={styles.buildingChip}>
-                            <Icon name="business" size={12} style={{ color: colors.primary, marginRight: spacing.xs }} />
-                            <Text style={styles.buildingChipText}>{building.buildingName}</Text>
+                      <View style={styles.cleanersList}>
+                        {group.cleaners.map((cleaner) => (
+                          <View key={cleaner.id} style={styles.cleanerChip}>
+                            <Icon name="person" size={12} style={{ color: colors.primary, marginRight: spacing.xs }} />
+                            <Text style={styles.cleanerChipText}>{cleaner.name}</Text>
                           </View>
                         ))}
                       </View>
@@ -656,7 +652,7 @@ const BuildingGroupsModal = memo<BuildingGroupsModalProps>(({ visible, onClose, 
             maxHeight: '80%',
           }}>
             <Text style={[typography.h2, { color: colors.text, marginBottom: spacing.lg }]}>
-              Create Building Group
+              Create Cleaner Group
             </Text>
 
             <ScrollView showsVerticalScrollIndicator={false}>
@@ -664,7 +660,7 @@ const BuildingGroupsModal = memo<BuildingGroupsModalProps>(({ visible, onClose, 
                 <Text style={styles.label}>Group Name *</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="e.g., North Campus Buildings"
+                  placeholder="e.g., Sparks Team, Out-of-City Team"
                   placeholderTextColor={colors.textSecondary}
                   value={formData.group_name}
                   onChangeText={(text) => setFormData({ ...formData, group_name: text })}
@@ -675,7 +671,7 @@ const BuildingGroupsModal = memo<BuildingGroupsModalProps>(({ visible, onClose, 
                 <Text style={styles.label}>Description (Optional)</Text>
                 <TextInput
                   style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
-                  placeholder="e.g., Buildings that are close together and cleaned on the same day"
+                  placeholder="e.g., Cleaners who primarily work in the Sparks area"
                   placeholderTextColor={colors.textSecondary}
                   value={formData.description}
                   onChangeText={(text) => setFormData({ ...formData, description: text })}
@@ -686,23 +682,23 @@ const BuildingGroupsModal = memo<BuildingGroupsModalProps>(({ visible, onClose, 
               {renderColorPicker()}
 
               <View style={styles.formGroup}>
-                <Text style={styles.label}>Select Buildings *</Text>
-                <ScrollView style={styles.buildingSelector} showsVerticalScrollIndicator={false}>
-                  {buildings.map((building) => (
+                <Text style={styles.label}>Select Cleaners *</Text>
+                <ScrollView style={styles.cleanerSelector} showsVerticalScrollIndicator={false}>
+                  {cleaners.map((cleaner) => (
                     <TouchableOpacity
-                      key={building.id}
+                      key={cleaner.id}
                       style={[
-                        styles.buildingOption,
-                        formData.building_ids.includes(building.id) && styles.buildingOptionSelected,
+                        styles.cleanerOption,
+                        formData.cleaner_ids.includes(cleaner.id) && styles.cleanerOptionSelected,
                       ]}
-                      onPress={() => toggleBuilding(building.id)}
+                      onPress={() => toggleCleaner(cleaner.id)}
                     >
                       <Icon 
-                        name={formData.building_ids.includes(building.id) ? 'checkbox' : 'square-outline'} 
+                        name={formData.cleaner_ids.includes(cleaner.id) ? 'checkbox' : 'square-outline'} 
                         size={24} 
-                        style={{ color: formData.building_ids.includes(building.id) ? colors.primary : colors.textSecondary }} 
+                        style={{ color: formData.cleaner_ids.includes(cleaner.id) ? colors.primary : colors.textSecondary }} 
                       />
-                      <Text style={styles.buildingOptionText}>{building.buildingName}</Text>
+                      <Text style={styles.cleanerOptionText}>{cleaner.name}</Text>
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
@@ -717,7 +713,7 @@ const BuildingGroupsModal = memo<BuildingGroupsModalProps>(({ visible, onClose, 
                   setFormData({ 
                     group_name: '', 
                     description: '', 
-                    building_ids: [],
+                    cleaner_ids: [],
                     highlight_color: PREDEFINED_COLORS[0],
                   });
                 }}
@@ -753,7 +749,7 @@ const BuildingGroupsModal = memo<BuildingGroupsModalProps>(({ visible, onClose, 
             maxHeight: '80%',
           }}>
             <Text style={[typography.h2, { color: colors.text, marginBottom: spacing.lg }]}>
-              Edit Building Group
+              Edit Cleaner Group
             </Text>
 
             <ScrollView showsVerticalScrollIndicator={false}>
@@ -761,7 +757,7 @@ const BuildingGroupsModal = memo<BuildingGroupsModalProps>(({ visible, onClose, 
                 <Text style={styles.label}>Group Name *</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="e.g., North Campus Buildings"
+                  placeholder="e.g., Sparks Team, Out-of-City Team"
                   placeholderTextColor={colors.textSecondary}
                   value={formData.group_name}
                   onChangeText={(text) => setFormData({ ...formData, group_name: text })}
@@ -772,7 +768,7 @@ const BuildingGroupsModal = memo<BuildingGroupsModalProps>(({ visible, onClose, 
                 <Text style={styles.label}>Description (Optional)</Text>
                 <TextInput
                   style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
-                  placeholder="e.g., Buildings that are close together and cleaned on the same day"
+                  placeholder="e.g., Cleaners who primarily work in the Sparks area"
                   placeholderTextColor={colors.textSecondary}
                   value={formData.description}
                   onChangeText={(text) => setFormData({ ...formData, description: text })}
@@ -783,23 +779,23 @@ const BuildingGroupsModal = memo<BuildingGroupsModalProps>(({ visible, onClose, 
               {renderColorPicker()}
 
               <View style={styles.formGroup}>
-                <Text style={styles.label}>Select Buildings *</Text>
-                <ScrollView style={styles.buildingSelector} showsVerticalScrollIndicator={false}>
-                  {buildings.map((building) => (
+                <Text style={styles.label}>Select Cleaners *</Text>
+                <ScrollView style={styles.cleanerSelector} showsVerticalScrollIndicator={false}>
+                  {cleaners.map((cleaner) => (
                     <TouchableOpacity
-                      key={building.id}
+                      key={cleaner.id}
                       style={[
-                        styles.buildingOption,
-                        formData.building_ids.includes(building.id) && styles.buildingOptionSelected,
+                        styles.cleanerOption,
+                        formData.cleaner_ids.includes(cleaner.id) && styles.cleanerOptionSelected,
                       ]}
-                      onPress={() => toggleBuilding(building.id)}
+                      onPress={() => toggleCleaner(cleaner.id)}
                     >
                       <Icon 
-                        name={formData.building_ids.includes(building.id) ? 'checkbox' : 'square-outline'} 
+                        name={formData.cleaner_ids.includes(cleaner.id) ? 'checkbox' : 'square-outline'} 
                         size={24} 
-                        style={{ color: formData.building_ids.includes(building.id) ? colors.primary : colors.textSecondary }} 
+                        style={{ color: formData.cleaner_ids.includes(cleaner.id) ? colors.primary : colors.textSecondary }} 
                       />
-                      <Text style={styles.buildingOptionText}>{building.buildingName}</Text>
+                      <Text style={styles.cleanerOptionText}>{cleaner.name}</Text>
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
@@ -815,7 +811,7 @@ const BuildingGroupsModal = memo<BuildingGroupsModalProps>(({ visible, onClose, 
                   setFormData({ 
                     group_name: '', 
                     description: '', 
-                    building_ids: [],
+                    cleaner_ids: [],
                     highlight_color: PREDEFINED_COLORS[0],
                   });
                 }}
@@ -836,6 +832,6 @@ const BuildingGroupsModal = memo<BuildingGroupsModalProps>(({ visible, onClose, 
   );
 });
 
-BuildingGroupsModal.displayName = 'BuildingGroupsModal';
+CleanerGroupsModal.displayName = 'CleanerGroupsModal';
 
-export default BuildingGroupsModal;
+export default CleanerGroupsModal;

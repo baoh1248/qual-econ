@@ -15,12 +15,23 @@ import { colors, spacing, typography } from '../../styles/commonStyles';
 import type { ClientBuilding, Client, Cleaner } from '../../hooks/useClientData';
 import { View, Text, TouchableOpacity, ScrollView, Dimensions, StyleSheet, Alert } from 'react-native';
 import type { ScheduleEntry } from '../../hooks/useScheduleStorage';
+import { formatTimeWithAMPM } from '../../utils/timeFormatter';
+
+interface BuildingGroup {
+  id: string;
+  client_name: string;
+  group_name: string;
+  description?: string;
+  building_ids: string[];
+  highlight_color?: string;
+}
 
 interface DragDropScheduleGridProps {
   clientBuildings: ClientBuilding[];
   clients: Client[];
   cleaners: Cleaner[];
   schedule: ScheduleEntry[];
+  buildingGroups?: BuildingGroup[];
   onCellPress: (clientBuilding: ClientBuilding, day: string) => void;
   onCellLongPress: (clientBuilding: ClientBuilding, day: string) => void;
   onClientLongPress: (client: Client) => void;
@@ -40,6 +51,7 @@ const DragDropScheduleGrid = memo(({
   clients = [],
   cleaners = [],
   schedule = [],
+  buildingGroups = [],
   onCellPress,
   onCellLongPress,
   onClientLongPress,
@@ -53,7 +65,17 @@ const DragDropScheduleGrid = memo(({
   currentWeekId,
   onTaskPress,
 }: DragDropScheduleGridProps) => {
-  console.log('DragDropScheduleGrid rendered with viewMode:', viewMode, 'currentWeekId:', currentWeekId);
+  console.log('🔍 DragDropScheduleGrid rendered with viewMode:', viewMode, 'currentWeekId:', currentWeekId);
+  console.log('🔍 Building groups received:', buildingGroups.length);
+  
+  // Log building groups details
+  buildingGroups.forEach(group => {
+    console.log(`🔍 Group "${group.group_name}":`, {
+      id: group.id,
+      building_ids: group.building_ids,
+      color: group.highlight_color
+    });
+  });
 
   // State to track which clients are expanded
   const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set());
@@ -112,8 +134,37 @@ const DragDropScheduleGrid = memo(({
     return weekDays;
   }, [currentWeekId]);
 
-  const buildingsByClient = useMemo(() => {
+  // Create a map of building ID to group info
+  const buildingGroupMap = useMemo(() => {
+    const map = new Map<string, { group: BuildingGroup; color: string }>();
+    
+    console.log('🔍 Creating building group map from', buildingGroups.length, 'groups');
+    
+    buildingGroups.forEach(group => {
+      const color = group.highlight_color || '#3B82F6';
+      console.log(`🔍 Processing group "${group.group_name}" (${group.id}) with ${group.building_ids?.length || 0} buildings and color ${color}`);
+      
+      if (group.building_ids && Array.isArray(group.building_ids)) {
+        group.building_ids.forEach(buildingId => {
+          console.log(`  ✅ Mapping building ID ${buildingId} to group "${group.group_name}"`);
+          map.set(buildingId, { group, color });
+        });
+      } else {
+        console.warn(`  ⚠️ Group "${group.group_name}" has no building_ids or it's not an array:`, group.building_ids);
+      }
+    });
+    
+    console.log('🔍 Building group map created with', map.size, 'entries');
+    console.log('🔍 Map contents:', Array.from(map.entries()).map(([id, info]) => `${id} -> ${info.group.group_name}`));
+    return map;
+  }, [buildingGroups]);
+
+  // Sort buildings by group, then by name
+  const sortedBuildingsByClient = useMemo(() => {
     const grouped = new Map<string, ClientBuilding[]>();
+    
+    console.log('🔍 Sorting buildings by client and group...');
+    console.log('🔍 Total buildings:', clientBuildings.length);
     
     for (const building of clientBuildings) {
       if (!grouped.has(building.clientName)) {
@@ -122,14 +173,61 @@ const DragDropScheduleGrid = memo(({
       grouped.get(building.clientName)!.push(building);
     }
     
+    // Sort buildings within each client
+    grouped.forEach((buildings, clientName) => {
+      console.log(`🔍 Sorting ${buildings.length} buildings for client "${clientName}"`);
+      
+      buildings.sort((a, b) => {
+        const aGroupInfo = buildingGroupMap.get(a.id);
+        const bGroupInfo = buildingGroupMap.get(b.id);
+        
+        console.log(`  🔍 Comparing "${a.buildingName}" (${a.id}) vs "${b.buildingName}" (${b.id})`);
+        console.log(`    - "${a.buildingName}" group:`, aGroupInfo ? aGroupInfo.group.group_name : 'NO GROUP');
+        console.log(`    - "${b.buildingName}" group:`, bGroupInfo ? bGroupInfo.group.group_name : 'NO GROUP');
+        
+        // If both are in groups
+        if (aGroupInfo && bGroupInfo) {
+          // Same group - sort by building name
+          if (aGroupInfo.group.id === bGroupInfo.group.id) {
+            console.log(`    ✅ Both in same group "${aGroupInfo.group.group_name}", sorting by name`);
+            return a.buildingName.localeCompare(b.buildingName);
+          }
+          // Different groups - sort by group name
+          console.log(`    ✅ Different groups, sorting by group name: "${aGroupInfo.group.group_name}" vs "${bGroupInfo.group.group_name}"`);
+          return aGroupInfo.group.group_name.localeCompare(bGroupInfo.group.group_name);
+        }
+        
+        // Only a is in a group - a comes first
+        if (aGroupInfo) {
+          console.log(`    ✅ Only "${a.buildingName}" is in a group, it comes first`);
+          return -1;
+        }
+        
+        // Only b is in a group - b comes first
+        if (bGroupInfo) {
+          console.log(`    ✅ Only "${b.buildingName}" is in a group, it comes first`);
+          return 1;
+        }
+        
+        // Neither in a group - sort by building name
+        console.log(`    ✅ Neither in a group, sorting by name`);
+        return a.buildingName.localeCompare(b.buildingName);
+      });
+      
+      console.log(`🔍 Final sorted order for "${clientName}":`, buildings.map(b => {
+        const groupInfo = buildingGroupMap.get(b.id);
+        return `${b.buildingName} (${groupInfo ? groupInfo.group.group_name : 'no group'})`;
+      }).join(', '));
+    });
+    
     return grouped;
-  }, [clientBuildings]);
+  }, [clientBuildings, buildingGroupMap]);
 
   const activeClients = useMemo(() => {
     return clients.filter(client => 
-      client.isActive && buildingsByClient.has(client.name)
+      client.isActive && sortedBuildingsByClient.has(client.name)
     );
-  }, [clients, buildingsByClient]);
+  }, [clients, sortedBuildingsByClient]);
 
   const getEntriesForCell = useCallback((buildingName: string, day: string): ScheduleEntry[] => {
     return schedule.filter(entry => 
@@ -217,7 +315,7 @@ const DragDropScheduleGrid = memo(({
                 <View style={styles.entryTimeContainer}>
                   <Icon name="time-outline" size={14} style={{ color: statusColor }} />
                   <Text style={[styles.entryTime, { color: statusColor }]} numberOfLines={1}>
-                    {entry.startTime || '09:00'}
+                    {formatTimeWithAMPM(entry.startTime || '09:00')}
                   </Text>
                 </View>
                 <View style={[styles.statusIndicator, { backgroundColor: statusColor }]}>
@@ -278,10 +376,24 @@ const DragDropScheduleGrid = memo(({
       return sum + getEntriesForCell(building.buildingName, day.name).length;
     }, 0);
 
+    // Check if building is in a group
+    const groupInfo = buildingGroupMap.get(building.id);
+    const highlightColor = groupInfo ? groupInfo.color : null;
+
+    console.log(`🎨 Rendering building "${building.buildingName}" (${building.id}):`, groupInfo ? `in group "${groupInfo.group.group_name}" with color ${highlightColor}` : 'no group');
+
     return (
-      <View key={building.id} style={styles.buildingRow}>
+      <View 
+        key={building.id} 
+        style={styles.buildingRow}
+      >
         <TouchableOpacity
-          style={styles.buildingCell}
+          style={[
+            styles.buildingCell,
+            highlightColor && {
+              backgroundColor: `${highlightColor}40`, // 40 in hex = ~25% opacity for better visibility
+            }
+          ]}
           onLongPress={() => onBuildingLongPress(building)}
           activeOpacity={0.7}
         >
@@ -293,6 +405,15 @@ const DragDropScheduleGrid = memo(({
           </View>
           
           <View style={styles.buildingMeta}>
+            {groupInfo && (
+              <View style={[styles.groupBadge, { backgroundColor: `${highlightColor}30` }]}>
+                <Icon name="albums" size={12} style={{ color: highlightColor }} />
+                <Text style={[styles.groupText, { color: highlightColor }]}>
+                  {groupInfo.group.group_name}
+                </Text>
+              </View>
+            )}
+            
             <View style={styles.securityBadge}>
               <Icon 
                 name="shield-checkmark" 
@@ -318,17 +439,22 @@ const DragDropScheduleGrid = memo(({
         {days.map(day => (
           <View
             key={day.name}
-            style={styles.dayCell}
+            style={[
+              styles.dayCell,
+              highlightColor && {
+                backgroundColor: `${highlightColor}18`, // 18 in hex = ~9% opacity
+              }
+            ]}
           >
             {renderCellContent(building, day)}
           </View>
         ))}
       </View>
     );
-  }, [days, onBuildingLongPress, renderCellContent, getEntriesForCell]);
+  }, [days, onBuildingLongPress, renderCellContent, getEntriesForCell, buildingGroupMap]);
 
   const renderClientSection = useCallback((client: Client) => {
-    const buildings = buildingsByClient.get(client.name) || [];
+    const buildings = sortedBuildingsByClient.get(client.name) || [];
     
     if (buildings.length === 0) return null;
 
@@ -385,7 +511,7 @@ const DragDropScheduleGrid = memo(({
         )}
       </View>
     );
-  }, [buildingsByClient, expandedClients, toggleClientExpansion, onClientLongPress, renderBuildingRow, days, getEntriesForCell]);
+  }, [sortedBuildingsByClient, expandedClients, toggleClientExpansion, onClientLongPress, renderBuildingRow, days, getEntriesForCell]);
 
   if (viewMode === 'user') {
     return (
@@ -655,6 +781,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     flexWrap: 'wrap',
+  },
+  groupBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.1)',
+  },
+  groupText: {
+    ...typography.small,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
   securityBadge: {
     flexDirection: 'row',

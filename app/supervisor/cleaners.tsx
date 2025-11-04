@@ -14,6 +14,8 @@ import Button from '../../components/Button';
 import AnimatedCard from '../../components/AnimatedCard';
 import Toast from '../../components/Toast';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import CleanerGroupsModal from '../../components/CleanerGroupsModal';
+import { supabase } from '../integrations/supabase/client';
 
 interface CompensationRecord {
   id: string;
@@ -23,6 +25,14 @@ interface CompensationRecord {
   effective_date: string;
   end_date?: string;
   notes?: string;
+}
+
+interface CleanerGroup {
+  id: string;
+  group_name: string;
+  description?: string;
+  cleaner_ids: string[];
+  highlight_color?: string;
 }
 
 export default function CleanersScreen() {
@@ -35,11 +45,13 @@ export default function CleanersScreen() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [showGroupsModal, setShowGroupsModal] = useState(false);
   const [selectedCleaner, setSelectedCleaner] = useState<Cleaner | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('all');
   const [employmentHistory, setEmploymentHistory] = useState<EmploymentHistory[]>([]);
   const [compensationHistory, setCompensationHistory] = useState<CompensationRecord[]>([]);
+  const [cleanerGroups, setCleanerGroups] = useState<CleanerGroup[]>([]);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -69,6 +81,7 @@ export default function CleanersScreen() {
     try {
       setIsLoading(true);
       await loadData();
+      await loadCleanerGroups();
     } catch (error) {
       console.error('Error loading cleaners:', error);
       showToast('Failed to load cleaners', 'error');
@@ -76,6 +89,51 @@ export default function CleanersScreen() {
       setIsLoading(false);
     }
   }, [loadData, showToast]);
+
+  const loadCleanerGroups = useCallback(async () => {
+    try {
+      console.log('🔄 Loading cleaner groups');
+
+      // Load groups
+      const { data: groupsData, error: groupsError } = await supabase
+        .from('cleaner_groups')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (groupsError) {
+        console.error('❌ Error loading cleaner groups:', groupsError);
+        throw groupsError;
+      }
+
+      // Load group members
+      const groupsWithMembers: CleanerGroup[] = [];
+      
+      for (const group of groupsData || []) {
+        const { data: membersData, error: membersError } = await supabase
+          .from('cleaner_group_members')
+          .select('cleaner_id')
+          .eq('group_id', group.id);
+
+        if (membersError) {
+          console.error('❌ Error loading group members:', membersError);
+          continue;
+        }
+
+        const cleanerIds = membersData?.map(m => m.cleaner_id) || [];
+
+        groupsWithMembers.push({
+          ...group,
+          cleaner_ids: cleanerIds,
+          highlight_color: group.highlight_color || '#3B82F6',
+        });
+      }
+
+      console.log(`✅ Loaded ${groupsWithMembers.length} cleaner groups`);
+      setCleanerGroups(groupsWithMembers);
+    } catch (error) {
+      console.error('❌ Failed to load cleaner groups:', error);
+    }
+  }, []);
 
   const loadEmploymentHistory = useCallback(async (cleanerId: string) => {
     try {
@@ -306,7 +364,9 @@ export default function CleanersScreen() {
     }));
   }, []);
 
-
+  const getCleanerGroup = useCallback((cleanerId: string) => {
+    return cleanerGroups.find(group => group.cleaner_ids.includes(cleanerId));
+  }, [cleanerGroups]);
 
   const filteredCleaners = cleaners.filter(cleaner => {
     const matchesSearch = cleaner.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -364,6 +424,10 @@ export default function CleanersScreen() {
       paddingHorizontal: spacing.lg,
       paddingVertical: spacing.md,
       backgroundColor: themeColor,
+    },
+    headerActions: {
+      flexDirection: 'row',
+      gap: spacing.sm,
     },
     searchContainer: {
       paddingHorizontal: spacing.lg,
@@ -480,6 +544,19 @@ export default function CleanersScreen() {
       ...typography.small,
       fontWeight: '600',
       textTransform: 'capitalize',
+    },
+    groupBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+      borderRadius: 12,
+      marginBottom: spacing.sm,
+    },
+    groupBadgeText: {
+      ...typography.small,
+      fontWeight: '600',
     },
     cleanerDetails: {
       gap: spacing.xs,
@@ -682,15 +759,25 @@ export default function CleanersScreen() {
           <CompanyLogo size="small" showText={false} variant="light" />
           <Text style={commonStyles.headerTitle}>Cleaners</Text>
         </View>
-        <TouchableOpacity
-          onPress={() => {
-            console.log('Add button pressed');
-            resetForm();
-            setShowAddModal(true);
-          }}
-        >
-          <Icon name="add" size={24} style={{ color: colors.background }} />
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            onPress={() => {
+              console.log('Groups button pressed');
+              setShowGroupsModal(true);
+            }}
+          >
+            <Icon name="people" size={24} style={{ color: colors.background }} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => {
+              console.log('Add button pressed');
+              resetForm();
+              setShowAddModal(true);
+            }}
+          >
+            <Icon name="add" size={24} style={{ color: colors.background }} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Search and Filters */}
@@ -753,151 +840,164 @@ export default function CleanersScreen() {
             />
           </View>
         ) : (
-          filteredCleaners.map((cleaner) => (
-            <AnimatedCard key={cleaner.id} style={styles.cleanerCard}>
-              <View style={styles.cleanerHeader}>
-                <View style={styles.cleanerHeaderLeft}>
-                  {cleaner.photo_url ? (
-                    <Image source={{ uri: cleaner.photo_url }} style={styles.cleanerPhoto} />
-                  ) : (
-                    <View style={styles.cleanerPhoto}>
-                      <Icon name="person" size={30} style={{ color: colors.textSecondary, alignSelf: 'center', marginTop: 10 }} />
+          filteredCleaners.map((cleaner) => {
+            const cleanerGroup = getCleanerGroup(cleaner.id);
+            
+            return (
+              <AnimatedCard key={cleaner.id} style={styles.cleanerCard}>
+                <View style={styles.cleanerHeader}>
+                  <View style={styles.cleanerHeaderLeft}>
+                    {cleaner.photo_url ? (
+                      <Image source={{ uri: cleaner.photo_url }} style={styles.cleanerPhoto} />
+                    ) : (
+                      <View style={styles.cleanerPhoto}>
+                        <Icon name="person" size={30} style={{ color: colors.textSecondary, alignSelf: 'center', marginTop: 10 }} />
+                      </View>
+                    )}
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.cleanerName}>{cleaner.name}</Text>
+                      {cleaner.legal_name && cleaner.legal_name !== cleaner.name && (
+                        <Text style={styles.detailText}>Legal: {cleaner.legal_name}</Text>
+                      )}
+                      {cleaner.go_by && cleaner.go_by !== cleaner.name && (
+                        <Text style={styles.detailText}>Goes by: {cleaner.go_by}</Text>
+                      )}
+                    </View>
+                  </View>
+                  <View style={styles.badgeContainer}>
+                    <View
+                      style={[styles.securityBadge, { backgroundColor: getSecurityLevelColor(cleaner.securityLevel) + '20' }]}
+                    >
+                      <Text style={[styles.badgeText, { color: getSecurityLevelColor(cleaner.securityLevel) }]}>
+                        {cleaner.securityLevel}
+                      </Text>
+                    </View>
+                    <View
+                      style={[styles.statusBadge, { backgroundColor: getEmploymentStatusColor(cleaner.employment_status || 'active') + '20' }]}
+                    >
+                      <Text style={[styles.badgeText, { color: getEmploymentStatusColor(cleaner.employment_status || 'active') }]}>
+                        {cleaner.employment_status || 'active'}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                {cleanerGroup && (
+                  <View style={[styles.groupBadge, { backgroundColor: `${cleanerGroup.highlight_color}20` }]}>
+                    <Icon name="people" size={14} style={{ color: cleanerGroup.highlight_color }} />
+                    <Text style={[styles.groupBadgeText, { color: cleanerGroup.highlight_color }]}>
+                      {cleanerGroup.group_name}
+                    </Text>
+                  </View>
+                )}
+
+                <View style={styles.cleanerDetails}>
+                  <View style={styles.detailRow}>
+                    <Icon name="card" size={16} style={{ color: colors.textSecondary }} />
+                    <Text style={styles.detailText}>ID: {cleaner.employeeId}</Text>
+                  </View>
+
+                  {cleaner.dob && (
+                    <View style={styles.detailRow}>
+                      <Icon name="calendar" size={16} style={{ color: colors.textSecondary }} />
+                      <Text style={styles.detailText}>DOB: {new Date(cleaner.dob).toLocaleDateString()}</Text>
                     </View>
                   )}
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.cleanerName}>{cleaner.name}</Text>
-                    {cleaner.legal_name && cleaner.legal_name !== cleaner.name && (
-                      <Text style={styles.detailText}>Legal: {cleaner.legal_name}</Text>
-                    )}
-                    {cleaner.go_by && cleaner.go_by !== cleaner.name && (
-                      <Text style={styles.detailText}>Goes by: {cleaner.go_by}</Text>
-                    )}
-                  </View>
-                </View>
-                <View style={styles.badgeContainer}>
-                  <View
-                    style={[styles.securityBadge, { backgroundColor: getSecurityLevelColor(cleaner.securityLevel) + '20' }]}
-                  >
-                    <Text style={[styles.badgeText, { color: getSecurityLevelColor(cleaner.securityLevel) }]}>
-                      {cleaner.securityLevel}
-                    </Text>
-                  </View>
-                  <View
-                    style={[styles.statusBadge, { backgroundColor: getEmploymentStatusColor(cleaner.employment_status || 'active') + '20' }]}
-                  >
-                    <Text style={[styles.badgeText, { color: getEmploymentStatusColor(cleaner.employment_status || 'active') }]}>
-                      {cleaner.employment_status || 'active'}
-                    </Text>
-                  </View>
-                </View>
-              </View>
 
-              <View style={styles.cleanerDetails}>
-                <View style={styles.detailRow}>
-                  <Icon name="card" size={16} style={{ color: colors.textSecondary }} />
-                  <Text style={styles.detailText}>ID: {cleaner.employeeId}</Text>
-                </View>
-
-                {cleaner.dob && (
-                  <View style={styles.detailRow}>
-                    <Icon name="calendar" size={16} style={{ color: colors.textSecondary }} />
-                    <Text style={styles.detailText}>DOB: {new Date(cleaner.dob).toLocaleDateString()}</Text>
-                  </View>
-                )}
-
-                {cleaner.phoneNumber && (
-                  <View style={styles.detailRow}>
-                    <Icon name="call" size={16} style={{ color: colors.textSecondary }} />
-                    <Text style={styles.detailText}>{cleaner.phoneNumber}</Text>
-                  </View>
-                )}
-
-                {cleaner.email && (
-                  <View style={styles.detailRow}>
-                    <Icon name="mail" size={16} style={{ color: colors.textSecondary }} />
-                    <Text style={styles.detailText}>{cleaner.email}</Text>
-                  </View>
-                )}
-
-                {cleaner.hireDate && (
-                  <View style={styles.detailRow}>
-                    <Icon name="briefcase" size={16} style={{ color: colors.textSecondary }} />
-                    <Text style={styles.detailText}>Hired: {new Date(cleaner.hireDate).toLocaleDateString()}</Text>
-                  </View>
-                )}
-
-                {cleaner.term_date && (
-                  <View style={styles.detailRow}>
-                    <Icon name="exit" size={16} style={{ color: colors.textSecondary }} />
-                    <Text style={styles.detailText}>Terminated: {new Date(cleaner.term_date).toLocaleDateString()}</Text>
-                  </View>
-                )}
-
-                {cleaner.rehire_date && (
-                  <View style={styles.detailRow}>
-                    <Icon name="refresh" size={16} style={{ color: colors.textSecondary }} />
-                    <Text style={styles.detailText}>Rehired: {new Date(cleaner.rehire_date).toLocaleDateString()}</Text>
-                  </View>
-                )}
-
-                {cleaner.defaultHourlyRate && (
-                  <View style={styles.detailRow}>
-                    <Icon name="cash" size={16} style={{ color: colors.textSecondary }} />
-                    <Text style={styles.detailText}>
-                      {cleaner.pay_type === 'hourly' ? `$${cleaner.defaultHourlyRate.toFixed(2)}/hr` : 
-                       cleaner.pay_type === 'salary' ? `$${cleaner.defaultHourlyRate.toFixed(2)}/yr` :
-                       `$${cleaner.defaultHourlyRate.toFixed(2)}`}
-                    </Text>
-                  </View>
-                )}
-              </View>
-
-              {cleaner.specialties && cleaner.specialties.length > 0 && (
-                <View style={styles.specialtiesContainer}>
-                  {cleaner.specialties.map((specialty, index) => (
-                    <View key={index} style={styles.specialtyChip}>
-                      <Text style={styles.specialtyText}>{specialty}</Text>
+                  {cleaner.phoneNumber && (
+                    <View style={styles.detailRow}>
+                      <Icon name="call" size={16} style={{ color: colors.textSecondary }} />
+                      <Text style={styles.detailText}>{cleaner.phoneNumber}</Text>
                     </View>
-                  ))}
+                  )}
+
+                  {cleaner.email && (
+                    <View style={styles.detailRow}>
+                      <Icon name="mail" size={16} style={{ color: colors.textSecondary }} />
+                      <Text style={styles.detailText}>{cleaner.email}</Text>
+                    </View>
+                  )}
+
+                  {cleaner.hireDate && (
+                    <View style={styles.detailRow}>
+                      <Icon name="briefcase" size={16} style={{ color: colors.textSecondary }} />
+                      <Text style={styles.detailText}>Hired: {new Date(cleaner.hireDate).toLocaleDateString()}</Text>
+                    </View>
+                  )}
+
+                  {cleaner.term_date && (
+                    <View style={styles.detailRow}>
+                      <Icon name="exit" size={16} style={{ color: colors.textSecondary }} />
+                      <Text style={styles.detailText}>Terminated: {new Date(cleaner.term_date).toLocaleDateString()}</Text>
+                    </View>
+                  )}
+
+                  {cleaner.rehire_date && (
+                    <View style={styles.detailRow}>
+                      <Icon name="refresh" size={16} style={{ color: colors.textSecondary }} />
+                      <Text style={styles.detailText}>Rehired: {new Date(cleaner.rehire_date).toLocaleDateString()}</Text>
+                    </View>
+                  )}
+
+                  {cleaner.defaultHourlyRate && (
+                    <View style={styles.detailRow}>
+                      <Icon name="cash" size={16} style={{ color: colors.textSecondary }} />
+                      <Text style={styles.detailText}>
+                        {cleaner.pay_type === 'hourly' ? `$${cleaner.defaultHourlyRate.toFixed(2)}/hr` : 
+                         cleaner.pay_type === 'salary' ? `$${cleaner.defaultHourlyRate.toFixed(2)}/yr` :
+                         `$${cleaner.defaultHourlyRate.toFixed(2)}`}
+                      </Text>
+                    </View>
+                  )}
                 </View>
-              )}
 
-              <View style={styles.cleanerActions}>
-                <TouchableOpacity
-                  style={styles.actionButton}
-                  onPress={() => {
-                    console.log('View button pressed for cleaner:', cleaner.id);
-                    openDetailsModal(cleaner);
-                  }}
-                >
-                  <Icon name="eye" size={20} style={{ color: colors.primary }} />
-                  <Text style={[styles.actionButtonText, { color: colors.primary }]}>View</Text>
-                </TouchableOpacity>
+                {cleaner.specialties && cleaner.specialties.length > 0 && (
+                  <View style={styles.specialtiesContainer}>
+                    {cleaner.specialties.map((specialty, index) => (
+                      <View key={index} style={styles.specialtyChip}>
+                        <Text style={styles.specialtyText}>{specialty}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
 
-                <TouchableOpacity
-                  style={styles.actionButton}
-                  onPress={() => {
-                    console.log('Edit button pressed for cleaner:', cleaner.id);
-                    openEditModal(cleaner);
-                  }}
-                >
-                  <Icon name="create" size={20} style={{ color: colors.warning }} />
-                  <Text style={[styles.actionButtonText, { color: colors.warning }]}>Edit</Text>
-                </TouchableOpacity>
+                <View style={styles.cleanerActions}>
+                  <TouchableOpacity
+                    style={styles.actionButton}
+                    onPress={() => {
+                      console.log('View button pressed for cleaner:', cleaner.id);
+                      openDetailsModal(cleaner);
+                    }}
+                  >
+                    <Icon name="eye" size={20} style={{ color: colors.primary }} />
+                    <Text style={[styles.actionButtonText, { color: colors.primary }]}>View</Text>
+                  </TouchableOpacity>
 
-                <TouchableOpacity 
-                  style={styles.actionButton} 
-                  onPress={() => {
-                    console.log('Delete button pressed for cleaner:', cleaner.id);
-                    handleDeleteCleaner(cleaner.id);
-                  }}
-                >
-                  <Icon name="trash" size={20} style={{ color: colors.danger }} />
-                  <Text style={[styles.actionButtonText, { color: colors.danger }]}>Delete</Text>
-                </TouchableOpacity>
-              </View>
-            </AnimatedCard>
-          ))
+                  <TouchableOpacity
+                    style={styles.actionButton}
+                    onPress={() => {
+                      console.log('Edit button pressed for cleaner:', cleaner.id);
+                      openEditModal(cleaner);
+                    }}
+                  >
+                    <Icon name="create" size={20} style={{ color: colors.warning }} />
+                    <Text style={[styles.actionButtonText, { color: colors.warning }]}>Edit</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity 
+                    style={styles.actionButton} 
+                    onPress={() => {
+                      console.log('Delete button pressed for cleaner:', cleaner.id);
+                      handleDeleteCleaner(cleaner.id);
+                    }}
+                  >
+                    <Icon name="trash" size={20} style={{ color: colors.danger }} />
+                    <Text style={[styles.actionButtonText, { color: colors.danger }]}>Delete</Text>
+                  </TouchableOpacity>
+                </View>
+              </AnimatedCard>
+            );
+          })
         )}
       </ScrollView>
 
@@ -1340,6 +1440,14 @@ export default function CleanersScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Cleaner Groups Modal */}
+      <CleanerGroupsModal
+        visible={showGroupsModal}
+        onClose={() => setShowGroupsModal(false)}
+        cleaners={cleaners}
+        onRefresh={loadCleanerGroups}
+      />
 
       <Toast />
     </View>

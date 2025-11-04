@@ -5,6 +5,7 @@ import { colors, spacing, typography, commonStyles, getContrastColor } from '../
 import Icon from '../Icon';
 import Button from '../Button';
 import IconButton from '../IconButton';
+import FilterDropdown from '../FilterDropdown';
 import { getInventoryTransferLogs, deleteInventoryTransferLog, formatTransferSummary, type InventoryTransfer } from '../../utils/inventoryTracking';
 import PropTypes from 'prop-types';
 
@@ -22,7 +23,8 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
   const [searchQuery, setSearchQuery] = useState('');
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
   const [transferToDelete, setTransferToDelete] = useState<InventoryTransfer | null>(null);
-  const [selectedBuilding, setSelectedBuilding] = useState<string>('all');
+  const [selectedClient, setSelectedClient] = useState<string>('');
+  const [selectedBuilding, setSelectedBuilding] = useState<string>('');
 
   useEffect(() => {
     if (visible) {
@@ -43,22 +45,59 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
     }
   };
 
-  const uniqueBuildings = useMemo(() => {
-    const buildings = new Set(transfers.map(t => t.destination));
-    return Array.from(buildings).sort();
+  // Extract client names from building destinations (format: "Client - Building")
+  const uniqueClients = useMemo(() => {
+    const clients = new Set<string>();
+    transfers.forEach(t => {
+      const parts = t.destination.split(' - ');
+      if (parts.length > 1) {
+        clients.add(parts[0]);
+      }
+    });
+    return Array.from(clients).sort();
   }, [transfers]);
+
+  // Get unique buildings (filtered by selected client if any)
+  const uniqueBuildings = useMemo(() => {
+    let filteredTransfers = transfers;
+    if (selectedClient) {
+      filteredTransfers = transfers.filter(t => t.destination.startsWith(selectedClient + ' - '));
+    }
+    const buildings = new Set(filteredTransfers.map(t => t.destination));
+    return Array.from(buildings).sort();
+  }, [transfers, selectedClient]);
 
   const filteredTransfers = useMemo(() => {
     return transfers.filter(transfer => {
-      const matchesBuilding = selectedBuilding === 'all' || transfer.destination === selectedBuilding;
-      const matchesSearch = searchQuery === '' || 
-        transfer.destination.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        transfer.items.some(item => item.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        transfer.transferredBy.toLowerCase().includes(searchQuery.toLowerCase());
+      // Filter by client
+      if (selectedClient) {
+        if (!transfer.destination.toLowerCase().includes(selectedClient.toLowerCase())) {
+          return false;
+        }
+      }
+
+      // Filter by building
+      if (selectedBuilding) {
+        if (!transfer.destination.toLowerCase().includes(selectedBuilding.toLowerCase())) {
+          return false;
+        }
+      }
+
+      // Filter by search query
+      if (searchQuery !== '') {
+        const matchesSearch = 
+          transfer.destination.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          transfer.items.some(item => item.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
+          transfer.transferredBy.toLowerCase().includes(searchQuery.toLowerCase());
+        
+        if (!matchesSearch) {
+          return false;
+        }
+      }
       
-      return matchesBuilding && matchesSearch;
+      return true;
     });
-  }, [transfers, selectedBuilding, searchQuery]);
+  }, [transfers, selectedClient, selectedBuilding, searchQuery]);
 
   const handleDeleteTransfer = (transfer: InventoryTransfer) => {
     console.log('Delete transfer requested:', transfer.id);
@@ -95,6 +134,24 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
       setShowDeleteConfirmModal(false);
       setTransferToDelete(null);
     }
+  };
+
+  const clearFilters = () => {
+    setSelectedClient('');
+    setSelectedBuilding('');
+    setSearchQuery('');
+  };
+
+  const hasActiveFilters = selectedClient !== '' || selectedBuilding !== '' || searchQuery !== '';
+
+  const getClientCount = (clientName: string) => {
+    if (!clientName) return transfers.length;
+    return transfers.filter(t => t.destination.startsWith(clientName + ' - ')).length;
+  };
+
+  const getBuildingCount = (buildingName: string) => {
+    if (!buildingName) return uniqueBuildings.length;
+    return transfers.filter(t => t.destination === buildingName).length;
   };
 
   const groupTransfersByDate = (transfers: InventoryTransfer[]) => {
@@ -197,74 +254,55 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
                 </View>
               </View>
 
+              {/* Filter Section */}
               <View style={{ marginBottom: spacing.md }}>
-                <Text style={[typography.caption, { 
-                  color: colors.textSecondary, 
-                  marginBottom: spacing.xs,
-                  fontWeight: '600',
-                  textTransform: 'uppercase',
-                  letterSpacing: 0.5
-                }]}>
-                  Filter by Building
-                </Text>
-                <ScrollView 
-                  horizontal 
-                  showsHorizontalScrollIndicator={false}
-                  style={{ marginHorizontal: -spacing.sm }}
-                  contentContainerStyle={{ paddingHorizontal: spacing.sm }}
-                >
-                  <TouchableOpacity
-                    style={[
-                      styles.buildingFilterButton,
-                      selectedBuilding === 'all' && styles.buildingFilterButtonActive
-                    ]}
-                    onPress={() => setSelectedBuilding('all')}
-                  >
-                    <Icon 
-                      name="business" 
-                      size={16} 
-                      style={{ 
-                        color: selectedBuilding === 'all' ? colors.background : colors.primary,
-                        marginRight: spacing.xs 
-                      }} 
-                    />
-                    <Text style={[
-                      styles.buildingFilterText,
-                      selectedBuilding === 'all' && styles.buildingFilterTextActive
-                    ]}>
-                      All Buildings ({transfers.length})
-                    </Text>
-                  </TouchableOpacity>
-                  
-                  {uniqueBuildings.map((building) => {
-                    const count = transfers.filter(t => t.destination === building).length;
-                    return (
-                      <TouchableOpacity
-                        key={building}
-                        style={[
-                          styles.buildingFilterButton,
-                          selectedBuilding === building && styles.buildingFilterButtonActive
-                        ]}
-                        onPress={() => setSelectedBuilding(building)}
-                      >
-                        <Icon 
-                          name="location" 
-                          size={16} 
-                          style={{ 
-                            color: selectedBuilding === building ? colors.background : colors.primary,
-                            marginRight: spacing.xs 
-                          }} 
-                        />
-                        <Text style={[
-                          styles.buildingFilterText,
-                          selectedBuilding === building && styles.buildingFilterTextActive
-                        ]}>
-                          {building} ({count})
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
+                <View style={[commonStyles.row, { justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm }]}>
+                  <Text style={[typography.caption, { 
+                    color: colors.textSecondary, 
+                    fontWeight: '600',
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.5
+                  }]}>
+                    Filters
+                  </Text>
+                  {hasActiveFilters && (
+                    <TouchableOpacity onPress={clearFilters}>
+                      <Text style={[typography.small, { color: colors.danger, fontWeight: '600' }]}>
+                        Clear All
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {/* Enhanced Filter Dropdowns with Manual Input */}
+                <View style={{ marginBottom: spacing.sm }}>
+                  <FilterDropdown
+                    label="Client"
+                    value={selectedClient}
+                    onValueChange={(value) => {
+                      setSelectedClient(value);
+                      setSelectedBuilding('');
+                    }}
+                    options={uniqueClients}
+                    placeholder="All Clients or type..."
+                    themeColor={colors.primary}
+                    allowManualInput={true}
+                    showCount={true}
+                    getOptionCount={getClientCount}
+                  />
+                </View>
+
+                <FilterDropdown
+                  label="Building"
+                  value={selectedBuilding}
+                  onValueChange={setSelectedBuilding}
+                  options={uniqueBuildings}
+                  placeholder="All Buildings or type..."
+                  themeColor={colors.primary}
+                  allowManualInput={true}
+                  showCount={true}
+                  getOptionCount={getBuildingCount}
+                />
               </View>
 
               <ScrollView showsVerticalScrollIndicator={false}>
@@ -272,17 +310,24 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
                   <View style={{ alignItems: 'center', paddingVertical: spacing.xxl }}>
                     <Icon name="archive" size={48} style={{ color: colors.textSecondary, marginBottom: spacing.md }} />
                     <Text style={[typography.body, { color: colors.textSecondary, textAlign: 'center' }]}>
-                      {selectedBuilding === 'all' 
-                        ? 'No transfer history found'
-                        : `No transfers found for ${selectedBuilding}`
+                      {hasActiveFilters
+                        ? 'No transfers match your filters'
+                        : 'No transfer history found'
                       }
                     </Text>
                     <Text style={[typography.caption, { color: colors.textSecondary, textAlign: 'center', marginTop: spacing.xs }]}>
-                      {selectedBuilding === 'all'
-                        ? 'Transfer records will appear here once items are sent'
-                        : 'Try selecting a different building or view all transfers'
+                      {hasActiveFilters
+                        ? 'Try adjusting your filters or clear them to see all transfers'
+                        : 'Transfer records will appear here once items are sent'
                       }
                     </Text>
+                    {hasActiveFilters && (
+                      <TouchableOpacity onPress={clearFilters} style={{ marginTop: spacing.md }}>
+                        <Text style={[typography.body, { color: colors.primary, fontWeight: '600' }]}>
+                          Clear Filters
+                        </Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 ) : (
                   Object.keys(groupedTransfers).map(dateString => (
@@ -431,7 +476,7 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
                 Delete Transfer Record
               </Text>
               <Text style={[typography.body, { color: colors.textSecondary, textAlign: 'center' }]}>
-                Are you sure you want to delete this transfer record to "{transferToDelete?.destination}"? This action cannot be undone.
+                Are you sure you want to delete this transfer record to &quot;{transferToDelete?.destination}&quot;? This action cannot be undone.
               </Text>
             </View>
             
@@ -457,33 +502,6 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
       </Modal>
     </>
   );
-});
-
-const styles = StyleSheet.create({
-  buildingFilterButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: 20,
-    backgroundColor: colors.backgroundAlt,
-    marginRight: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  buildingFilterButtonActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  buildingFilterText: {
-    ...typography.small,
-    color: colors.text,
-    fontWeight: '500',
-  },
-  buildingFilterTextActive: {
-    color: colors.background,
-    fontWeight: '600',
-  },
 });
 
 TransferHistoryModal.propTypes = {
