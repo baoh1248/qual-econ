@@ -77,70 +77,102 @@ export default function FilterDropdown({
     }
   };
 
+  const hasValue = inputValue.trim() !== '';
+
   return (
     <View style={styles.container}>
-      <Text style={styles.label}>{label}</Text>
+      <View style={styles.labelContainer}>
+        <Text style={styles.label}>{label}</Text>
+        {hasValue && (
+          <View style={[styles.activeBadge, { backgroundColor: themeColor }]}>
+            <Text style={styles.activeBadgeText}>Active</Text>
+          </View>
+        )}
+      </View>
       
       <View style={styles.inputContainer}>
         <TouchableOpacity
           style={[
             styles.inputWrapper,
-            isOpen && [styles.inputWrapperActive, { borderColor: themeColor }]
+            hasValue && [styles.inputWrapperActive, { borderColor: themeColor, backgroundColor: themeColor + '08' }],
+            isOpen && [styles.inputWrapperFocused, { borderColor: themeColor, shadowColor: themeColor }]
           ]}
           onPress={handleToggleDropdown}
           activeOpacity={1}
         >
-          <TextInput
-            ref={inputRef}
-            style={[
-              styles.input,
-              !inputValue && styles.inputPlaceholder
-            ]}
-            placeholder={placeholder}
-            placeholderTextColor={colors.textSecondary}
-            value={inputValue}
-            onChangeText={handleInputChange}
-            onFocus={() => setIsOpen(true)}
-          />
+          <View style={styles.inputContent}>
+            <Icon 
+              name="search" 
+              size={18} 
+              color={hasValue ? themeColor : colors.textSecondary} 
+              style={styles.searchIcon}
+            />
+            <TextInput
+              ref={inputRef}
+              style={[
+                styles.input,
+                hasValue && { color: themeColor, fontWeight: '600' }
+              ]}
+              placeholder={placeholder}
+              placeholderTextColor={colors.textSecondary}
+              value={inputValue}
+              onChangeText={handleInputChange}
+              onFocus={() => setIsOpen(true)}
+            />
+          </View>
           
           <View style={styles.iconContainer}>
             {inputValue ? (
               <TouchableOpacity onPress={handleClear} style={styles.iconButton}>
-                <Icon name="close-circle" size={20} color={colors.textSecondary} />
+                <Icon name="close-circle" size={18} color={colors.textSecondary} />
               </TouchableOpacity>
             ) : null}
             <TouchableOpacity onPress={handleToggleDropdown} style={styles.iconButton}>
               <Icon 
                 name={isOpen ? 'chevron-up' : 'chevron-down'} 
-                size={20} 
-                color={colors.textSecondary} 
+                size={18} 
+                color={hasValue ? themeColor : colors.textSecondary} 
               />
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
 
         {isOpen && (
-          <View style={styles.dropdown}>
+          <View style={[styles.dropdown, { shadowColor: themeColor }]}>
             <ScrollView 
               style={styles.dropdownScroll}
               nestedScrollEnabled
               keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
             >
               {/* Show "All" option */}
               <TouchableOpacity
                 style={[
                   styles.dropdownItem,
-                  !value && styles.dropdownItemSelected
+                  !value && [styles.dropdownItemSelected, { backgroundColor: themeColor + '15' }]
                 ]}
                 onPress={() => handleSelectOption('')}
               >
-                <Text style={[
-                  styles.dropdownItemText,
-                  !value && [styles.dropdownItemTextSelected, { color: themeColor }]
-                ]}>
-                  All {label}
-                  {showCount && getOptionCount && ` (${getOptionCount('')})`}
-                </Text>
+                <View style={styles.dropdownItemContent}>
+                  <Icon 
+                    name={!value ? 'checkmark-circle' : 'ellipse-outline'} 
+                    size={20} 
+                    color={!value ? themeColor : colors.textSecondary} 
+                  />
+                  <Text style={[
+                    styles.dropdownItemText,
+                    !value && [styles.dropdownItemTextSelected, { color: themeColor }]
+                  ]}>
+                    All {label}
+                  </Text>
+                  {showCount && getOptionCount && (
+                    <View style={[styles.countBadge, !value && { backgroundColor: themeColor }]}>
+                      <Text style={[styles.countBadgeText, !value && { color: colors.textInverse }]}>
+                        {getOptionCount('')}
+                      </Text>
+                    </View>
+                  )}
+                </View>
               </TouchableOpacity>
 
               {/* Show filtered options */}
@@ -151,28 +183,41 @@ export default function FilterDropdown({
                     style={[
                       styles.dropdownItem,
                       index === filteredOptions.length - 1 && styles.dropdownItemLast,
-                      value === option && styles.dropdownItemSelected
+                      value === option && [styles.dropdownItemSelected, { backgroundColor: themeColor + '15' }]
                     ]}
                     onPress={() => handleSelectOption(option)}
                   >
-                    <Text style={[
-                      styles.dropdownItemText,
-                      value === option && [styles.dropdownItemTextSelected, { color: themeColor }]
-                    ]}>
-                      {option}
-                      {showCount && getOptionCount && ` (${getOptionCount(option)})`}
-                    </Text>
+                    <View style={styles.dropdownItemContent}>
+                      <Icon 
+                        name={value === option ? 'checkmark-circle' : 'ellipse-outline'} 
+                        size={20} 
+                        color={value === option ? themeColor : colors.textSecondary} 
+                      />
+                      <Text style={[
+                        styles.dropdownItemText,
+                        value === option && [styles.dropdownItemTextSelected, { color: themeColor }]
+                      ]}>
+                        {option}
+                      </Text>
+                      {showCount && getOptionCount && (
+                        <View style={[styles.countBadge, value === option && { backgroundColor: themeColor }]}>
+                          <Text style={[styles.countBadgeText, value === option && { color: colors.textInverse }]}>
+                            {getOptionCount(option)}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
                   </TouchableOpacity>
                 ))
               ) : (
                 <View style={styles.noResults}>
-                  <Icon name="search" size={24} color={colors.textSecondary} />
+                  <Icon name="search" size={32} color={colors.textSecondary} />
                   <Text style={styles.noResultsText}>
                     No matches found
                   </Text>
                   {allowManualInput && inputValue.trim() && (
                     <Text style={styles.noResultsHint}>
-                      Press Enter to use &quot;{inputValue}&quot;
+                      Using custom filter: &quot;{inputValue}&quot;
                     </Text>
                   )}
                 </View>
@@ -198,12 +243,32 @@ const styles = StyleSheet.create({
   container: {
     position: 'relative',
     zIndex: 1000,
+    marginBottom: spacing.sm,
+  },
+  labelContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+    gap: spacing.xs,
   },
   label: {
-    ...typography.caption,
+    ...typography.small,
     color: colors.textSecondary,
-    marginBottom: spacing.xs,
-    fontWeight: '600',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  activeBadge: {
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  activeBadgeText: {
+    ...typography.small,
+    fontSize: 10,
+    color: colors.textInverse,
+    fontWeight: '700',
+    textTransform: 'uppercase',
   },
   inputContainer: {
     position: 'relative',
@@ -212,14 +277,31 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.background,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.border,
-    borderRadius: 8,
+    borderRadius: 12,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
+    minHeight: 48,
+    transition: 'all 0.2s ease',
   },
   inputWrapperActive: {
     borderWidth: 2,
+  },
+  inputWrapperFocused: {
+    borderWidth: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  inputContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  searchIcon: {
+    marginRight: spacing.sm,
   },
   input: {
     flex: 1,
@@ -228,13 +310,11 @@ const styles = StyleSheet.create({
     padding: 0,
     margin: 0,
   },
-  inputPlaceholder: {
-    color: colors.textSecondary,
-  },
   iconContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
+    marginLeft: spacing.sm,
   },
   iconButton: {
     padding: spacing.xs,
@@ -245,54 +325,76 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     backgroundColor: colors.background,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.border,
-    borderRadius: 8,
+    borderRadius: 12,
     marginTop: spacing.xs,
-    maxHeight: 250,
-    shadowColor: colors.text,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 4,
+    maxHeight: 280,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
     zIndex: 1001,
+    overflow: 'hidden',
   },
   dropdownScroll: {
-    maxHeight: 250,
+    maxHeight: 280,
   },
   dropdownItem: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomColor: colors.border + '40',
   },
   dropdownItemLast: {
     borderBottomWidth: 0,
   },
+  dropdownItemContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
   dropdownItemText: {
     ...typography.body,
     color: colors.text,
+    flex: 1,
   },
   dropdownItemSelected: {
-    backgroundColor: colors.primary + '20',
+    backgroundColor: colors.primary + '10',
   },
   dropdownItemTextSelected: {
-    fontWeight: '600',
+    fontWeight: '700',
+  },
+  countBadge: {
+    backgroundColor: colors.backgroundAlt,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: 12,
+    minWidth: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  countBadgeText: {
+    ...typography.small,
+    fontSize: 11,
+    color: colors.textSecondary,
+    fontWeight: '700',
   },
   noResults: {
-    padding: spacing.lg,
+    padding: spacing.xl,
     alignItems: 'center',
   },
   noResultsText: {
     ...typography.body,
     color: colors.textSecondary,
-    marginTop: spacing.sm,
+    marginTop: spacing.md,
     textAlign: 'center',
+    fontWeight: '600',
   },
   noResultsHint: {
     ...typography.caption,
     color: colors.textSecondary,
-    marginTop: spacing.xs,
+    marginTop: spacing.sm,
     textAlign: 'center',
     fontStyle: 'italic',
   },

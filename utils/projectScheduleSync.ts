@@ -16,7 +16,7 @@ interface ClientProject {
  */
 export function getDayOfWeek(dateStr: string): 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday' {
   const date = new Date(dateStr);
-  const days: Array<'sunday' | 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday'> = [
+  const days: ('sunday' | 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday')[] = [
     'sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'
   ];
   return days[date.getDay()] as any;

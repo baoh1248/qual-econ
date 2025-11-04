@@ -15,21 +15,16 @@ export default function CleanerSigninScreen() {
   
   const { toast, showToast, hideToast } = useToast();
   
-  const [emailOrPhone, setEmailOrPhone] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  const isEmail = (input: string): boolean => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(input.trim());
-  };
-
   const handleSignin = async () => {
     console.log('Signin button pressed');
     
-    if (!emailOrPhone.trim()) {
-      showToast('Email or phone number is required', 'error');
+    if (!phoneNumber.trim()) {
+      showToast('Phone number is required', 'error');
       return;
     }
     
@@ -42,88 +37,51 @@ export default function CleanerSigninScreen() {
       setIsLoading(true);
       console.log('Starting signin process...');
 
-      const inputValue = emailOrPhone.trim();
-      const isEmailInput = isEmail(inputValue);
+      const phoneValue = phoneNumber.trim();
 
-      console.log('Login attempt with:', isEmailInput ? 'email' : 'phone number');
+      console.log('Login attempt with phone number:', phoneValue);
 
-      let userId: string | null = null;
+      // Sign in with phone number and password
+      const { data, error } = await supabase.auth.signInWithPassword({
+        phone: phoneValue,
+        password: password,
+      });
 
-      if (isEmailInput) {
-        // Sign in with email
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: inputValue,
-          password: password,
-        });
-
-        if (error) {
-          console.error('Email signin error:', error);
-          
-          if (error.message.includes('Invalid login credentials')) {
-            showToast('Invalid credentials. Please check your email and password.', 'error');
-          } else if (error.message.includes('Email not confirmed')) {
-            showToast('Please verify your email before signing in. Check your inbox for the verification link.', 'error');
-          } else {
-            showToast(error.message || 'Failed to sign in', 'error');
-          }
-          return;
-        }
-
-        if (!data.user) {
-          console.error('No user data returned from signin');
-          showToast('Failed to sign in', 'error');
-          return;
-        }
-
-        userId = data.user.id;
-        console.log('Email signin successful:', userId);
-
-      } else {
-        // Sign in with phone number - look up user by phone number
-        console.log('Looking up user by phone number...');
+      if (error) {
+        console.error('Phone signin error:', error);
         
-        const { data: cleanerData, error: cleanerError } = await supabase
-          .from('cleaners')
-          .select('user_id, email')
-          .eq('phone_number', inputValue)
-          .single();
-
-        if (cleanerError || !cleanerData) {
-          console.error('Phone number lookup error:', cleanerError);
-          showToast('No account found with this phone number', 'error');
-          return;
+        // Handle specific error cases
+        if (error.message.includes('Invalid login credentials')) {
+          showToast('Invalid credentials. Please check your phone number and password.', 'error');
+        } else if (error.message.includes('Phone not confirmed') || 
+                   error.message.includes('not confirmed') ||
+                   error.message.includes('Email not confirmed')) {
+          Alert.alert(
+            'Phone Not Verified',
+            'Your phone number has not been verified yet. Please check your SMS messages for the verification code, or contact your supervisor for assistance.',
+            [{ text: 'OK' }]
+          );
+        } else if (error.message.includes('Phone signups are disabled') || 
+                   error.message.includes('phone_provider_disabled')) {
+          Alert.alert(
+            'Phone Authentication Disabled',
+            'Phone number sign-in is currently disabled in the system. Please contact your supervisor to enable phone authentication.\n\nError: Phone provider is not configured.',
+            [{ text: 'OK' }]
+          );
+        } else {
+          showToast(error.message || 'Failed to sign in', 'error');
         }
-
-        console.log('Found user with phone number, attempting email signin...');
-
-        // Now sign in with the email associated with this phone number
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: cleanerData.email,
-          password: password,
-        });
-
-        if (error) {
-          console.error('Phone-based signin error:', error);
-          
-          if (error.message.includes('Invalid login credentials')) {
-            showToast('Invalid password for this phone number', 'error');
-          } else if (error.message.includes('Email not confirmed')) {
-            showToast('Please verify your email before signing in. Check your inbox for the verification link.', 'error');
-          } else {
-            showToast(error.message || 'Failed to sign in', 'error');
-          }
-          return;
-        }
-
-        if (!data.user) {
-          console.error('No user data returned from signin');
-          showToast('Failed to sign in', 'error');
-          return;
-        }
-
-        userId = data.user.id;
-        console.log('Phone-based signin successful:', userId);
+        return;
       }
+
+      if (!data.user) {
+        console.error('No user data returned from signin');
+        showToast('Failed to sign in', 'error');
+        return;
+      }
+
+      const userId = data.user.id;
+      console.log('Phone signin successful:', userId);
 
       // Verify that the user has a cleaner profile
       const { data: cleanerProfile, error: profileError } = await supabase
@@ -177,19 +135,19 @@ export default function CleanerSigninScreen() {
           </Text>
 
           <View style={styles.section}>
-            <Text style={styles.label}>Email or Phone Number</Text>
+            <Text style={styles.label}>Phone Number</Text>
             <TextInput
               style={styles.input}
-              placeholder="your.email@example.com or +1 (555) 123-4567"
-              value={emailOrPhone}
-              onChangeText={setEmailOrPhone}
+              placeholder="+1 (555) 123-4567"
+              value={phoneNumber}
+              onChangeText={setPhoneNumber}
               placeholderTextColor={colors.textSecondary}
+              keyboardType="phone-pad"
               autoCapitalize="none"
               autoCorrect={false}
-              keyboardType="default"
             />
             <Text style={styles.inputHint}>
-              You can sign in with either your email address or phone number
+              Enter the phone number you used to sign up
             </Text>
 
             <Text style={styles.label}>Password</Text>
@@ -214,6 +172,16 @@ export default function CleanerSigninScreen() {
                   style={{ color: colors.textSecondary }}
                 />
               </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Info Box for Phone Auth Issues */}
+          <View style={styles.infoBox}>
+            <Icon name="information-circle" size={20} style={{ color: colors.primary }} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.infoText}>
+                Having trouble signing in? Contact your supervisor if you need help with phone verification or account setup.
+              </Text>
             </View>
           </View>
 
@@ -293,6 +261,22 @@ const styles = StyleSheet.create({
     right: spacing.md,
     top: spacing.md,
     padding: spacing.xs,
+  },
+  infoBox: {
+    flexDirection: 'row',
+    backgroundColor: colors.primary + '10',
+    borderRadius: 12,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+    gap: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
+    alignItems: 'flex-start',
+  },
+  infoText: {
+    ...typography.small,
+    color: colors.textSecondary,
+    lineHeight: 18,
   },
   signinButton: {
     marginTop: spacing.lg,

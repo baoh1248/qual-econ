@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, Alert, Switch } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { commonStyles, colors, spacing, typography, buttonStyles } from '../../styles/commonStyles';
@@ -37,11 +37,7 @@ export default function BuildingDetailScreen() {
     address: '',
   });
 
-  useEffect(() => {
-    loadBuildingData();
-  }, [buildingId]);
-
-  const loadBuildingData = () => {
+  const loadBuildingData = useCallback(() => {
     console.log('🔄 Loading building data for ID:', buildingId);
     const foundBuilding = clientBuildings.find(b => b.id === buildingId);
     
@@ -61,7 +57,11 @@ export default function BuildingDetailScreen() {
     }
     
     setLoading(false);
-  };
+  }, [buildingId, clientBuildings, showToast]);
+
+  useEffect(() => {
+    loadBuildingData();
+  }, [loadBuildingData]);
 
   const handleSave = async () => {
     if (!formData.building_name.trim()) {

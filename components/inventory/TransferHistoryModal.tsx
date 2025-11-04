@@ -144,6 +144,13 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
 
   const hasActiveFilters = selectedClient !== '' || selectedBuilding !== '' || searchQuery !== '';
 
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (selectedClient !== '') count++;
+    if (selectedBuilding !== '') count++;
+    return count;
+  }, [selectedClient, selectedBuilding]);
+
   const getClientCount = (clientName: string) => {
     if (!clientName) return transfers.length;
     return transfers.filter(t => t.destination.startsWith(clientName + ' - ')).length;
@@ -233,138 +240,163 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
             </View>
 
             <View style={commonStyles.content}>
-              <View style={[commonStyles.card, { marginBottom: spacing.md }]}>
-                <View style={[commonStyles.row, { justifyContent: 'space-around' }]}>
-                  <View style={{ alignItems: 'center' }}>
-                    <Text style={[typography.h2, { color: colors.primary }]}>{transfers.length}</Text>
-                    <Text style={[typography.caption, { color: colors.textSecondary }]}>Total Transfers</Text>
+              {/* Stats Summary Card */}
+              <View style={[styles.statsCard, { marginBottom: spacing.lg }]}>
+                <View style={styles.statItem}>
+                  <View style={[styles.statIconContainer, { backgroundColor: colors.primary + '20' }]}>
+                    <Icon name="swap-horizontal" size={24} color={colors.primary} />
                   </View>
-                  <View style={{ alignItems: 'center' }}>
-                    <Text style={[typography.h2, { color: colors.success }]}>
+                  <View style={styles.statContent}>
+                    <Text style={styles.statValue}>{transfers.length}</Text>
+                    <Text style={styles.statLabel}>Total Transfers</Text>
+                  </View>
+                </View>
+                
+                <View style={styles.statDivider} />
+                
+                <View style={styles.statItem}>
+                  <View style={[styles.statIconContainer, { backgroundColor: colors.success + '20' }]}>
+                    <Icon name="today" size={24} color={colors.success} />
+                  </View>
+                  <View style={styles.statContent}>
+                    <Text style={styles.statValue}>
                       {transfers.filter(t => new Date(t.timestamp).toDateString() === new Date().toDateString()).length}
                     </Text>
-                    <Text style={[typography.caption, { color: colors.textSecondary }]}>Today</Text>
+                    <Text style={styles.statLabel}>Today</Text>
                   </View>
-                  <View style={{ alignItems: 'center' }}>
-                    <Text style={[typography.h2, { color: colors.info }]}>
-                      {uniqueBuildings.length}
-                    </Text>
-                    <Text style={[typography.caption, { color: colors.textSecondary }]}>Buildings</Text>
+                </View>
+                
+                <View style={styles.statDivider} />
+                
+                <View style={styles.statItem}>
+                  <View style={[styles.statIconContainer, { backgroundColor: colors.info + '20' }]}>
+                    <Icon name="business" size={24} color={colors.info} />
+                  </View>
+                  <View style={styles.statContent}>
+                    <Text style={styles.statValue}>{uniqueBuildings.length}</Text>
+                    <Text style={styles.statLabel}>Buildings</Text>
                   </View>
                 </View>
               </View>
 
               {/* Filter Section */}
-              <View style={{ marginBottom: spacing.md }}>
-                <View style={[commonStyles.row, { justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm }]}>
-                  <Text style={[typography.caption, { 
-                    color: colors.textSecondary, 
-                    fontWeight: '600',
-                    textTransform: 'uppercase',
-                    letterSpacing: 0.5
-                  }]}>
-                    Filters
-                  </Text>
+              <View style={styles.filterSection}>
+                <View style={styles.filterHeader}>
+                  <View style={styles.filterHeaderLeft}>
+                    <Icon name="filter" size={20} color={colors.primary} />
+                    <Text style={styles.filterHeaderText}>Filters</Text>
+                    {activeFilterCount > 0 && (
+                      <View style={[styles.filterBadge, { backgroundColor: colors.primary }]}>
+                        <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
+                      </View>
+                    )}
+                  </View>
                   {hasActiveFilters && (
-                    <TouchableOpacity onPress={clearFilters}>
-                      <Text style={[typography.small, { color: colors.danger, fontWeight: '600' }]}>
-                        Clear All
-                      </Text>
+                    <TouchableOpacity onPress={clearFilters} style={styles.clearButton}>
+                      <Icon name="close-circle" size={16} color={colors.danger} />
+                      <Text style={styles.clearButtonText}>Clear All</Text>
                     </TouchableOpacity>
                   )}
                 </View>
 
-                {/* Enhanced Filter Dropdowns with Manual Input */}
-                <View style={{ marginBottom: spacing.sm }}>
-                  <FilterDropdown
-                    label="Client"
-                    value={selectedClient}
-                    onValueChange={(value) => {
-                      setSelectedClient(value);
-                      setSelectedBuilding('');
-                    }}
-                    options={uniqueClients}
-                    placeholder="All Clients or type..."
-                    themeColor={colors.primary}
-                    allowManualInput={true}
-                    showCount={true}
-                    getOptionCount={getClientCount}
-                  />
-                </View>
+                {/* Enhanced Filter Dropdowns */}
+                <View style={styles.filterGrid}>
+                  <View style={styles.dropdownWrapper}>
+                    <FilterDropdown
+                      label="Client"
+                      value={selectedClient}
+                      onValueChange={(value) => {
+                        setSelectedClient(value);
+                        setSelectedBuilding('');
+                      }}
+                      options={uniqueClients}
+                      placeholder="All Clients or type..."
+                      themeColor={colors.primary}
+                      allowManualInput={true}
+                      showCount={true}
+                      getOptionCount={getClientCount}
+                    />
+                  </View>
 
-                <FilterDropdown
-                  label="Building"
-                  value={selectedBuilding}
-                  onValueChange={setSelectedBuilding}
-                  options={uniqueBuildings}
-                  placeholder="All Buildings or type..."
-                  themeColor={colors.primary}
-                  allowManualInput={true}
-                  showCount={true}
-                  getOptionCount={getBuildingCount}
-                />
+                  <View style={styles.dropdownWrapper}>
+                    <FilterDropdown
+                      label="Building"
+                      value={selectedBuilding}
+                      onValueChange={setSelectedBuilding}
+                      options={uniqueBuildings}
+                      placeholder="All Buildings or type..."
+                      themeColor={colors.primary}
+                      allowManualInput={true}
+                      showCount={true}
+                      getOptionCount={getBuildingCount}
+                    />
+                  </View>
+                </View>
               </View>
 
-              <ScrollView showsVerticalScrollIndicator={false}>
+              {/* Transfer List */}
+              <ScrollView showsVerticalScrollIndicator={false} style={styles.transferList}>
                 {Object.keys(groupedTransfers).length === 0 ? (
-                  <View style={{ alignItems: 'center', paddingVertical: spacing.xxl }}>
-                    <Icon name="archive" size={48} style={{ color: colors.textSecondary, marginBottom: spacing.md }} />
-                    <Text style={[typography.body, { color: colors.textSecondary, textAlign: 'center' }]}>
-                      {hasActiveFilters
-                        ? 'No transfers match your filters'
-                        : 'No transfer history found'
-                      }
+                  <View style={styles.emptyState}>
+                    <View style={[styles.emptyIconContainer, { backgroundColor: colors.primary + '10' }]}>
+                      <Icon name="archive" size={48} color={colors.primary} />
+                    </View>
+                    <Text style={styles.emptyStateTitle}>
+                      {hasActiveFilters ? 'No Matching Transfers' : 'No Transfer History'}
                     </Text>
-                    <Text style={[typography.caption, { color: colors.textSecondary, textAlign: 'center', marginTop: spacing.xs }]}>
+                    <Text style={styles.emptyStateText}>
                       {hasActiveFilters
-                        ? 'Try adjusting your filters or clear them to see all transfers'
+                        ? 'Try adjusting your filters to see more results'
                         : 'Transfer records will appear here once items are sent'
                       }
                     </Text>
                     {hasActiveFilters && (
-                      <TouchableOpacity onPress={clearFilters} style={{ marginTop: spacing.md }}>
-                        <Text style={[typography.body, { color: colors.primary, fontWeight: '600' }]}>
-                          Clear Filters
-                        </Text>
+                      <TouchableOpacity onPress={clearFilters} style={styles.emptyStateButton}>
+                        <Text style={styles.emptyStateButtonText}>Clear Filters</Text>
                       </TouchableOpacity>
                     )}
                   </View>
                 ) : (
                   Object.keys(groupedTransfers).map(dateString => (
-                    <View key={dateString} style={{ marginBottom: spacing.lg }}>
-                      <Text style={[typography.body, { 
-                        color: colors.text, 
-                        fontWeight: '600', 
-                        marginBottom: spacing.sm,
-                        paddingHorizontal: spacing.sm 
-                      }]}>
-                        {new Date(dateString).toLocaleDateString([], { 
-                          weekday: 'long', 
-                          year: 'numeric', 
-                          month: 'long', 
-                          day: 'numeric' 
-                        })}
-                      </Text>
+                    <View key={dateString} style={styles.dateGroup}>
+                      <View style={styles.dateHeader}>
+                        <Icon name="calendar" size={16} color={colors.primary} />
+                        <Text style={styles.dateHeaderText}>
+                          {new Date(dateString).toLocaleDateString([], { 
+                            weekday: 'long', 
+                            year: 'numeric', 
+                            month: 'long', 
+                            day: 'numeric' 
+                          })}
+                        </Text>
+                        <View style={[styles.dateBadge, { backgroundColor: colors.primary + '20' }]}>
+                          <Text style={[styles.dateBadgeText, { color: colors.primary }]}>
+                            {groupedTransfers[dateString].length}
+                          </Text>
+                        </View>
+                      </View>
                       
                       {groupedTransfers[dateString].map((transfer) => (
-                        <View key={transfer.id} style={[commonStyles.card, { marginBottom: spacing.sm }]}>
-                          <View style={[commonStyles.row, commonStyles.spaceBetween, { marginBottom: spacing.sm }]}>
-                            <View style={[commonStyles.row, { flex: 1 }]}>
-                              <Icon 
-                                name="send" 
-                                size={20} 
-                                style={{ color: colors.primary, marginRight: spacing.sm }} 
-                              />
-                              <View style={{ flex: 1 }}>
-                                <Text style={[typography.body, { color: colors.text, fontWeight: '600' }]}>
-                                  {transfer.destination}
-                                </Text>
-                                <Text style={[typography.caption, { color: colors.textSecondary }]}>
-                                  {new Date(transfer.timestamp).toLocaleTimeString([], { 
-                                    hour: '2-digit', 
-                                    minute: '2-digit' 
-                                  })} • by {transfer.transferredBy}
-                                </Text>
+                        <View key={transfer.id} style={styles.transferCard}>
+                          <View style={styles.transferHeader}>
+                            <View style={styles.transferHeaderLeft}>
+                              <View style={[styles.transferIcon, { backgroundColor: colors.primary + '15' }]}>
+                                <Icon name="send" size={20} color={colors.primary} />
+                              </View>
+                              <View style={styles.transferInfo}>
+                                <Text style={styles.transferDestination}>{transfer.destination}</Text>
+                                <View style={styles.transferMeta}>
+                                  <Icon name="time" size={14} color={colors.textSecondary} />
+                                  <Text style={styles.transferMetaText}>
+                                    {new Date(transfer.timestamp).toLocaleTimeString([], { 
+                                      hour: '2-digit', 
+                                      minute: '2-digit' 
+                                    })}
+                                  </Text>
+                                  <View style={styles.metaDivider} />
+                                  <Icon name="person" size={14} color={colors.textSecondary} />
+                                  <Text style={styles.transferMetaText}>{transfer.transferredBy}</Text>
+                                </View>
                               </View>
                             </View>
                             <IconButton
@@ -372,55 +404,34 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
                               onPress={() => handleDeleteTransfer(transfer)}
                               variant="secondary"
                               size="small"
-                              style={{ backgroundColor: colors.danger }}
+                              style={{ backgroundColor: colors.danger + '15' }}
                             />
                           </View>
 
-                          <View style={{ marginBottom: spacing.sm }}>
-                            <Text style={[typography.caption, { color: colors.textSecondary, marginBottom: spacing.xs }]}>
-                              Items Transferred:
-                            </Text>
+                          <View style={styles.transferItems}>
+                            <Text style={styles.transferItemsLabel}>Items Transferred:</Text>
                             {transfer.items.map((item, itemIndex) => (
-                              <View key={itemIndex} style={[commonStyles.row, { marginBottom: spacing.xs }]}>
-                                <View style={{
-                                  width: 6,
-                                  height: 6,
-                                  borderRadius: 3,
-                                  backgroundColor: colors.primary,
-                                  marginRight: spacing.sm,
-                                  marginTop: 6,
-                                }} />
-                                <Text style={[typography.body, { color: colors.text, flex: 1 }]}>
-                                  {item.quantity} {item.unit} of {item.name}
+                              <View key={itemIndex} style={styles.transferItem}>
+                                <View style={[styles.itemBullet, { backgroundColor: colors.primary }]} />
+                                <Text style={styles.transferItemText}>
+                                  <Text style={styles.transferItemQuantity}>{item.quantity} {item.unit}</Text>
+                                  {' of '}
+                                  <Text style={styles.transferItemName}>{item.name}</Text>
                                 </Text>
                               </View>
                             ))}
                           </View>
 
                           {transfer.notes && (
-                            <View style={{
-                              backgroundColor: colors.backgroundAlt,
-                              padding: spacing.sm,
-                              borderRadius: 8,
-                              marginBottom: spacing.sm,
-                            }}>
-                              <Text style={[typography.caption, { color: colors.textSecondary, marginBottom: spacing.xs }]}>
-                                Notes:
-                              </Text>
-                              <Text style={[typography.body, { color: colors.text }]}>
-                                {transfer.notes}
-                              </Text>
+                            <View style={styles.transferNotes}>
+                              <Icon name="document-text" size={14} color={colors.textSecondary} />
+                              <Text style={styles.transferNotesText}>{transfer.notes}</Text>
                             </View>
                           )}
 
-                          <View style={{
-                            backgroundColor: colors.primary + '10',
-                            padding: spacing.sm,
-                            borderRadius: 8,
-                            borderLeftWidth: 3,
-                            borderLeftColor: colors.primary,
-                          }}>
-                            <Text style={[typography.caption, { color: colors.primary, fontStyle: 'italic' }]}>
+                          <View style={[styles.transferSummary, { borderLeftColor: colors.primary }]}>
+                            <Icon name="information-circle" size={16} color={colors.primary} />
+                            <Text style={[styles.transferSummaryText, { color: colors.primary }]}>
                               {formatTransferSummary(transfer)}
                             </Text>
                           </View>
@@ -435,52 +446,26 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
         </View>
       </Modal>
 
+      {/* Delete Confirmation Modal */}
       <Modal
         visible={showDeleteConfirmModal}
         animationType="fade"
         transparent={true}
         onRequestClose={() => setShowDeleteConfirmModal(false)}
       >
-        <View style={{
-          flex: 1,
-          backgroundColor: 'rgba(0,0,0,0.5)',
-          justifyContent: 'center',
-          alignItems: 'center',
-          padding: spacing.lg,
-        }}>
-          <View style={{
-            backgroundColor: colors.background,
-            borderRadius: 16,
-            padding: spacing.lg,
-            width: '100%',
-            maxWidth: 400,
-            shadowColor: colors.text,
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.3,
-            shadowRadius: 8,
-            elevation: 8,
-          }}>
-            <View style={{ alignItems: 'center', marginBottom: spacing.lg }}>
-              <View style={{
-                width: 64,
-                height: 64,
-                borderRadius: 32,
-                backgroundColor: colors.danger + '20',
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginBottom: spacing.md,
-              }}>
-                <Icon name="trash" size={32} style={{ color: colors.danger }} />
+        <View style={styles.deleteModalOverlay}>
+          <View style={styles.deleteModalContent}>
+            <View style={styles.deleteModalHeader}>
+              <View style={[styles.deleteModalIcon, { backgroundColor: colors.danger + '20' }]}>
+                <Icon name="trash" size={32} color={colors.danger} />
               </View>
-              <Text style={[typography.h3, { color: colors.text, textAlign: 'center', marginBottom: spacing.sm }]}>
-                Delete Transfer Record
-              </Text>
-              <Text style={[typography.body, { color: colors.textSecondary, textAlign: 'center' }]}>
+              <Text style={styles.deleteModalTitle}>Delete Transfer Record</Text>
+              <Text style={styles.deleteModalText}>
                 Are you sure you want to delete this transfer record to &quot;{transferToDelete?.destination}&quot;? This action cannot be undone.
               </Text>
             </View>
             
-            <View style={[commonStyles.row, { gap: spacing.sm }]}>
+            <View style={styles.deleteModalActions}>
               <Button
                 text="Cancel"
                 onPress={() => {
@@ -502,6 +487,348 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
       </Modal>
     </>
   );
+});
+
+const styles = StyleSheet.create({
+  statsCard: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    shadowColor: colors.text,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  statItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  statIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statContent: {
+    alignItems: 'flex-start',
+  },
+  statValue: {
+    ...typography.h2,
+    color: colors.text,
+    fontWeight: '700',
+    lineHeight: 28,
+  },
+  statLabel: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  statDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: colors.border,
+  },
+  filterSection: {
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 16,
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+  },
+  filterHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  filterHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  filterHeaderText: {
+    ...typography.h3,
+    color: colors.text,
+    fontWeight: '700',
+  },
+  filterBadge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: 12,
+    minWidth: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterBadgeText: {
+    ...typography.small,
+    fontSize: 11,
+    color: colors.textInverse,
+    fontWeight: '700',
+  },
+  clearButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  clearButtonText: {
+    ...typography.small,
+    color: colors.danger,
+    fontWeight: '700',
+  },
+  filterGrid: {
+    gap: spacing.lg,
+  },
+  dropdownWrapper: {
+    zIndex: 1,
+  },
+  transferList: {
+    flex: 1,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: spacing.xxl * 2,
+    paddingHorizontal: spacing.xl,
+  },
+  emptyIconContainer: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.lg,
+  },
+  emptyStateTitle: {
+    ...typography.h2,
+    color: colors.text,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+  },
+  emptyStateText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  emptyStateButton: {
+    marginTop: spacing.lg,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+  },
+  emptyStateButtonText: {
+    ...typography.bodyMedium,
+    color: colors.textInverse,
+    fontWeight: '700',
+  },
+  dateGroup: {
+    marginBottom: spacing.lg,
+  },
+  dateHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  dateHeaderText: {
+    ...typography.bodyMedium,
+    color: colors.text,
+    fontWeight: '700',
+    flex: 1,
+  },
+  dateBadge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: 12,
+    minWidth: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dateBadgeText: {
+    ...typography.small,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  transferCard: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    shadowColor: colors.text,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  transferHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  transferHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    flex: 1,
+    gap: spacing.sm,
+  },
+  transferIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  transferInfo: {
+    flex: 1,
+  },
+  transferDestination: {
+    ...typography.bodyMedium,
+    color: colors.text,
+    fontWeight: '700',
+    marginBottom: spacing.xs,
+  },
+  transferMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  transferMetaText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
+  metaDivider: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.textSecondary,
+    marginHorizontal: spacing.xs,
+  },
+  transferItems: {
+    marginBottom: spacing.md,
+  },
+  transferItemsLabel: {
+    ...typography.small,
+    color: colors.textSecondary,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: spacing.sm,
+  },
+  transferItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: spacing.xs,
+    gap: spacing.sm,
+  },
+  itemBullet: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginTop: 7,
+  },
+  transferItemText: {
+    ...typography.body,
+    color: colors.text,
+    flex: 1,
+  },
+  transferItemQuantity: {
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  transferItemName: {
+    fontWeight: '600',
+  },
+  transferNotes: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    backgroundColor: colors.backgroundAlt,
+    padding: spacing.sm,
+    borderRadius: 8,
+    marginBottom: spacing.sm,
+  },
+  transferNotesText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    flex: 1,
+    fontStyle: 'italic',
+  },
+  transferSummary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.primary + '08',
+    padding: spacing.sm,
+    borderRadius: 8,
+    borderLeftWidth: 3,
+  },
+  transferSummaryText: {
+    ...typography.small,
+    flex: 1,
+    fontWeight: '600',
+    fontStyle: 'italic',
+  },
+  deleteModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  deleteModalContent: {
+    backgroundColor: colors.background,
+    borderRadius: 20,
+    padding: spacing.xl,
+    width: '100%',
+    maxWidth: 400,
+    shadowColor: colors.text,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  deleteModalHeader: {
+    alignItems: 'center',
+    marginBottom: spacing.xl,
+  },
+  deleteModalIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+  },
+  deleteModalTitle: {
+    ...typography.h2,
+    color: colors.text,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+  },
+  deleteModalText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  deleteModalActions: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
 });
 
 TransferHistoryModal.propTypes = {

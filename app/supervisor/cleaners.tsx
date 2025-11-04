@@ -77,19 +77,6 @@ export default function CleanersScreen() {
     photo_url: '',
   });
 
-  const loadCleaners = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      await loadData();
-      await loadCleanerGroups();
-    } catch (error) {
-      console.error('Error loading cleaners:', error);
-      showToast('Failed to load cleaners', 'error');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [loadData, showToast]);
-
   const loadCleanerGroups = useCallback(async () => {
     try {
       console.log('🔄 Loading cleaner groups');
@@ -134,6 +121,19 @@ export default function CleanersScreen() {
       console.error('❌ Failed to load cleaner groups:', error);
     }
   }, []);
+
+  const loadCleaners = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      await loadData();
+      await loadCleanerGroups();
+    } catch (error) {
+      console.error('Error loading cleaners:', error);
+      showToast('Failed to load cleaners', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [loadData, showToast, loadCleanerGroups]);
 
   const loadEmploymentHistory = useCallback(async (cleanerId: string) => {
     try {

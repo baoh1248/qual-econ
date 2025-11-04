@@ -26,6 +26,8 @@ export default function CleanerSignupScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [verificationStep, setVerificationStep] = useState<'signup' | 'verify'>('signup');
+  const [verificationCode, setVerificationCode] = useState('');
 
   const validateForm = (): boolean => {
     if (!formData.fullName.trim()) {
@@ -33,16 +35,25 @@ export default function CleanerSignupScreen() {
       return false;
     }
     
-    if (!formData.email.trim()) {
-      showToast('Email is required', 'error');
+    if (!formData.phoneNumber.trim()) {
+      showToast('Phone number is required', 'error');
       return false;
     }
     
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(formData.email.trim())) {
-      showToast('Please enter a valid email address', 'error');
+    // Validate phone number format (basic validation)
+    const phoneRegex = /^[\d\s\-+()]+$/;
+    if (!phoneRegex.test(formData.phoneNumber.trim())) {
+      showToast('Please enter a valid phone number', 'error');
       return false;
+    }
+    
+    // Email is optional, but if provided, validate format
+    if (formData.email.trim()) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(formData.email.trim())) {
+        showToast('Please enter a valid email address', 'error');
+        return false;
+      }
     }
     
     if (!formData.password) {
@@ -73,32 +84,48 @@ export default function CleanerSignupScreen() {
       // Generate a unique employee ID
       const employeeId = `EMP-${Date.now().toString().slice(-6)}`;
       
-      const emailToUse = formData.email.trim();
+      const phoneNumber = formData.phoneNumber.trim();
 
       console.log('Signing up with:', {
-        email: emailToUse,
+        phone: phoneNumber,
+        email: formData.email.trim() || 'Not provided',
         fullName: formData.fullName,
-        phoneNumber: formData.phoneNumber || 'Not provided',
         employeeId
       });
 
-      // Sign up the user with Supabase Auth
+      // Sign up the user with Supabase Auth using phone number
       const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: emailToUse,
+        phone: phoneNumber,
         password: formData.password,
         options: {
-          emailRedirectTo: 'https://natively.dev/email-confirmed',
           data: {
             role: 'cleaner',
             full_name: formData.fullName.trim(),
-            phone_number: formData.phoneNumber.trim() || null,
+            email: formData.email.trim() || null,
           }
         }
       });
 
       if (authError) {
         console.error('Auth signup error:', authError);
-        showToast(authError.message || 'Failed to sign up', 'error');
+        
+        // Handle specific error cases
+        if (authError.message.includes('Phone signups are disabled') || 
+            authError.message.includes('phone_provider_disabled')) {
+          showToast(
+            'Phone authentication is not enabled. Please contact your administrator or use email signup.',
+            'error'
+          );
+          Alert.alert(
+            'Phone Authentication Disabled',
+            'Phone number sign-up is currently disabled in the system. Please contact your supervisor to enable phone authentication or use an alternative sign-up method.\n\nError: Phone provider is not configured.',
+            [{ text: 'OK' }]
+          );
+        } else if (authError.message.includes('User already registered')) {
+          showToast('This phone number is already registered. Please sign in instead.', 'error');
+        } else {
+          showToast(authError.message || 'Failed to sign up', 'error');
+        }
         return;
       }
 
@@ -110,16 +137,80 @@ export default function CleanerSignupScreen() {
 
       console.log('Auth user created:', authData.user.id);
 
-      // Create cleaner record in the database
-      const cleanerId = `cleaner-${authData.user.id}`;
+      // Check if phone confirmation is required
+      if (authData.user.phone_confirmed_at === null) {
+        console.log('Phone verification required');
+        setVerificationStep('verify');
+        showToast('Please enter the verification code sent to your phone', 'info');
+        return;
+      }
+
+      // If no verification needed, create cleaner record immediately
+      await createCleanerRecord(authData.user.id, phoneNumber);
+
+    } catch (error: any) {
+      console.error('Unexpected signup error:', error);
+      showToast(error?.message || 'An unexpected error occurred', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleVerifyCode = async () => {
+    if (!verificationCode || verificationCode.length !== 6) {
+      showToast('Please enter a valid 6-digit code', 'error');
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      console.log('Verifying OTP...');
+
+      const phoneNumber = formData.phoneNumber.trim();
+
+      const { data, error } = await supabase.auth.verifyOtp({
+        phone: phoneNumber,
+        token: verificationCode,
+        type: 'sms',
+      });
+
+      if (error) {
+        console.error('OTP verification error:', error);
+        showToast(error.message || 'Invalid verification code', 'error');
+        return;
+      }
+
+      if (!data.user) {
+        showToast('Verification failed', 'error');
+        return;
+      }
+
+      console.log('Phone verified successfully');
+
+      // Create cleaner record after verification
+      await createCleanerRecord(data.user.id, phoneNumber);
+
+    } catch (error: any) {
+      console.error('Unexpected verification error:', error);
+      showToast(error?.message || 'An unexpected error occurred', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const createCleanerRecord = async (userId: string, phoneNumber: string) => {
+    try {
+      const employeeId = `EMP-${Date.now().toString().slice(-6)}`;
+      const cleanerId = `cleaner-${userId}`;
+
       const { error: cleanerError } = await supabase
         .from('cleaners')
         .insert({
           id: cleanerId,
-          user_id: authData.user.id,
+          user_id: userId,
           name: formData.fullName.trim(),
-          phone_number: formData.phoneNumber.trim() || null,
-          email: formData.email.trim(),
+          phone_number: phoneNumber,
+          email: formData.email.trim() || null,
           employee_id: employeeId,
           security_level: 'low',
           is_active: true,
@@ -133,7 +224,6 @@ export default function CleanerSignupScreen() {
       if (cleanerError) {
         console.error('Cleaner record creation error:', cleanerError);
         showToast('Account created but profile setup failed. Please contact your supervisor.', 'warning');
-        // Still proceed to show success since auth user was created
       } else {
         console.log('Cleaner record created successfully');
       }
@@ -141,7 +231,7 @@ export default function CleanerSignupScreen() {
       // Show success message
       Alert.alert(
         'Welcome!',
-        'Registration successful! Please check your email to verify your account before signing in.\n\nYour supervisor will complete your profile setup and assign you to jobs.',
+        'Registration successful! Your supervisor will complete your profile setup and assign you to jobs.',
         [
           {
             text: 'OK',
@@ -149,14 +239,93 @@ export default function CleanerSignupScreen() {
           }
         ]
       );
-
     } catch (error: any) {
-      console.error('Unexpected signup error:', error);
-      showToast(error?.message || 'An unexpected error occurred', 'error');
+      console.error('Error creating cleaner record:', error);
+      showToast('Profile setup failed. Please contact your supervisor.', 'error');
+    }
+  };
+
+  const resendCode = async () => {
+    try {
+      setIsLoading(true);
+      const phoneNumber = formData.phoneNumber.trim();
+
+      const { error } = await supabase.auth.signInWithOtp({
+        phone: phoneNumber,
+      });
+
+      if (error) {
+        showToast(error.message || 'Failed to resend code', 'error');
+      } else {
+        showToast('Verification code resent!', 'success');
+      }
+    } catch (error: any) {
+      showToast('Failed to resend code', 'error');
     } finally {
       setIsLoading(false);
     }
   };
+
+  if (verificationStep === 'verify') {
+    return (
+      <View style={commonStyles.container}>
+        <Toast {...toast} onHide={hideToast} />
+        
+        {/* Header */}
+        <View style={commonStyles.header}>
+          <TouchableOpacity onPress={() => setVerificationStep('signup')}>
+            <Icon name="arrow-back" size={24} style={{ color: colors.background }} />
+          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+            <CompanyLogo size="small" showText={false} variant="light" />
+            <Text style={commonStyles.headerTitle}>Verify Phone</Text>
+          </View>
+          <View style={{ width: 24 }} />
+        </View>
+
+        <ScrollView style={commonStyles.content} showsVerticalScrollIndicator={false}>
+          <View style={styles.formContainer}>
+            <Text style={styles.welcomeText}>Verify Your Phone</Text>
+            <Text style={styles.subtitleText}>
+              Enter the 6-digit code sent to {formData.phoneNumber}
+            </Text>
+
+            <View style={styles.section}>
+              <Text style={styles.label}>Verification Code</Text>
+              <TextInput
+                style={[styles.input, styles.codeInput]}
+                placeholder="000000"
+                value={verificationCode}
+                onChangeText={setVerificationCode}
+                placeholderTextColor={colors.textSecondary}
+                keyboardType="number-pad"
+                maxLength={6}
+                autoFocus
+              />
+            </View>
+
+            <Button
+              text={isLoading ? 'Verifying...' : 'Verify Code'}
+              onPress={handleVerifyCode}
+              variant="primary"
+              disabled={isLoading || verificationCode.length !== 6}
+              style={styles.signupButton}
+            />
+
+            <TouchableOpacity 
+              onPress={resendCode}
+              disabled={isLoading}
+              style={styles.resendContainer}
+            >
+              <Text style={styles.resendText}>
+                Didn&apos;t receive the code? <Text style={styles.resendLink}>Resend</Text>
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </View>
+    );
+  }
 
   return (
     <View style={commonStyles.container}>
@@ -195,7 +364,20 @@ export default function CleanerSignupScreen() {
               autoCapitalize="words"
             />
 
-            <Text style={styles.label}>Email *</Text>
+            <Text style={styles.label}>Phone Number *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="+1 (555) 123-4567"
+              value={formData.phoneNumber}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, phoneNumber: text }))}
+              placeholderTextColor={colors.textSecondary}
+              keyboardType="phone-pad"
+            />
+            <Text style={styles.inputHint}>
+              You&apos;ll use this phone number to sign in
+            </Text>
+
+            <Text style={styles.label}>Email (Optional)</Text>
             <TextInput
               style={styles.input}
               placeholder="your.email@example.com"
@@ -207,20 +389,7 @@ export default function CleanerSignupScreen() {
               autoCorrect={false}
             />
             <Text style={styles.inputHint}>
-              You&apos;ll use this email to sign in and receive important notifications
-            </Text>
-
-            <Text style={styles.label}>Phone Number (Optional)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="+1 (555) 123-4567"
-              value={formData.phoneNumber}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, phoneNumber: text }))}
-              placeholderTextColor={colors.textSecondary}
-              keyboardType="phone-pad"
-            />
-            <Text style={styles.inputHint}>
-              Optional - for contact purposes only
+              Optional - for receiving email notifications
             </Text>
           </View>
 
@@ -283,7 +452,7 @@ export default function CleanerSignupScreen() {
             <View style={{ flex: 1 }}>
               <Text style={styles.infoTitle}>What happens next?</Text>
               <Text style={styles.infoText}>
-                After signing up, you&apos;ll need to verify your email. Then your supervisor will:
+                After signing up, you may need to verify your phone number. Then your supervisor will:
               </Text>
               <Text style={styles.infoText}>• Complete your profile with additional details</Text>
               <Text style={styles.infoText}>• Assign your security clearance level</Text>
@@ -356,6 +525,12 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: spacing.md,
   },
+  codeInput: {
+    fontSize: 24,
+    letterSpacing: 8,
+    textAlign: 'center',
+    fontWeight: '600',
+  },
   inputHint: {
     ...typography.small,
     color: colors.textSecondary,
@@ -415,6 +590,18 @@ const styles = StyleSheet.create({
   },
   signinLink: {
     ...typography.body,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  resendContainer: {
+    marginTop: spacing.md,
+    alignItems: 'center',
+  },
+  resendText: {
+    ...typography.body,
+    color: colors.textSecondary,
+  },
+  resendLink: {
     color: colors.primary,
     fontWeight: '600',
   },

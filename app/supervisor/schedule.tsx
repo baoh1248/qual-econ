@@ -12,6 +12,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import RecurringTaskModal from '../../components/schedule/RecurringTaskModal';
 import ScheduleModal from '../../components/schedule/ScheduleModal';
+import ScheduleFiltersModal from '../../components/schedule/ScheduleFiltersModal';
 import BuildingGroupScheduleModal from '../../components/schedule/BuildingGroupScheduleModal';
 import Toast from '../../components/Toast';
 import ErrorBoundary from '../../components/ErrorBoundary';
@@ -22,7 +23,6 @@ import LoadingSpinner from '../../components/LoadingSpinner';
 import CompanyLogo from '../../components/CompanyLogo';
 import IconButton from '../../components/IconButton';
 import DraggableButton from '../../components/DraggableButton';
-import FilterDropdown from '../../components/FilterDropdown';
 import { projectToScheduleEntry, scheduleEntryExistsForProject } from '../../utils/projectScheduleSync';
 import { formatTimeRange } from '../../utils/timeFormatter';
 import { supabase } from '../integrations/supabase/client';
@@ -94,7 +94,7 @@ export default function ScheduleView() {
   const [cleanerGroups, setCleanerGroups] = useState<CleanerGroup[]>([]);
   
   // Filter states
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFiltersModal, setShowFiltersModal] = useState(false);
   const [filters, setFilters] = useState<ScheduleFilters>({
     shiftType: 'all',
     clientName: '',
@@ -376,7 +376,7 @@ export default function ScheduleView() {
     }
 
     return filtered;
-  }, [currentWeekSchedule, filters, buildingGroups, clientBuildings]);
+  }, [currentWeekSchedule, filters, buildingGroups, clientBuildings, cleanerGroups, cleaners]);
 
   // Check if any filters are active
   const hasActiveFilters = useMemo(() => {
@@ -542,7 +542,7 @@ export default function ScheduleView() {
     } finally {
       setIsLoading(false);
     }
-  }, [currentDate, getWeekSchedule, getWeekIdFromDate, showToast, syncProjectsToSchedule, loadBuildingGroups]);
+  }, [currentDate, getWeekSchedule, getWeekIdFromDate, showToast, syncProjectsToSchedule, loadBuildingGroups, loadCleanerGroups]);
 
   useEffect(() => {
     loadCurrentWeekSchedule();
@@ -596,13 +596,14 @@ export default function ScheduleView() {
     }
   };
 
-  const addHoursToTime = (time: string, hours: number): string => {
+  // Wrap addHoursToTime in useCallback to fix the dependency warning
+  const addHoursToTime = useCallback((time: string, hours: number): string => {
     const [hoursStr, minutesStr] = time.split(':');
     const totalMinutes = parseInt(hoursStr) * 60 + parseInt(minutesStr) + hours * 60;
     const newHours = Math.floor(totalMinutes / 60) % 24;
     const newMinutes = totalMinutes % 60;
     return `${String(newHours).padStart(2, '0')}:${String(newMinutes).padStart(2, '0')}`;
-  };
+  }, []);
 
   const handleCellPress = useCallback((building: ClientBuilding, day: string) => {
     console.log('Cell pressed:', building.buildingName, day);
@@ -1146,6 +1147,27 @@ export default function ScheduleView() {
       alignItems: 'center',
       gap: spacing.sm,
     },
+    filterButton: {
+      position: 'relative',
+    },
+    filterBadge: {
+      position: 'absolute',
+      top: -4,
+      right: -4,
+      backgroundColor: colors.danger,
+      borderRadius: 10,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      minWidth: 20,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    filterBadgeText: {
+      ...typography.small,
+      color: colors.textInverse,
+      fontWeight: '700',
+      fontSize: 10,
+    },
     controls: {
       flexDirection: 'row',
       justifyContent: 'space-between',
@@ -1253,80 +1275,6 @@ export default function ScheduleView() {
       color: themeColor,
       fontWeight: '500',
     },
-    filterContainer: {
-      backgroundColor: colors.backgroundAlt,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-      paddingHorizontal: spacing.lg,
-      paddingVertical: spacing.md,
-    },
-    filterHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      marginBottom: spacing.md,
-    },
-    filterHeaderText: {
-      ...typography.h3,
-      color: colors.text,
-      fontWeight: '600',
-    },
-    filterGrid: {
-      gap: spacing.md,
-    },
-    filterRow: {
-      flexDirection: 'row',
-      gap: spacing.md,
-    },
-    filterItem: {
-      flex: 1,
-    },
-    filterLabel: {
-      ...typography.small,
-      color: colors.textSecondary,
-      marginBottom: spacing.xs,
-      fontWeight: '600',
-    },
-    filterInput: {
-      backgroundColor: colors.background,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 8,
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
-      ...typography.body,
-      color: colors.text,
-    },
-    filterButtonGroup: {
-      flexDirection: 'row',
-      gap: spacing.xs,
-    },
-    filterButton: {
-      flex: 1,
-      paddingVertical: spacing.sm,
-      paddingHorizontal: spacing.md,
-      borderRadius: 8,
-      backgroundColor: colors.background,
-      borderWidth: 1,
-      borderColor: colors.border,
-      alignItems: 'center',
-    },
-    filterButtonActive: {
-      borderWidth: 2,
-    },
-    filterButtonText: {
-      ...typography.small,
-      color: colors.text,
-      fontWeight: '500',
-    },
-    filterButtonTextActive: {
-      fontWeight: '700',
-    },
-    filterActions: {
-      flexDirection: 'row',
-      gap: spacing.sm,
-      marginTop: spacing.md,
-    },
     clearFiltersButton: {
       paddingVertical: spacing.sm,
       paddingHorizontal: spacing.lg,
@@ -1338,22 +1286,6 @@ export default function ScheduleView() {
       ...typography.bodyMedium,
       color: colors.textInverse,
       fontWeight: '600',
-    },
-    filterBadge: {
-      backgroundColor: colors.danger,
-      borderRadius: 12,
-      paddingHorizontal: 8,
-      paddingVertical: 2,
-      marginLeft: spacing.xs,
-      minWidth: 20,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    filterBadgeText: {
-      ...typography.small,
-      color: colors.textInverse,
-      fontWeight: '700',
-      fontSize: 10,
     },
   });
 
@@ -1372,8 +1304,8 @@ export default function ScheduleView() {
         </View>
         <View style={styles.headerRight}>
           <TouchableOpacity
-            onPress={() => setShowFilters(!showFilters)}
-            style={[buttonStyles.backButton, { backgroundColor: 'rgba(255,255,255,0.2)' }]}
+            onPress={() => setShowFiltersModal(true)}
+            style={[buttonStyles.backButton, { backgroundColor: 'rgba(255,255,255,0.2)', position: 'relative' }]}
           >
             <Icon name="filter" size={24} color="#FFFFFF" />
             {activeFilterCount > 0 && (
@@ -1385,189 +1317,6 @@ export default function ScheduleView() {
           <CompanyLogo size={40} />
         </View>
       </View>
-
-      {/* Filter Panel */}
-      {showFilters && (
-        <View style={styles.filterContainer}>
-          <View style={styles.filterHeader}>
-            <Text style={styles.filterHeaderText}>Filters</Text>
-            {hasActiveFilters && (
-              <TouchableOpacity onPress={clearFilters}>
-                <Text style={{ ...typography.small, color: colors.danger, fontWeight: '600' }}>
-                  Clear All
-                </Text>
-              </TouchableOpacity>
-            )}
-          </View>
-
-          <View style={styles.filterGrid}>
-            {/* Shift Type Filter */}
-            <View style={styles.filterItem}>
-              <Text style={styles.filterLabel}>Shift Type</Text>
-              <View style={styles.filterButtonGroup}>
-                <TouchableOpacity
-                  style={[
-                    styles.filterButton,
-                    filters.shiftType === 'all' && [styles.filterButtonActive, { borderColor: themeColor }]
-                  ]}
-                  onPress={() => setFilters({ ...filters, shiftType: 'all' })}
-                >
-                  <Text style={[
-                    styles.filterButtonText,
-                    filters.shiftType === 'all' && [styles.filterButtonTextActive, { color: themeColor }]
-                  ]}>
-                    All
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.filterButton,
-                    filters.shiftType === 'regular' && [styles.filterButtonActive, { borderColor: themeColor }]
-                  ]}
-                  onPress={() => setFilters({ ...filters, shiftType: 'regular' })}
-                >
-                  <Text style={[
-                    styles.filterButtonText,
-                    filters.shiftType === 'regular' && [styles.filterButtonTextActive, { color: themeColor }]
-                  ]}>
-                    Regular
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.filterButton,
-                    filters.shiftType === 'project' && [styles.filterButtonActive, { borderColor: themeColor }]
-                  ]}
-                  onPress={() => setFilters({ ...filters, shiftType: 'project' })}
-                >
-                  <Text style={[
-                    styles.filterButtonText,
-                    filters.shiftType === 'project' && [styles.filterButtonTextActive, { color: themeColor }]
-                  ]}>
-                    Project
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Status Filter */}
-            <View style={styles.filterItem}>
-              <Text style={styles.filterLabel}>Status</Text>
-              <View style={styles.filterButtonGroup}>
-                <TouchableOpacity
-                  style={[
-                    styles.filterButton,
-                    filters.status === 'all' && [styles.filterButtonActive, { borderColor: themeColor }]
-                  ]}
-                  onPress={() => setFilters({ ...filters, status: 'all' })}
-                >
-                  <Text style={[
-                    styles.filterButtonText,
-                    filters.status === 'all' && [styles.filterButtonTextActive, { color: themeColor }]
-                  ]}>
-                    All
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.filterButton,
-                    filters.status === 'scheduled' && [styles.filterButtonActive, { borderColor: themeColor }]
-                  ]}
-                  onPress={() => setFilters({ ...filters, status: 'scheduled' })}
-                >
-                  <Text style={[
-                    styles.filterButtonText,
-                    filters.status === 'scheduled' && [styles.filterButtonTextActive, { color: themeColor }]
-                  ]}>
-                    Scheduled
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.filterButton,
-                    filters.status === 'completed' && [styles.filterButtonActive, { borderColor: themeColor }]
-                  ]}
-                  onPress={() => setFilters({ ...filters, status: 'completed' })}
-                >
-                  <Text style={[
-                    styles.filterButtonText,
-                    filters.status === 'completed' && [styles.filterButtonTextActive, { color: themeColor }]
-                  ]}>
-                    Completed
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Enhanced Dropdown Filters with Manual Input */}
-            <View style={styles.filterRow}>
-              <FilterDropdown
-                label="Client"
-                value={filters.clientName}
-                onValueChange={(value) => setFilters({ ...filters, clientName: value, buildingName: '' })}
-                options={uniqueClientNames}
-                placeholder="All Clients or type..."
-                themeColor={themeColor}
-                allowManualInput={true}
-                showCount={true}
-                getOptionCount={getClientCount}
-              />
-
-              <FilterDropdown
-                label="Building"
-                value={filters.buildingName}
-                onValueChange={(value) => setFilters({ ...filters, buildingName: value })}
-                options={uniqueBuildingNames}
-                placeholder="All Buildings or type..."
-                themeColor={themeColor}
-                allowManualInput={true}
-                showCount={true}
-                getOptionCount={getBuildingCount}
-              />
-            </View>
-
-            <View style={styles.filterRow}>
-              <FilterDropdown
-                label="Cleaner"
-                value={filters.cleanerName}
-                onValueChange={(value) => setFilters({ ...filters, cleanerName: value })}
-                options={uniqueCleanerNames}
-                placeholder="All Cleaners or type..."
-                themeColor={themeColor}
-                allowManualInput={true}
-                showCount={true}
-                getOptionCount={getCleanerCount}
-              />
-
-              <FilterDropdown
-                label="Cleaner Group"
-                value={filters.cleanerGroupName}
-                onValueChange={(value) => setFilters({ ...filters, cleanerGroupName: value })}
-                options={uniqueCleanerGroupNames}
-                placeholder="All Cleaner Groups or type..."
-                themeColor={themeColor}
-                allowManualInput={true}
-                showCount={true}
-                getOptionCount={getCleanerGroupCount}
-              />
-            </View>
-
-            <View style={styles.filterRow}>
-              <FilterDropdown
-                label="Building Group"
-                value={filters.buildingGroupName}
-                onValueChange={(value) => setFilters({ ...filters, buildingGroupName: value })}
-                options={uniqueBuildingGroupNames}
-                placeholder="All Building Groups or type..."
-                themeColor={themeColor}
-                allowManualInput={true}
-                showCount={true}
-                getOptionCount={getBuildingGroupCount}
-              />
-            </View>
-          </View>
-        </View>
-      )}
 
       {/* Controls */}
       <View style={styles.controls}>
@@ -1690,6 +1439,28 @@ export default function ScheduleView() {
           onChange={onDateChange}
         />
       )}
+
+      {/* Schedule Filters Modal */}
+      <ScheduleFiltersModal
+        visible={showFiltersModal}
+        onClose={() => setShowFiltersModal(false)}
+        filters={filters}
+        onFiltersChange={setFilters}
+        onClearFilters={clearFilters}
+        themeColor={themeColor}
+        uniqueClientNames={uniqueClientNames}
+        uniqueBuildingNames={uniqueBuildingNames}
+        uniqueCleanerNames={uniqueCleanerNames}
+        uniqueBuildingGroupNames={uniqueBuildingGroupNames}
+        uniqueCleanerGroupNames={uniqueCleanerGroupNames}
+        getClientCount={getClientCount}
+        getBuildingCount={getBuildingCount}
+        getCleanerCount={getCleanerCount}
+        getBuildingGroupCount={getBuildingGroupCount}
+        getCleanerGroupCount={getCleanerGroupCount}
+        activeFilterCount={activeFilterCount}
+        hasActiveFilters={hasActiveFilters}
+      />
 
       {/* Schedule Modal */}
       <ScheduleModal

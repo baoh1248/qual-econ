@@ -1,7 +1,7 @@
 
 import { Text, View, ScrollView, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, Modal, Alert, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { commonStyles, colors, spacing, typography } from '../../styles/commonStyles';
 import CompanyLogo from '../../components/CompanyLogo';
 import Icon from '../../components/Icon';
@@ -47,17 +47,41 @@ export default function SupervisorChatScreen() {
   const currentRoomMessages = selectedRoom ? messages[selectedRoom] || [] : [];
   const currentRoom = chatRooms.find(room => room.id === selectedRoom);
 
-  useEffect(() => {
+  const loadMessagesCallback = useCallback(() => {
     if (selectedRoom) {
       loadMessages(selectedRoom);
-      subscribeToRoom(selectedRoom);
+    }
+  }, [selectedRoom, loadMessages]);
+
+  const markAsReadCallback = useCallback(() => {
+    if (selectedRoom) {
       markAsRead(selectedRoom);
+    }
+  }, [selectedRoom, markAsRead]);
+
+  const subscribeToRoomCallback = useCallback(() => {
+    if (selectedRoom) {
+      subscribeToRoom(selectedRoom);
+    }
+  }, [selectedRoom, subscribeToRoom]);
+
+  const unsubscribeFromRoomCallback = useCallback(() => {
+    if (selectedRoom) {
+      unsubscribeFromRoom(selectedRoom);
+    }
+  }, [selectedRoom, unsubscribeFromRoom]);
+
+  useEffect(() => {
+    if (selectedRoom) {
+      loadMessagesCallback();
+      subscribeToRoomCallback();
+      markAsReadCallback();
 
       return () => {
-        unsubscribeFromRoom(selectedRoom);
+        unsubscribeFromRoomCallback();
       };
     }
-  }, [selectedRoom]);
+  }, [selectedRoom, loadMessagesCallback, subscribeToRoomCallback, markAsReadCallback, unsubscribeFromRoomCallback]);
 
   const handleSendMessage = async () => {
     if (messageText.trim() && selectedRoom) {

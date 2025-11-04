@@ -694,17 +694,26 @@ export const useChatData = () => {
     }
   }, [currentUserId, isAuthenticated, loadChatRooms]);
 
-  // Cleanup subscriptions
+  // Cleanup subscriptions - Fix for ref value warning
   useEffect(() => {
     return () => {
-      Object.keys(subscriptionsRef.current).forEach(roomId => {
-        unsubscribeFromRoom(roomId);
+      // Capture ref values in local variables
+      const subscriptions = subscriptionsRef.current;
+      const typingTimeouts = typingTimeoutRef.current;
+      
+      Object.keys(subscriptions).forEach(roomId => {
+        if (subscriptions[roomId]) {
+          supabase.removeChannel(subscriptions[roomId]);
+        }
       });
-      Object.values(typingTimeoutRef.current).forEach(timeout => {
-        clearTimeout(timeout);
+      
+      Object.values(typingTimeouts).forEach(timeout => {
+        if (timeout) {
+          clearTimeout(timeout);
+        }
       });
     };
-  }, [unsubscribeFromRoom]);
+  }, []);
 
   return {
     chatRooms,

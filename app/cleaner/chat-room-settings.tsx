@@ -1,7 +1,7 @@
 
 import { Text, View, ScrollView, TouchableOpacity, Alert, StyleSheet, Modal, TextInput } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { commonStyles, colors, spacing, typography } from '../../styles/commonStyles';
 import CompanyLogo from '../../components/CompanyLogo';
 import Icon from '../../components/Icon';
@@ -32,9 +32,13 @@ export default function ChatRoomSettingsScreen() {
 
   console.log('ChatRoomSettingsScreen rendered for room:', roomId);
 
-  useEffect(() => {
+  const loadChatRoomsCallback = useCallback(() => {
     loadChatRooms();
-  }, []);
+  }, [loadChatRooms]);
+
+  useEffect(() => {
+    loadChatRoomsCallback();
+  }, [loadChatRoomsCallback]);
 
   const handleAddMembers = async () => {
     if (selectedNewMembers.length === 0) {
