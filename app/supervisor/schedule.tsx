@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, StyleSheet, Platform, TextInput, ActivityIndicator } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useTheme } from '../../hooks/useTheme';
 import { useScheduleStorage, type ScheduleEntry } from '../../hooks/useScheduleStorage';
 import { useClientData, type Client, type ClientBuilding, type Cleaner } from '../../hooks/useClientData';
@@ -736,6 +736,23 @@ export default function ScheduleView() {
       loadCurrentWeekSchedule();
     }
   }, [currentDate, isLoading, loadCurrentWeekSchedule]);
+
+  // Add focus effect to refresh schedule when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      console.log('📱 Schedule screen focused - refreshing data');
+      
+      // Only refresh if initial load is complete
+      if (initialLoadCompleteRef.current && !isLoading) {
+        console.log('🔄 Refreshing schedule on focus...');
+        loadCurrentWeekSchedule();
+      }
+      
+      return () => {
+        console.log('📱 Schedule screen unfocused');
+      };
+    }, [loadCurrentWeekSchedule, isLoading])
+  );
 
   const changeDate = (amount: number) => {
     const newDate = new Date(currentDate);

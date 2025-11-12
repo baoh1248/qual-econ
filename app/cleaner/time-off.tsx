@@ -13,6 +13,7 @@ import LoadingSpinner from '../../components/LoadingSpinner';
 import Toast from '../../components/Toast';
 import { supabase } from '../integrations/supabase/client';
 import uuid from 'react-native-uuid';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface TimeOffRequest {
   id: string;
@@ -60,32 +61,38 @@ export default function CleanerTimeOffScreen() {
 
   const loadCleanerInfo = useCallback(async () => {
     try {
-      console.log('Loading cleaner info...');
-      const { data: { user } } = await supabase.auth.getUser();
+      console.log('Loading cleaner info from AsyncStorage...');
       
-      if (!user) {
-        console.log('No authenticated user found');
-        return;
-      }
+      // Get cleaner info from AsyncStorage (set during sign-in)
+      const storedCleanerId = await AsyncStorage.getItem('cleaner_id');
+      const storedCleanerName = await AsyncStorage.getItem('cleaner_name');
+      
+      console.log('Stored cleaner ID:', storedCleanerId);
+      console.log('Stored cleaner name:', storedCleanerName);
 
-      console.log('User ID:', user.id);
-
-      const cleaners = await executeQuery<{ id: string; name: string; user_id: string }>('select', 'cleaners');
-      console.log('All cleaners:', cleaners);
-      
-      const cleaner = cleaners.find(c => c.user_id === user.id);
-      
-      if (cleaner) {
-        console.log('Found cleaner:', cleaner);
-        setCleanerId(cleaner.id);
-        setCleanerName(cleaner.name);
+      if (storedCleanerId && storedCleanerName) {
+        setCleanerId(storedCleanerId);
+        setCleanerName(storedCleanerName);
+        console.log('Cleaner info loaded successfully');
       } else {
-        console.log('No cleaner found for user ID:', user.id);
+        console.log('No cleaner info found in AsyncStorage');
+        // If no session found, redirect to sign-in
+        Alert.alert(
+          'Session Expired',
+          'Please sign in again to continue.',
+          [
+            {
+              text: 'OK',
+              onPress: () => router.replace('/auth/cleaner-signin'),
+            },
+          ]
+        );
       }
     } catch (error) {
       console.error('Error loading cleaner info:', error);
+      showToast('Failed to load cleaner information', 'error');
     }
-  }, [executeQuery]);
+  }, [showToast]);
 
   const loadTimeOffRequests = useCallback(async () => {
     if (!cleanerId) {
@@ -220,6 +227,7 @@ export default function CleanerTimeOffScreen() {
 
       if (error) {
         console.error('Supabase insert error:', error);
+        console.error('Error details:', JSON.stringify(error, null, 2));
         throw error;
       }
 

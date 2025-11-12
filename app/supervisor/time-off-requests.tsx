@@ -96,13 +96,16 @@ export default function SupervisorTimeOffRequestsScreen() {
   const handleApproveRequest = async (request: TimeOffRequest) => {
     Alert.alert(
       'Approve Time Off Request',
-      `Approve time off for ${request.cleaner_name}?`,
+      `Approve time off for ${request.cleaner_name}?\n\nThis will unassign their shifts during the requested time period.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Approve',
           onPress: async () => {
             try {
+              console.log('=== APPROVING TIME OFF REQUEST ===');
+              console.log('Request:', request);
+
               // Update request status
               const { error: updateError } = await supabase
                 .from('time_off_requests')
@@ -115,6 +118,8 @@ export default function SupervisorTimeOffRequestsScreen() {
                 .eq('id', request.id);
 
               if (updateError) throw updateError;
+
+              console.log('✅ Time off request status updated in database');
 
               // Unassign shifts based on request type
               if (request.request_type === 'date_range' && request.start_date && request.end_date) {
@@ -129,15 +134,23 @@ export default function SupervisorTimeOffRequestsScreen() {
                   request.requested_dates,
                   request.recurring_shift_id
                 );
+              } else if (request.request_type === 'single_shift' && request.shift_id && request.shift_date) {
+                await unassignShiftsOnDates(
+                  request.cleaner_name,
+                  [request.shift_date],
+                  undefined
+                );
               }
 
               // Create notifications for unassigned shifts
               await createUnassignedShiftNotifications(request);
 
-              showToast('Time off request approved', 'success');
+              showToast('Time off request approved and shifts unassigned', 'success');
               await loadTimeOffRequests();
+              
+              console.log('✅ TIME OFF REQUEST APPROVAL COMPLETED ===');
             } catch (error) {
-              console.error('Error approving request:', error);
+              console.error('❌ Error approving request:', error);
               showToast('Failed to approve request', 'error');
             }
           },
@@ -187,7 +200,9 @@ export default function SupervisorTimeOffRequestsScreen() {
 
   const unassignShiftsInDateRange = async (cleanerName: string, startDate: string, endDate: string) => {
     try {
-      console.log('Unassigning shifts for', cleanerName, 'from', startDate, 'to', endDate);
+      console.log('=== UNASSIGNING SHIFTS IN DATE RANGE ===');
+      console.log('Cleaner:', cleanerName);
+      console.log('Date range:', startDate, 'to', endDate);
       
       const start = new Date(startDate);
       const end = new Date(endDate);
@@ -198,9 +213,14 @@ export default function SupervisorTimeOffRequestsScreen() {
         weeks.add(getWeekIdFromDate(new Date(d)));
       }
 
+      console.log('Processing weeks:', Array.from(weeks));
+
+      let totalUnassigned = 0;
+
       // Process each week
       for (const weekId of weeks) {
         const schedule = getWeekSchedule(weekId);
+        console.log(`Week ${weekId}: ${schedule.length} entries`);
         
         for (const entry of schedule) {
           const entryDate = new Date(entry.date);
@@ -209,31 +229,71 @@ export default function SupervisorTimeOffRequestsScreen() {
             const cleaners = entry.cleanerNames || [entry.cleanerName];
             
             if (cleaners.includes(cleanerName)) {
+              console.log(`Found shift to unassign: ${entry.id} on ${entry.date}`);
+              
               // Remove cleaner from shift
               const updatedCleaners = cleaners.filter(name => name !== cleanerName);
               
               if (updatedCleaners.length === 0) {
                 // Mark shift as unassigned
-                await updateScheduleEntry(weekId, entry.id, {
+                const updates = {
                   cleanerName: 'UNASSIGNED',
                   cleanerNames: ['UNASSIGNED'],
-                  status: 'scheduled',
+                  status: 'scheduled' as const,
                   notes: `${entry.notes || ''}\n[Time off approved for ${cleanerName}]`.trim(),
-                });
+                };
+                
+                // Update in AsyncStorage
+                await updateScheduleEntry(weekId, entry.id, updates);
+                
+                // Update in Supabase
+                await supabase
+                  .from('schedule_entries')
+                  .update({
+                    cleaner_name: 'UNASSIGNED',
+                    cleaner_names: ['UNASSIGNED'],
+                    status: 'scheduled',
+                    notes: updates.notes,
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq('id', entry.id);
+                
+                console.log(`✅ Shift ${entry.id} marked as UNASSIGNED`);
+                totalUnassigned++;
               } else {
                 // Update with remaining cleaners
-                await updateScheduleEntry(weekId, entry.id, {
+                const updates = {
                   cleanerName: updatedCleaners[0],
                   cleanerNames: updatedCleaners,
                   notes: `${entry.notes || ''}\n[${cleanerName} removed - time off approved]`.trim(),
-                });
+                };
+                
+                // Update in AsyncStorage
+                await updateScheduleEntry(weekId, entry.id, updates);
+                
+                // Update in Supabase
+                await supabase
+                  .from('schedule_entries')
+                  .update({
+                    cleaner_name: updatedCleaners[0],
+                    cleaner_names: updatedCleaners,
+                    notes: updates.notes,
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq('id', entry.id);
+                
+                console.log(`✅ Cleaner ${cleanerName} removed from shift ${entry.id}`);
+                totalUnassigned++;
               }
             }
           }
         }
       }
+
+      console.log(`✅ Total shifts unassigned: ${totalUnassigned}`);
+      console.log('=== UNASSIGN SHIFTS IN DATE RANGE COMPLETED ===');
     } catch (error) {
-      console.error('Error unassigning shifts in date range:', error);
+      console.error('❌ Error unassigning shifts in date range:', error);
       throw error;
     }
   };
@@ -244,11 +304,18 @@ export default function SupervisorTimeOffRequestsScreen() {
     recurringShiftId?: string
   ) => {
     try {
-      console.log('Unassigning shifts for', cleanerName, 'on specific dates:', dates);
+      console.log('=== UNASSIGNING SHIFTS ON SPECIFIC DATES ===');
+      console.log('Cleaner:', cleanerName);
+      console.log('Dates:', dates);
+      console.log('Recurring shift ID:', recurringShiftId);
       
+      let totalUnassigned = 0;
+
       for (const date of dates) {
         const weekId = getWeekIdFromDate(new Date(date));
         const schedule = getWeekSchedule(weekId);
+        
+        console.log(`Processing date ${date} in week ${weekId}: ${schedule.length} entries`);
         
         for (const entry of schedule) {
           if (entry.date === date) {
@@ -260,34 +327,76 @@ export default function SupervisorTimeOffRequestsScreen() {
             const cleaners = entry.cleanerNames || [entry.cleanerName];
             
             if (cleaners.includes(cleanerName)) {
+              console.log(`Found shift to unassign: ${entry.id} on ${entry.date}`);
+              
               const updatedCleaners = cleaners.filter(name => name !== cleanerName);
               
               if (updatedCleaners.length === 0) {
-                await updateScheduleEntry(weekId, entry.id, {
+                const updates = {
                   cleanerName: 'UNASSIGNED',
                   cleanerNames: ['UNASSIGNED'],
-                  status: 'scheduled',
+                  status: 'scheduled' as const,
                   notes: `${entry.notes || ''}\n[Time off approved for ${cleanerName}]`.trim(),
-                });
+                };
+                
+                // Update in AsyncStorage
+                await updateScheduleEntry(weekId, entry.id, updates);
+                
+                // Update in Supabase
+                await supabase
+                  .from('schedule_entries')
+                  .update({
+                    cleaner_name: 'UNASSIGNED',
+                    cleaner_names: ['UNASSIGNED'],
+                    status: 'scheduled',
+                    notes: updates.notes,
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq('id', entry.id);
+                
+                console.log(`✅ Shift ${entry.id} marked as UNASSIGNED`);
+                totalUnassigned++;
               } else {
-                await updateScheduleEntry(weekId, entry.id, {
+                const updates = {
                   cleanerName: updatedCleaners[0],
                   cleanerNames: updatedCleaners,
                   notes: `${entry.notes || ''}\n[${cleanerName} removed - time off approved]`.trim(),
-                });
+                };
+                
+                // Update in AsyncStorage
+                await updateScheduleEntry(weekId, entry.id, updates);
+                
+                // Update in Supabase
+                await supabase
+                  .from('schedule_entries')
+                  .update({
+                    cleaner_name: updatedCleaners[0],
+                    cleaner_names: updatedCleaners,
+                    notes: updates.notes,
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq('id', entry.id);
+                
+                console.log(`✅ Cleaner ${cleanerName} removed from shift ${entry.id}`);
+                totalUnassigned++;
               }
             }
           }
         }
       }
+
+      console.log(`✅ Total shifts unassigned: ${totalUnassigned}`);
+      console.log('=== UNASSIGN SHIFTS ON DATES COMPLETED ===');
     } catch (error) {
-      console.error('Error unassigning shifts on dates:', error);
+      console.error('❌ Error unassigning shifts on dates:', error);
       throw error;
     }
   };
 
   const createUnassignedShiftNotifications = async (request: TimeOffRequest) => {
     try {
+      console.log('=== CREATING UNASSIGNED SHIFT NOTIFICATIONS ===');
+      
       const notifications: any[] = [];
       
       if (request.request_type === 'date_range' && request.start_date && request.end_date) {
@@ -341,6 +450,28 @@ export default function SupervisorTimeOffRequestsScreen() {
             }
           }
         }
+      } else if (request.request_type === 'single_shift' && request.shift_date) {
+        const weekId = getWeekIdFromDate(new Date(request.shift_date));
+        const schedule = getWeekSchedule(weekId);
+        
+        for (const entry of schedule) {
+          if (entry.date === request.shift_date && 
+              (entry.cleanerName === 'UNASSIGNED' || entry.cleanerNames?.includes('UNASSIGNED'))) {
+            notifications.push({
+              id: uuid.v4() as string,
+              notification_type: 'unassigned_shift',
+              shift_id: entry.id,
+              shift_date: entry.date,
+              building_name: entry.buildingName,
+              client_name: entry.clientName,
+              time_off_request_id: request.id,
+              message: `Shift at ${entry.clientName} - ${entry.buildingName} on ${new Date(entry.date).toLocaleDateString()} is now unassigned due to approved time off for ${request.cleaner_name}`,
+              is_read: false,
+              is_dismissed: false,
+              created_at: new Date().toISOString(),
+            });
+          }
+        }
       }
 
       if (notifications.length > 0) {
@@ -350,10 +481,14 @@ export default function SupervisorTimeOffRequestsScreen() {
 
         if (error) throw error;
         
-        console.log(`Created ${notifications.length} unassigned shift notifications`);
+        console.log(`✅ Created ${notifications.length} unassigned shift notifications`);
+      } else {
+        console.log('No unassigned shifts found to create notifications for');
       }
+      
+      console.log('=== NOTIFICATION CREATION COMPLETED ===');
     } catch (error) {
-      console.error('Error creating notifications:', error);
+      console.error('❌ Error creating notifications:', error);
     }
   };
 
@@ -395,6 +530,13 @@ export default function SupervisorTimeOffRequestsScreen() {
     } else if (request.request_type === 'recurring_instances' && request.requested_dates) {
       const count = request.requested_dates.length;
       return `${count} specific date${count !== 1 ? 's' : ''}`;
+    } else if (request.request_type === 'single_shift' && request.shift_date) {
+      return new Date(request.shift_date).toLocaleDateString('en-US', { 
+        weekday: 'short', 
+        month: 'short', 
+        day: 'numeric',
+        year: 'numeric'
+      });
     }
     return 'N/A';
   };
