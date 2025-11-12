@@ -204,6 +204,32 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.xs,
     fontWeight: typography.weights.semibold as any,
   },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    width: '90%',
+    maxWidth: 500,
+    maxHeight: '80%',
+    backgroundColor: colors.background,
+    borderRadius: 16,
+    padding: spacing.lg,
+  },
+  modalTitle: {
+    fontSize: typography.sizes.xl,
+    fontWeight: typography.weights.bold as any,
+    color: colors.text,
+    marginBottom: spacing.md,
+    textAlign: 'center',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+  },
 });
 
 const BuildingGroupsModal = memo<BuildingGroupsModalProps>(({ visible, onClose, clientName, buildings, onRefresh }) => {
@@ -558,6 +584,7 @@ const BuildingGroupsModal = memo<BuildingGroupsModalProps>(({ visible, onClose, 
               <IconButton 
                 icon="add-circle" 
                 onPress={() => {
+                  console.log('Add group button pressed');
                   setFormData({ 
                     group_name: '', 
                     description: '', 
@@ -592,13 +619,19 @@ const BuildingGroupsModal = memo<BuildingGroupsModalProps>(({ visible, onClose, 
                         <View style={{ flexDirection: 'row', gap: spacing.xs }}>
                           <IconButton
                             icon="create"
-                            onPress={() => openEditModal(group)}
+                            onPress={() => {
+                              console.log('Edit group button pressed:', group.id);
+                              openEditModal(group);
+                            }}
                             variant="secondary"
                             size="small"
                           />
                           <IconButton
                             icon="trash"
-                            onPress={() => handleDeleteGroup(group)}
+                            onPress={() => {
+                              console.log('Delete group button pressed:', group.id);
+                              handleDeleteGroup(group);
+                            }}
                             variant="secondary"
                             size="small"
                             style={{ backgroundColor: colors.error }}
@@ -639,8 +672,173 @@ const BuildingGroupsModal = memo<BuildingGroupsModalProps>(({ visible, onClose, 
         </View>
       </Modal>
 
-      {/* Add Group Modal - Truncated for brevity */}
-      {/* Edit Group Modal - Truncated for brevity */}
+      {/* Add Group Modal */}
+      <Modal
+        visible={showAddModal}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setShowAddModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity 
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} 
+            activeOpacity={1} 
+            onPress={() => setShowAddModal(false)}
+          />
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Add Building Group</Text>
+            
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Group Name *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g., Downtown Buildings"
+                  value={formData.group_name}
+                  onChangeText={(text) => setFormData({ ...formData, group_name: text })}
+                  placeholderTextColor={colors.textSecondary}
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Description</Text>
+                <TextInput
+                  style={[styles.input, { minHeight: 80, textAlignVertical: 'top' }]}
+                  placeholder="Optional description"
+                  value={formData.description}
+                  onChangeText={(text) => setFormData({ ...formData, description: text })}
+                  multiline
+                  placeholderTextColor={colors.textSecondary}
+                />
+              </View>
+
+              {renderColorPicker()}
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Select Buildings *</Text>
+                <ScrollView style={styles.buildingSelector} nestedScrollEnabled>
+                  {buildings.map((building) => (
+                    <TouchableOpacity
+                      key={building.id}
+                      style={[
+                        styles.buildingOption,
+                        formData.building_ids.includes(building.id) && styles.buildingOptionSelected,
+                      ]}
+                      onPress={() => toggleBuilding(building.id)}
+                    >
+                      <Icon
+                        name={formData.building_ids.includes(building.id) ? 'checkbox' : 'square-outline'}
+                        size={24}
+                        style={{ color: colors.primary }}
+                      />
+                      <Text style={styles.buildingOptionText}>{building.buildingName}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <Button
+                text="Cancel"
+                onPress={() => setShowAddModal(false)}
+                variant="secondary"
+                style={{ flex: 1 }}
+              />
+              <Button
+                text="Add Group"
+                onPress={handleAddGroup}
+                variant="primary"
+                style={{ flex: 1 }}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Edit Group Modal */}
+      <Modal
+        visible={showEditModal}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setShowEditModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity 
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} 
+            activeOpacity={1} 
+            onPress={() => setShowEditModal(false)}
+          />
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Edit Building Group</Text>
+            
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Group Name *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g., Downtown Buildings"
+                  value={formData.group_name}
+                  onChangeText={(text) => setFormData({ ...formData, group_name: text })}
+                  placeholderTextColor={colors.textSecondary}
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Description</Text>
+                <TextInput
+                  style={[styles.input, { minHeight: 80, textAlignVertical: 'top' }]}
+                  placeholder="Optional description"
+                  value={formData.description}
+                  onChangeText={(text) => setFormData({ ...formData, description: text })}
+                  multiline
+                  placeholderTextColor={colors.textSecondary}
+                />
+              </View>
+
+              {renderColorPicker()}
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Select Buildings *</Text>
+                <ScrollView style={styles.buildingSelector} nestedScrollEnabled>
+                  {buildings.map((building) => (
+                    <TouchableOpacity
+                      key={building.id}
+                      style={[
+                        styles.buildingOption,
+                        formData.building_ids.includes(building.id) && styles.buildingOptionSelected,
+                      ]}
+                      onPress={() => toggleBuilding(building.id)}
+                    >
+                      <Icon
+                        name={formData.building_ids.includes(building.id) ? 'checkbox' : 'square-outline'}
+                        size={24}
+                        style={{ color: colors.primary }}
+                      />
+                      <Text style={styles.buildingOptionText}>{building.buildingName}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <Button
+                text="Cancel"
+                onPress={() => setShowEditModal(false)}
+                variant="secondary"
+                style={{ flex: 1 }}
+              />
+              <Button
+                text="Update Group"
+                onPress={handleEditGroup}
+                variant="primary"
+                style={{ flex: 1 }}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 });

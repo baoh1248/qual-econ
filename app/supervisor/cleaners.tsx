@@ -49,6 +49,7 @@ export default function CleanersScreen() {
   const [selectedCleaner, setSelectedCleaner] = useState<Cleaner | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('all');
+  const [filterGroupId, setFilterGroupId] = useState<string>('all');
   const [employmentHistory, setEmploymentHistory] = useState<EmploymentHistory[]>([]);
   const [compensationHistory, setCompensationHistory] = useState<CompensationRecord[]>([]);
   const [cleanerGroups, setCleanerGroups] = useState<CleanerGroup[]>([]);
@@ -364,8 +365,8 @@ export default function CleanersScreen() {
     }));
   }, []);
 
-  const getCleanerGroup = useCallback((cleanerId: string) => {
-    return cleanerGroups.find(group => group.cleaner_ids.includes(cleanerId));
+  const getCleanerGroups = useCallback((cleanerId: string) => {
+    return cleanerGroups.filter(group => group.cleaner_ids.includes(cleanerId));
   }, [cleanerGroups]);
 
   const filteredCleaners = cleaners.filter(cleaner => {
@@ -377,7 +378,12 @@ export default function CleanersScreen() {
                          (filterStatus === 'active' && cleaner.isActive) ||
                          (filterStatus === 'inactive' && !cleaner.isActive);
     
-    return matchesSearch && matchesStatus;
+    const matchesGroup = filterGroupId === 'all' || 
+                        cleanerGroups.some(group => 
+                          group.id === filterGroupId && group.cleaner_ids.includes(cleaner.id)
+                        );
+    
+    return matchesSearch && matchesStatus && matchesGroup;
   });
 
   const getSecurityLevelColor = (level: string) => {
@@ -456,6 +462,7 @@ export default function CleanersScreen() {
     filterRow: {
       flexDirection: 'row',
       gap: spacing.sm,
+      marginBottom: spacing.sm,
     },
     filterChip: {
       paddingHorizontal: spacing.md,
@@ -476,6 +483,17 @@ export default function CleanersScreen() {
     },
     filterChipTextActive: {
       color: colors.background,
+      fontWeight: '600',
+    },
+    groupFilterRow: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+      flexWrap: 'wrap',
+    },
+    groupFilterLabel: {
+      ...typography.small,
+      color: colors.textSecondary,
+      marginBottom: spacing.xs,
       fontWeight: '600',
     },
     content: {
@@ -545,6 +563,12 @@ export default function CleanersScreen() {
       fontWeight: '600',
       textTransform: 'capitalize',
     },
+    groupBadgesContainer: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: spacing.xs,
+      marginBottom: spacing.sm,
+    },
     groupBadge: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -552,7 +576,6 @@ export default function CleanersScreen() {
       paddingHorizontal: spacing.sm,
       paddingVertical: spacing.xs,
       borderRadius: 12,
-      marginBottom: spacing.sm,
     },
     groupBadgeText: {
       ...typography.small,
@@ -821,6 +844,48 @@ export default function CleanersScreen() {
             </Text>
           </TouchableOpacity>
         </View>
+
+        {/* Group Filter */}
+        {cleanerGroups.length > 0 && (
+          <>
+            <Text style={styles.groupFilterLabel}>Filter by Group:</Text>
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              style={{ marginBottom: spacing.sm }}
+            >
+              <View style={styles.groupFilterRow}>
+                <TouchableOpacity
+                  style={[styles.filterChip, filterGroupId === 'all' && styles.filterChipActive]}
+                  onPress={() => setFilterGroupId('all')}
+                >
+                  <Text style={[styles.filterChipText, filterGroupId === 'all' && styles.filterChipTextActive]}>
+                    All Groups
+                  </Text>
+                </TouchableOpacity>
+
+                {cleanerGroups.map((group) => (
+                  <TouchableOpacity
+                    key={group.id}
+                    style={[
+                      styles.filterChip,
+                      filterGroupId === group.id && styles.filterChipActive,
+                      filterGroupId === group.id && { backgroundColor: group.highlight_color, borderColor: group.highlight_color }
+                    ]}
+                    onPress={() => setFilterGroupId(group.id)}
+                  >
+                    <Text style={[
+                      styles.filterChipText, 
+                      filterGroupId === group.id && styles.filterChipTextActive
+                    ]}>
+                      {group.group_name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+          </>
+        )}
       </View>
 
       {/* Cleaners List */}
@@ -841,7 +906,7 @@ export default function CleanersScreen() {
           </View>
         ) : (
           filteredCleaners.map((cleaner) => {
-            const cleanerGroup = getCleanerGroup(cleaner.id);
+            const cleanerGroupsList = getCleanerGroups(cleaner.id);
             
             return (
               <AnimatedCard key={cleaner.id} style={styles.cleanerCard}>
@@ -882,12 +947,16 @@ export default function CleanersScreen() {
                   </View>
                 </View>
 
-                {cleanerGroup && (
-                  <View style={[styles.groupBadge, { backgroundColor: `${cleanerGroup.highlight_color}20` }]}>
-                    <Icon name="people" size={14} style={{ color: cleanerGroup.highlight_color }} />
-                    <Text style={[styles.groupBadgeText, { color: cleanerGroup.highlight_color }]}>
-                      {cleanerGroup.group_name}
-                    </Text>
+                {cleanerGroupsList.length > 0 && (
+                  <View style={styles.groupBadgesContainer}>
+                    {cleanerGroupsList.map((group) => (
+                      <View key={group.id} style={[styles.groupBadge, { backgroundColor: `${group.highlight_color}20` }]}>
+                        <Icon name="people" size={14} style={{ color: group.highlight_color }} />
+                        <Text style={[styles.groupBadgeText, { color: group.highlight_color }]}>
+                          {group.group_name}
+                        </Text>
+                      </View>
+                    ))}
                   </View>
                 )}
 
@@ -1317,6 +1386,23 @@ export default function CleanersScreen() {
                       <Text style={styles.detailText}>Legal: {selectedCleaner.legal_name}</Text>
                     )}
                   </View>
+
+                  {/* Show all groups this cleaner belongs to */}
+                  {getCleanerGroups(selectedCleaner.id).length > 0 && (
+                    <>
+                      <Text style={styles.sectionHeader}>Groups</Text>
+                      <View style={styles.groupBadgesContainer}>
+                        {getCleanerGroups(selectedCleaner.id).map((group) => (
+                          <View key={group.id} style={[styles.groupBadge, { backgroundColor: `${group.highlight_color}20` }]}>
+                            <Icon name="people" size={14} style={{ color: group.highlight_color }} />
+                            <Text style={[styles.groupBadgeText, { color: group.highlight_color }]}>
+                              {group.group_name}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    </>
+                  )}
 
                   <Text style={styles.sectionHeader}>Employee Data Info</Text>
                   <View style={styles.cleanerDetails}>

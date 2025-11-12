@@ -1,12 +1,13 @@
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, StyleSheet, Platform, TextInput } from 'react-native';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, Alert, StyleSheet, Platform, TextInput, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import { useTheme } from '../../hooks/useTheme';
 import { useScheduleStorage, type ScheduleEntry } from '../../hooks/useScheduleStorage';
 import { useClientData, type Client, type ClientBuilding, type Cleaner } from '../../hooks/useClientData';
 import { useToast } from '../../hooks/useToast';
 import { useDatabase } from '../../hooks/useDatabase';
+import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import { commonStyles, colors, spacing, typography, buttonStyles } from '../../styles/commonStyles';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -23,9 +24,18 @@ import LoadingSpinner from '../../components/LoadingSpinner';
 import CompanyLogo from '../../components/CompanyLogo';
 import IconButton from '../../components/IconButton';
 import DraggableButton from '../../components/DraggableButton';
+import UnassignedShiftNotifications from '../../components/UnassignedShiftNotifications';
 import { projectToScheduleEntry, scheduleEntryExistsForProject } from '../../utils/projectScheduleSync';
 import { formatTimeRange } from '../../utils/timeFormatter';
 import { supabase } from '../integrations/supabase/client';
+import type { RecurringShiftPattern } from '../../utils/recurringShiftGenerator';
+import { 
+  generateOccurrences, 
+  patternToScheduleEntries, 
+  isPatternActive,
+  needsGeneration,
+  formatPatternDescription
+} from '../../utils/recurringShiftGenerator';
 
 type ModalType = 'add' | 'edit' | 'addClient' | 'addBuilding' | 'addCleaner' | 'editClient' | 'editBuilding' | 'details' | null;
 type ViewType = 'daily' | 'weekly' | 'monthly';
@@ -86,6 +96,7 @@ export default function ScheduleView() {
   const [showBuildingDropdown, setShowBuildingDropdown] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingGroups, setIsLoadingGroups] = useState(false);
   const [currentWeekSchedule, setCurrentWeekSchedule] = useState<ScheduleEntry[]>([]);
   const [recurringModalVisible, setRecurringModalVisible] = useState(false);
   const [buildingGroupModalVisible, setBuildingGroupModalVisible] = useState(false);
@@ -93,7 +104,6 @@ export default function ScheduleView() {
   const [buildingGroups, setBuildingGroups] = useState<BuildingGroup[]>([]);
   const [cleanerGroups, setCleanerGroups] = useState<CleanerGroup[]>([]);
   
-  // Filter states
   const [showFiltersModal, setShowFiltersModal] = useState(false);
   const [filters, setFilters] = useState<ScheduleFilters>({
     shiftType: 'all',
@@ -104,6 +114,10 @@ export default function ScheduleView() {
     cleanerGroupName: '',
     status: 'all',
   });
+
+  // Use refs to prevent unnecessary re-renders
+  const loadingInProgressRef = useRef(false);
+  const initialLoadCompleteRef = useRef(false);
 
   const { showToast } = useToast();
   const { executeQuery } = useDatabase();
@@ -117,137 +131,297 @@ export default function ScheduleView() {
     getWeekIdFromDate,
   } = useScheduleStorage();
 
-  // Calculate current week ID
   const currentWeekId = useMemo(() => {
     return getWeekIdFromDate(currentDate);
   }, [currentDate, getWeekIdFromDate]);
 
-  // Load building groups using direct Supabase query
+  const syncProjectsToSchedule = useCallback(async () => {
+    try {
+      console.log('=== AUTO-SYNCING PROJECTS TO SCHEDULE ===');
+      
+      const projects = await executeQuery<{
+        id: string;
+        client_name: string;
+        building_name?: string;
+        project_name: string;
+        frequency: string;
+        next_scheduled_date?: string;
+        status: string;
+      }>('select', 'client_projects');
+      
+      console.log('Loaded projects:', projects.length);
+      
+      const scheduledProjects = projects.filter(p => 
+        p.next_scheduled_date && 
+        p.status === 'active'
+      );
+      
+      console.log('Projects with scheduled dates:', scheduledProjects.length);
+      
+      const currentSchedule = getWeekSchedule(currentWeekId);
+      
+      let addedCount = 0;
+      
+      for (const project of scheduledProjects) {
+        if (!scheduleEntryExistsForProject(currentSchedule, project as any)) {
+          const scheduleEntry = projectToScheduleEntry(project as any);
+          
+          if (scheduleEntry) {
+            const entryWithId = {
+              ...scheduleEntry,
+              id: `project-schedule-${project.id}-${Date.now()}`,
+            };
+            
+            console.log('Adding schedule entry for project:', project.project_name);
+            await addScheduleEntry(currentWeekId, entryWithId as ScheduleEntry);
+            
+            addedCount++;
+          }
+        }
+      }
+      
+      console.log('✓ Auto-synced', addedCount, 'projects to schedule');
+      
+      if (addedCount > 0) {
+        showToast(`Auto-added ${addedCount} scheduled project${addedCount > 1 ? 's' : ''}`, 'success');
+      }
+      
+      return addedCount;
+    } catch (error) {
+      console.error('Error syncing projects to schedule:', error);
+      return 0;
+    }
+  }, [executeQuery, getWeekSchedule, currentWeekId, addScheduleEntry, showToast]);
+
+  const generateRecurringShifts = useCallback(async () => {
+    try {
+      console.log('=== GENERATING RECURRING SHIFTS ===');
+      
+      const patterns = await executeQuery<RecurringShiftPattern>('select', 'recurring_shifts');
+      console.log('Loaded recurring patterns:', patterns.length);
+      
+      const activePatterns = patterns.filter(p => isPatternActive(p));
+      console.log('Active patterns:', activePatterns.length);
+      
+      const today = new Date();
+      const futureDate = new Date(today);
+      futureDate.setDate(today.getDate() + 28);
+      
+      let totalGenerated = 0;
+      
+      for (const pattern of activePatterns) {
+        if (!needsGeneration(pattern, 4)) {
+          console.log('Pattern does not need generation:', pattern.id);
+          continue;
+        }
+        
+        const startDate = pattern.last_generated_date || pattern.start_date;
+        const occurrences = generateOccurrences(
+          pattern,
+          startDate,
+          futureDate.toISOString().split('T')[0],
+          50
+        );
+        
+        console.log(`Generated ${occurrences.length} occurrences for pattern ${pattern.id}`);
+        
+        const entries = patternToScheduleEntries(pattern, occurrences, getWeekIdFromDate);
+        
+        for (const entry of entries) {
+          const weekSchedule = getWeekSchedule(entry.weekId);
+          const exists = weekSchedule.some(e => 
+            e.recurringId === pattern.id && 
+            e.date === entry.date
+          );
+          
+          if (!exists) {
+            await addScheduleEntry(entry.weekId, entry);
+            totalGenerated++;
+          }
+        }
+        
+        await executeQuery('update', 'recurring_shifts', {
+          id: pattern.id,
+          last_generated_date: futureDate.toISOString().split('T')[0],
+          occurrence_count: (pattern.occurrence_count || 0) + occurrences.length,
+        });
+      }
+      
+      console.log('✅ Generated', totalGenerated, 'recurring shift entries');
+      
+      if (totalGenerated > 0) {
+        showToast(`Generated ${totalGenerated} recurring shift${totalGenerated > 1 ? 's' : ''}`, 'success');
+      }
+      
+      return totalGenerated;
+    } catch (error) {
+      console.error('❌ Error generating recurring shifts:', error);
+      return 0;
+    }
+  }, [executeQuery, getWeekSchedule, getWeekIdFromDate, addScheduleEntry, showToast]);
+
+  const loadCurrentWeekSchedule = useCallback(async () => {
+    // Prevent multiple simultaneous loads
+    if (loadingInProgressRef.current) {
+      console.log('⏸️ Load already in progress, skipping...');
+      return;
+    }
+
+    try {
+      loadingInProgressRef.current = true;
+      console.log('🔄 Loading current week schedule...');
+      
+      const weekId = getWeekIdFromDate(currentDate);
+      
+      // Always sync projects and generate recurring shifts first
+      await syncProjectsToSchedule();
+      await generateRecurringShifts();
+      
+      // Then get the updated schedule
+      const schedule = getWeekSchedule(weekId, true);
+      setCurrentWeekSchedule(schedule);
+      console.log('✅ Loaded schedule for week', weekId, ':', schedule.length, 'entries');
+      
+      if (!initialLoadCompleteRef.current) {
+        initialLoadCompleteRef.current = true;
+      }
+    } catch (error) {
+      console.error('❌ Error loading schedule:', error);
+      showToast('Failed to load schedule', 'error');
+    } finally {
+      loadingInProgressRef.current = false;
+    }
+  }, [currentDate, getWeekSchedule, getWeekIdFromDate, showToast, syncProjectsToSchedule, generateRecurringShifts]);
+
+  // Simplified realtime sync - only refresh the schedule display, don't reload everything
+  const { isConnected, lastSyncTime, syncToSupabase } = useRealtimeSync({
+    enabled: true,
+    onSyncComplete: useCallback(() => {
+      console.log('✅ Realtime sync completed - refreshing schedule display');
+      // Just refresh the current week schedule without reloading everything
+      const weekId = getWeekIdFromDate(currentDate);
+      const schedule = getWeekSchedule(weekId, true);
+      setCurrentWeekSchedule(schedule);
+    }, [currentDate, getWeekIdFromDate, getWeekSchedule]),
+    onError: useCallback((error) => {
+      console.error('❌ Realtime sync error:', error);
+      showToast('Sync error - changes may not be reflected on other devices', 'error');
+    }, [showToast]),
+  });
+
   const loadBuildingGroups = useCallback(async () => {
     try {
       console.log('🔄 Loading building groups...');
+      setIsLoadingGroups(true);
       
-      // Load groups
-      const { data: groupsData, error: groupsError } = await supabase
-        .from('building_groups')
-        .select('*')
-        .order('group_name', { ascending: true });
+      const [groupsResult, membersResult] = await Promise.all([
+        supabase
+          .from('building_groups')
+          .select('*')
+          .order('group_name', { ascending: true }),
+        supabase
+          .from('building_group_members')
+          .select('*')
+      ]);
 
-      if (groupsError) {
-        console.error('❌ Error loading building groups:', groupsError);
-        throw groupsError;
+      if (groupsResult.error) {
+        console.error('❌ Error loading building groups:', groupsResult.error);
+        throw groupsResult.error;
       }
 
-      console.log(`📦 Loaded ${groupsData?.length || 0} building groups from database`);
+      if (membersResult.error) {
+        console.error('❌ Error loading building group members:', membersResult.error);
+        throw membersResult.error;
+      }
 
-      if (!groupsData || groupsData.length === 0) {
+      const groupsData = groupsResult.data || [];
+      const membersData = membersResult.data || [];
+
+      console.log(`📦 Loaded ${groupsData.length} building groups and ${membersData.length} members`);
+
+      if (groupsData.length === 0) {
         console.log('ℹ️ No building groups found');
         setBuildingGroups([]);
         return;
       }
 
-      // Load members for each group
-      const groupsWithMembers: BuildingGroup[] = [];
-      
-      for (const group of groupsData) {
-        console.log(`🔍 Loading members for group "${group.group_name}" (${group.id})`);
-        
-        const { data: membersData, error: membersError } = await supabase
-          .from('building_group_members')
-          .select('building_id')
-          .eq('group_id', group.id);
+      const membersByGroup = new Map<string, string[]>();
+      membersData.forEach(member => {
+        const existing = membersByGroup.get(member.group_id) || [];
+        existing.push(member.building_id);
+        membersByGroup.set(member.group_id, existing);
+      });
 
-        if (membersError) {
-          console.error(`❌ Error loading members for group "${group.group_name}":`, membersError);
-          continue;
-        }
-
-        const buildingIds = membersData?.map(m => m.building_id) || [];
-        console.log(`  ✅ Group "${group.group_name}" has ${buildingIds.length} buildings:`, buildingIds);
-
-        groupsWithMembers.push({
-          id: group.id,
-          client_name: group.client_name,
-          group_name: group.group_name,
-          description: group.description,
-          building_ids: buildingIds,
-          highlight_color: group.highlight_color || '#3B82F6',
-        });
-      }
+      const groupsWithMembers: BuildingGroup[] = groupsData.map(group => ({
+        id: group.id,
+        client_name: group.client_name,
+        group_name: group.group_name,
+        description: group.description,
+        building_ids: membersByGroup.get(group.id) || [],
+        highlight_color: group.highlight_color || '#3B82F6',
+      }));
 
       console.log(`✅ Successfully loaded ${groupsWithMembers.length} building groups with members`);
-      console.log('📊 Building groups summary:', groupsWithMembers.map(g => ({
-        name: g.group_name,
-        buildings: g.building_ids.length,
-        color: g.highlight_color
-      })));
-      
       setBuildingGroups(groupsWithMembers);
     } catch (error) {
       console.error('❌ Failed to load building groups:', error);
       setBuildingGroups([]);
+    } finally {
+      setIsLoadingGroups(false);
     }
   }, []);
 
-  // Load cleaner groups using direct Supabase query
   const loadCleanerGroups = useCallback(async () => {
     try {
       console.log('🔄 Loading cleaner groups...');
       
-      // Load groups
-      const { data: groupsData, error: groupsError } = await supabase
-        .from('cleaner_groups')
-        .select('*')
-        .order('group_name', { ascending: true });
+      const [groupsResult, membersResult] = await Promise.all([
+        supabase
+          .from('cleaner_groups')
+          .select('*')
+          .order('group_name', { ascending: true }),
+        supabase
+          .from('cleaner_group_members')
+          .select('*')
+      ]);
 
-      if (groupsError) {
-        console.error('❌ Error loading cleaner groups:', groupsError);
-        throw groupsError;
+      if (groupsResult.error) {
+        console.error('❌ Error loading cleaner groups:', groupsResult.error);
+        throw groupsResult.error;
       }
 
-      console.log(`📦 Loaded ${groupsData?.length || 0} cleaner groups from database`);
+      if (membersResult.error) {
+        console.error('❌ Error loading cleaner group members:', membersResult.error);
+        throw membersResult.error;
+      }
 
-      if (!groupsData || groupsData.length === 0) {
+      const groupsData = groupsResult.data || [];
+      const membersData = membersResult.data || [];
+
+      console.log(`📦 Loaded ${groupsData.length} cleaner groups and ${membersData.length} members`);
+
+      if (groupsData.length === 0) {
         console.log('ℹ️ No cleaner groups found');
         setCleanerGroups([]);
         return;
       }
 
-      // Load members for each group
-      const groupsWithMembers: CleanerGroup[] = [];
-      
-      for (const group of groupsData) {
-        console.log(`🔍 Loading members for group "${group.group_name}" (${group.id})`);
-        
-        const { data: membersData, error: membersError } = await supabase
-          .from('cleaner_group_members')
-          .select('cleaner_id')
-          .eq('group_id', group.id);
+      const membersByGroup = new Map<string, string[]>();
+      membersData.forEach(member => {
+        const existing = membersByGroup.get(member.group_id) || [];
+        existing.push(member.cleaner_id);
+        membersByGroup.set(member.group_id, existing);
+      });
 
-        if (membersError) {
-          console.error(`❌ Error loading members for group "${group.group_name}":`, membersError);
-          continue;
-        }
-
-        const cleanerIds = membersData?.map(m => m.cleaner_id) || [];
-        console.log(`  ✅ Group "${group.group_name}" has ${cleanerIds.length} cleaners:`, cleanerIds);
-
-        groupsWithMembers.push({
-          id: group.id,
-          group_name: group.group_name,
-          description: group.description,
-          cleaner_ids: cleanerIds,
-          highlight_color: group.highlight_color || '#3B82F6',
-        });
-      }
+      const groupsWithMembers: CleanerGroup[] = groupsData.map(group => ({
+        id: group.id,
+        group_name: group.group_name,
+        description: group.description,
+        cleaner_ids: membersByGroup.get(group.id) || [],
+        highlight_color: group.highlight_color || '#3B82F6',
+      }));
 
       console.log(`✅ Successfully loaded ${groupsWithMembers.length} cleaner groups with members`);
-      console.log('📊 Cleaner groups summary:', groupsWithMembers.map(g => ({
-        name: g.group_name,
-        cleaners: g.cleaner_ids.length,
-        color: g.highlight_color
-      })));
-      
       setCleanerGroups(groupsWithMembers);
     } catch (error) {
       console.error('❌ Failed to load cleaner groups:', error);
@@ -255,35 +429,26 @@ export default function ScheduleView() {
     }
   }, []);
 
-  // Get unique building group names from building groups
   const uniqueBuildingGroupNames = useMemo(() => {
-    const names = new Set(buildingGroups.map(group => group.group_name));
-    return Array.from(names).sort();
+    return Array.from(new Set(buildingGroups.map(group => group.group_name))).sort();
   }, [buildingGroups]);
 
-  // Get unique cleaner group names from cleaner groups
   const uniqueCleanerGroupNames = useMemo(() => {
-    const names = new Set(cleanerGroups.map(group => group.group_name));
-    return Array.from(names).sort();
+    return Array.from(new Set(cleanerGroups.map(group => group.group_name))).sort();
   }, [cleanerGroups]);
 
-  // Get unique client names from schedule
   const uniqueClientNames = useMemo(() => {
-    const names = new Set(currentWeekSchedule.map(entry => entry.clientName));
-    return Array.from(names).sort();
+    return Array.from(new Set(currentWeekSchedule.map(entry => entry.clientName))).sort();
   }, [currentWeekSchedule]);
 
-  // Get unique building names from schedule (filtered by selected client if any)
   const uniqueBuildingNames = useMemo(() => {
     let entries = currentWeekSchedule;
     if (filters.clientName) {
       entries = entries.filter(entry => entry.clientName === filters.clientName);
     }
-    const names = new Set(entries.map(entry => entry.buildingName));
-    return Array.from(names).sort();
+    return Array.from(new Set(entries.map(entry => entry.buildingName))).sort();
   }, [currentWeekSchedule, filters.clientName]);
 
-  // Get unique cleaner names from schedule
   const uniqueCleanerNames = useMemo(() => {
     const names = new Set<string>();
     currentWeekSchedule.forEach(entry => {
@@ -296,89 +461,169 @@ export default function ScheduleView() {
     return Array.from(names).sort();
   }, [currentWeekSchedule]);
 
-  // Apply filters to schedule
+  // Filter schedule entries based on applied filters
   const filteredSchedule = useMemo(() => {
-    let filtered = [...currentWeekSchedule];
+    console.log('🔍 Filtering schedule with filters:', filters);
+    
+    if (filters.shiftType === 'all' &&
+        !filters.clientName.trim() &&
+        !filters.buildingName.trim() &&
+        !filters.cleanerName.trim() &&
+        !filters.buildingGroupName.trim() &&
+        !filters.cleanerGroupName.trim() &&
+        filters.status === 'all') {
+      console.log('✅ No filters applied, returning all schedule entries');
+      return currentWeekSchedule;
+    }
 
-    // Filter by shift type
+    let filtered = currentWeekSchedule;
+
     if (filters.shiftType !== 'all') {
-      if (filters.shiftType === 'project') {
-        filtered = filtered.filter(entry => entry.isProject === true);
-      } else {
-        filtered = filtered.filter(entry => !entry.isProject);
-      }
+      filtered = filtered.filter(entry => 
+        filters.shiftType === 'project' ? entry.isProject === true : !entry.isProject
+      );
+      console.log(`🔍 After shift type filter: ${filtered.length} entries`);
     }
 
-    // Filter by client name (supports both exact match and partial match)
     if (filters.clientName.trim()) {
+      const clientNameLower = filters.clientName.toLowerCase();
       filtered = filtered.filter(entry => 
-        entry.clientName.toLowerCase().includes(filters.clientName.toLowerCase())
+        entry.clientName.toLowerCase().includes(clientNameLower)
       );
+      console.log(`🔍 After client filter: ${filtered.length} entries`);
     }
 
-    // Filter by building name (supports both exact match and partial match)
     if (filters.buildingName.trim()) {
+      const buildingNameLower = filters.buildingName.toLowerCase();
       filtered = filtered.filter(entry => 
-        entry.buildingName.toLowerCase().includes(filters.buildingName.toLowerCase())
+        entry.buildingName.toLowerCase().includes(buildingNameLower)
       );
+      console.log(`🔍 After building filter: ${filtered.length} entries`);
     }
 
-    // Filter by cleaner name (supports both exact match and partial match)
     if (filters.cleanerName.trim()) {
+      const cleanerNameLower = filters.cleanerName.toLowerCase();
       filtered = filtered.filter(entry => {
         const cleanerNames = entry.cleanerNames || [entry.cleanerName];
         return cleanerNames.some(name => 
-          name.toLowerCase().includes(filters.cleanerName.toLowerCase())
+          name.toLowerCase().includes(cleanerNameLower)
         );
       });
+      console.log(`🔍 After cleaner filter: ${filtered.length} entries`);
     }
 
-    // Filter by building group
     if (filters.buildingGroupName.trim()) {
       const selectedGroup = buildingGroups.find(g => 
         g.group_name.toLowerCase().includes(filters.buildingGroupName.toLowerCase())
       );
       
       if (selectedGroup) {
-        const groupBuildingIds = selectedGroup.building_ids;
-        const groupBuildingNames = clientBuildings
-          .filter(b => groupBuildingIds.includes(b.id))
-          .map(b => b.buildingName);
+        const groupBuildingIds = new Set(selectedGroup.building_ids);
+        const groupBuildingNames = new Set(
+          clientBuildings
+            .filter(b => groupBuildingIds.has(b.id))
+            .map(b => b.buildingName)
+        );
         
         filtered = filtered.filter(entry => 
-          groupBuildingNames.includes(entry.buildingName)
+          groupBuildingNames.has(entry.buildingName)
         );
+        console.log(`🔍 After building group filter: ${filtered.length} entries`);
       }
     }
 
-    // Filter by cleaner group
     if (filters.cleanerGroupName.trim()) {
       const selectedGroup = cleanerGroups.find(g => 
         g.group_name.toLowerCase().includes(filters.cleanerGroupName.toLowerCase())
       );
       
       if (selectedGroup) {
-        const groupCleanerIds = selectedGroup.cleaner_ids;
-        const groupCleanerNames = cleaners
-          .filter(c => groupCleanerIds.includes(c.id))
-          .map(c => c.name);
+        const groupCleanerIds = new Set(selectedGroup.cleaner_ids);
+        const groupCleanerNames = new Set(
+          cleaners
+            .filter(c => groupCleanerIds.has(c.id))
+            .map(c => c.name)
+        );
         
         filtered = filtered.filter(entry => {
           const entryCleanerNames = entry.cleanerNames || [entry.cleanerName];
-          return entryCleanerNames.some(name => groupCleanerNames.includes(name));
+          return entryCleanerNames.some(name => groupCleanerNames.has(name));
         });
+        console.log(`🔍 After cleaner group filter: ${filtered.length} entries`);
       }
     }
 
-    // Filter by status
     if (filters.status !== 'all') {
       filtered = filtered.filter(entry => entry.status === filters.status);
+      console.log(`🔍 After status filter: ${filtered.length} entries`);
     }
 
+    console.log(`✅ Final filtered schedule: ${filtered.length} entries`);
     return filtered;
   }, [currentWeekSchedule, filters, buildingGroups, clientBuildings, cleanerGroups, cleaners]);
 
-  // Check if any filters are active
+  // Filter buildings to only show those with matching schedule entries
+  const filteredClientBuildings = useMemo(() => {
+    console.log('🔍 Filtering client buildings based on schedule entries');
+    
+    if (filters.shiftType === 'all' &&
+        !filters.clientName.trim() &&
+        !filters.buildingName.trim() &&
+        !filters.cleanerName.trim() &&
+        !filters.buildingGroupName.trim() &&
+        !filters.cleanerGroupName.trim() &&
+        filters.status === 'all') {
+      console.log('✅ No filters applied, returning all buildings');
+      return clientBuildings;
+    }
+
+    // Get unique building names from filtered schedule
+    const buildingNamesWithSchedule = new Set(
+      filteredSchedule.map(entry => entry.buildingName)
+    );
+
+    console.log(`🔍 Buildings with matching schedule entries: ${buildingNamesWithSchedule.size}`);
+
+    // Filter buildings to only include those with schedule entries
+    const filtered = clientBuildings.filter(building => 
+      buildingNamesWithSchedule.has(building.buildingName)
+    );
+
+    console.log(`✅ Filtered buildings: ${filtered.length} out of ${clientBuildings.length}`);
+    return filtered;
+  }, [clientBuildings, filteredSchedule, filters]);
+
+  // Filter clients to only show those with matching buildings
+  const filteredClients = useMemo(() => {
+    console.log('🔍 Filtering clients based on filtered buildings');
+    
+    if (filters.shiftType === 'all' &&
+        !filters.clientName.trim() &&
+        !filters.buildingName.trim() &&
+        !filters.cleanerName.trim() &&
+        !filters.buildingGroupName.trim() &&
+        !filters.cleanerGroupName.trim() &&
+        filters.status === 'all') {
+      console.log('✅ No filters applied, returning all clients');
+      return clients;
+    }
+
+    // Get unique client names from filtered buildings
+    const clientNamesWithBuildings = new Set(
+      filteredClientBuildings.map(building => building.clientName)
+    );
+
+    console.log(`🔍 Clients with matching buildings: ${clientNamesWithBuildings.size}`);
+
+    // Filter clients to only include those with buildings
+    const filtered = clients.filter(client => 
+      clientNamesWithBuildings.has(client.name)
+    );
+
+    console.log(`✅ Filtered clients: ${filtered.length} out of ${clients.length}`);
+    return filtered;
+  }, [clients, filteredClientBuildings, filters]);
+
   const hasActiveFilters = useMemo(() => {
     return filters.shiftType !== 'all' ||
            filters.clientName.trim() !== '' ||
@@ -389,7 +634,6 @@ export default function ScheduleView() {
            filters.status !== 'all';
   }, [filters]);
 
-  // Count active filters
   const activeFilterCount = useMemo(() => {
     let count = 0;
     if (filters.shiftType !== 'all') count++;
@@ -402,7 +646,6 @@ export default function ScheduleView() {
     return count;
   }, [filters]);
 
-  // Clear all filters
   const clearFilters = useCallback(() => {
     setFilters({
       shiftType: 'all',
@@ -415,7 +658,6 @@ export default function ScheduleView() {
     });
   }, []);
 
-  // Get count for filter options
   const getClientCount = useCallback((clientName: string) => {
     if (!clientName) return currentWeekSchedule.length;
     return currentWeekSchedule.filter(entry => entry.clientName === clientName).length;
@@ -463,90 +705,37 @@ export default function ScheduleView() {
     }).length;
   }, [cleanerGroups, cleaners, currentWeekSchedule]);
 
-  const syncProjectsToSchedule = useCallback(async () => {
-    try {
-      console.log('=== AUTO-SYNCING PROJECTS TO SCHEDULE ===');
-      
-      const projects = await executeQuery<{
-        id: string;
-        client_name: string;
-        building_name?: string;
-        project_name: string;
-        frequency: string;
-        next_scheduled_date?: string;
-        status: string;
-      }>('select', 'client_projects');
-      
-      console.log('Loaded projects:', projects.length);
-      
-      const scheduledProjects = projects.filter(p => 
-        p.next_scheduled_date && 
-        p.status === 'active'
-      );
-      
-      console.log('Projects with scheduled dates:', scheduledProjects.length);
-      
-      const currentSchedule = getWeekSchedule(currentWeekId);
-      
-      let addedCount = 0;
-      
-      for (const project of scheduledProjects) {
-        if (!scheduleEntryExistsForProject(currentSchedule, project as any)) {
-          const scheduleEntry = projectToScheduleEntry(project as any);
-          
-          if (scheduleEntry) {
-            const entryWithId = {
-              ...scheduleEntry,
-              id: `project-schedule-${project.id}-${Date.now()}`,
-            };
-            
-            console.log('Adding schedule entry for project:', project.project_name);
-            await addScheduleEntry(currentWeekId, entryWithId as ScheduleEntry);
-            addedCount++;
-          }
-        }
-      }
-      
-      console.log('✓ Auto-synced', addedCount, 'projects to schedule');
-      
-      if (addedCount > 0) {
-        showToast(`Auto-added ${addedCount} scheduled project${addedCount > 1 ? 's' : ''}`, 'success');
-      }
-      
-      return addedCount;
-    } catch (error) {
-      console.error('Error syncing projects to schedule:', error);
-      return 0;
-    }
-  }, [executeQuery, getWeekSchedule, currentWeekId, addScheduleEntry, showToast]);
-
-  const loadCurrentWeekSchedule = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const weekId = getWeekIdFromDate(currentDate);
-      const schedule = getWeekSchedule(weekId, true);
-      setCurrentWeekSchedule(schedule);
-      console.log('Loaded schedule for week', weekId, ':', schedule.length, 'entries');
-      
-      await syncProjectsToSchedule();
-      
-      const updatedSchedule = getWeekSchedule(weekId, true);
-      setCurrentWeekSchedule(updatedSchedule);
-      
-      // Load building groups and cleaner groups
-      await loadBuildingGroups();
-      await loadCleanerGroups();
-    } catch (error) {
-      console.error('Error loading schedule:', error);
-      showToast('Failed to load schedule', 'error');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [currentDate, getWeekSchedule, getWeekIdFromDate, showToast, syncProjectsToSchedule, loadBuildingGroups, loadCleanerGroups]);
-
+  // Initial data load - only runs once
   useEffect(() => {
-    loadCurrentWeekSchedule();
-  }, [loadCurrentWeekSchedule]);
+    const loadData = async () => {
+      setIsLoading(true);
+      try {
+        console.log('🔄 Initial data load starting...');
+        await Promise.all([
+          loadBuildingGroups(),
+          loadCleanerGroups()
+        ]);
+        console.log('✅ Initial data load completed, now loading schedule...');
+        // Load schedule after groups are loaded
+        await loadCurrentWeekSchedule();
+      } catch (error) {
+        console.error('❌ Error loading initial data:', error);
+        showToast('Failed to load schedule data', 'error');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadData();
+  }, []); // Empty dependency array - only run once on mount
+
+  // Reload schedule when date changes (but not on initial mount)
+  useEffect(() => {
+    if (!isLoading && initialLoadCompleteRef.current) {
+      console.log('🔄 Date changed, reloading schedule for new week');
+      loadCurrentWeekSchedule();
+    }
+  }, [currentDate, isLoading, loadCurrentWeekSchedule]);
 
   const changeDate = (amount: number) => {
     const newDate = new Date(currentDate);
@@ -596,7 +785,6 @@ export default function ScheduleView() {
     }
   };
 
-  // Wrap addHoursToTime in useCallback to fix the dependency warning
   const addHoursToTime = useCallback((time: string, hours: number): string => {
     const [hoursStr, minutesStr] = time.split(':');
     const totalMinutes = parseInt(hoursStr) * 60 + parseInt(minutesStr) + hours * 60;
@@ -755,8 +943,16 @@ export default function ScheduleView() {
 
         console.log('Adding new schedule entry:', newEntry);
         await addScheduleEntry(currentWeekId, newEntry);
+        
+        console.log('🔄 Syncing new entry to Supabase...');
+        await syncToSupabase(newEntry, 'insert');
+        
         showToast('Shift added successfully', 'success');
-        await loadCurrentWeekSchedule();
+        
+        // Refresh the schedule display
+        const schedule = getWeekSchedule(currentWeekId, true);
+        setCurrentWeekSchedule(schedule);
+        
         handleModalClose();
       } else if (modalType === 'edit') {
         if (!selectedEntry) {
@@ -784,15 +980,24 @@ export default function ScheduleView() {
 
         console.log('Updating schedule entry:', selectedEntry.id, updates);
         await updateScheduleEntry(selectedEntry.weekId, selectedEntry.id, updates);
+        
+        const updatedEntry = { ...selectedEntry, ...updates };
+        console.log('🔄 Syncing updated entry to Supabase...');
+        await syncToSupabase(updatedEntry as ScheduleEntry, 'update');
+        
         showToast('Shift updated successfully', 'success');
-        await loadCurrentWeekSchedule();
+        
+        // Refresh the schedule display
+        const schedule = getWeekSchedule(currentWeekId, true);
+        setCurrentWeekSchedule(schedule);
+        
         handleModalClose();
       }
     } catch (error) {
       console.error('Error saving schedule entry:', error);
       showToast('Failed to save shift', 'error');
     }
-  }, [modalType, selectedClientBuilding, selectedCleaners, hours, startTime, selectedDay, currentDate, currentWeekId, selectedEntry, addScheduleEntry, updateScheduleEntry, loadCurrentWeekSchedule, handleModalClose, showToast, addHoursToTime]);
+  }, [modalType, selectedClientBuilding, selectedCleaners, hours, startTime, selectedDay, currentDate, currentWeekId, selectedEntry, addScheduleEntry, updateScheduleEntry, syncToSupabase, getWeekSchedule, handleModalClose, showToast, addHoursToTime]);
 
   const handleModalDelete = useCallback(async () => {
     console.log('=== SCHEDULE MODAL DELETE HANDLER ===');
@@ -815,8 +1020,16 @@ export default function ScheduleView() {
             try {
               console.log('Deleting schedule entry:', selectedEntry.id);
               await deleteScheduleEntry(selectedEntry.weekId, selectedEntry.id);
+              
+              console.log('🔄 Syncing deleted entry to Supabase...');
+              await syncToSupabase(selectedEntry, 'delete');
+              
               showToast('Shift deleted successfully', 'success');
-              await loadCurrentWeekSchedule();
+              
+              // Refresh the schedule display
+              const schedule = getWeekSchedule(currentWeekId, true);
+              setCurrentWeekSchedule(schedule);
+              
               handleModalClose();
             } catch (error) {
               console.error('Error deleting schedule entry:', error);
@@ -826,7 +1039,7 @@ export default function ScheduleView() {
         },
       ]
     );
-  }, [selectedEntry, deleteScheduleEntry, loadCurrentWeekSchedule, handleModalClose, showToast]);
+  }, [selectedEntry, deleteScheduleEntry, syncToSupabase, getWeekSchedule, currentWeekId, handleModalClose, showToast]);
 
   const handleAddClient = useCallback(async () => {
     console.log('Adding client:', newClientName);
@@ -980,17 +1193,46 @@ export default function ScheduleView() {
     console.log('Task data:', taskData);
 
     try {
-      showToast('Recurring task feature coming soon!', 'info');
-      setRecurringModalVisible(false);
+      const patternId = `recurring-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       
-      if (selectedClientBuilding) {
-        setModalVisible(true);
-      }
+      const recurringPattern: RecurringShiftPattern = {
+        id: patternId,
+        building_id: taskData.clientBuilding.id,
+        building_name: taskData.clientBuilding.buildingName,
+        client_name: taskData.clientBuilding.clientName,
+        cleaner_names: taskData.cleanerNames || [taskData.cleanerName],
+        hours: taskData.hours,
+        start_time: taskData.startTime,
+        notes: taskData.notes,
+        pattern_type: taskData.pattern.type,
+        interval: taskData.pattern.interval,
+        days_of_week: taskData.pattern.daysOfWeek,
+        day_of_month: taskData.pattern.dayOfMonth,
+        custom_days: taskData.pattern.customDays,
+        start_date: taskData.pattern.startDate || new Date().toISOString().split('T')[0],
+        end_date: taskData.pattern.endDate,
+        max_occurrences: taskData.pattern.maxOccurrences,
+        is_active: true,
+        payment_type: 'hourly',
+        hourly_rate: 15,
+      };
+      
+      await executeQuery('insert', 'recurring_shifts', recurringPattern);
+      
+      showToast('Recurring shift created successfully!', 'success');
+      
+      await generateRecurringShifts();
+      
+      // Refresh the schedule display
+      const schedule = getWeekSchedule(currentWeekId, true);
+      setCurrentWeekSchedule(schedule);
+      
+      setRecurringModalVisible(false);
     } catch (error) {
       console.error('Error creating recurring task:', error);
-      showToast('Failed to create recurring task', 'error');
+      showToast('Failed to create recurring shift', 'error');
     }
-  }, [selectedClientBuilding, showToast]);
+  }, [executeQuery, generateRecurringShifts, getWeekSchedule, currentWeekId, showToast]);
 
   const renderDailyView = () => {
     const daySchedule = filteredSchedule.filter(entry => {
@@ -1020,8 +1262,17 @@ export default function ScheduleView() {
           <TouchableOpacity
             key={entry.id}
             onPress={() => handleTaskPress(entry)}
-            style={styles.dayEntry}
+            style={[
+              styles.dayEntry,
+              entry.isRecurring && { borderLeftColor: colors.warning, borderLeftWidth: 6 }
+            ]}
           >
+            {entry.isRecurring && (
+              <View style={styles.recurringBadge}>
+                <Icon name="repeat" size={12} color={colors.warning} />
+                <Text style={styles.recurringBadgeText}>Recurring</Text>
+              </View>
+            )}
             <Text style={styles.dayEntryTitle}>{entry.buildingName}</Text>
             <Text style={styles.dayEntrySubtitle}>
               {entry.cleanerNames?.join(', ') || entry.cleanerName}
@@ -1052,8 +1303,8 @@ export default function ScheduleView() {
       <ErrorBoundary>
         <GestureHandlerRootView style={{ flex: 1 }}>
           <DragDropScheduleGrid
-            clientBuildings={clientBuildings}
-            clients={clients}
+            clientBuildings={filteredClientBuildings}
+            clients={filteredClients}
             cleaners={cleaners}
             schedule={filteredSchedule}
             buildingGroups={buildingGroups}
@@ -1103,7 +1354,12 @@ export default function ScheduleView() {
 
   const renderMainContent = () => {
     if (isLoading) {
-      return <LoadingSpinner />;
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={themeColor} />
+          <Text style={styles.loadingText}>Loading schedule...</Text>
+        </View>
+      );
     }
 
     switch (viewType) {
@@ -1215,6 +1471,17 @@ export default function ScheduleView() {
     content: {
       flex: 1,
     },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: spacing.xl,
+    },
+    loadingText: {
+      ...typography.body,
+      color: colors.textSecondary,
+      marginTop: spacing.md,
+    },
     emptyState: {
       flex: 1,
       justifyContent: 'center',
@@ -1287,11 +1554,42 @@ export default function ScheduleView() {
       color: colors.textInverse,
       fontWeight: '600',
     },
+    syncIndicator: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+      borderRadius: 12,
+      backgroundColor: isConnected ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+    },
+    syncIndicatorDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: isConnected ? '#22C55E' : '#EF4444',
+    },
+    syncIndicatorText: {
+      ...typography.small,
+      color: isConnected ? '#22C55E' : '#EF4444',
+      fontSize: 10,
+    },
+    recurringBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      marginBottom: spacing.xs,
+    },
+    recurringBadgeText: {
+      ...typography.small,
+      color: colors.warning,
+      fontWeight: '600',
+      fontSize: 10,
+    },
   });
 
   return (
     <View style={styles.container}>
-      {/* Header */}
       <View style={[styles.header, { backgroundColor: themeColor }]}>
         <View style={styles.headerLeft}>
           <TouchableOpacity
@@ -1303,6 +1601,28 @@ export default function ScheduleView() {
           <Text style={styles.headerTitle}>Schedule</Text>
         </View>
         <View style={styles.headerRight}>
+          <View style={styles.syncIndicator}>
+            <View style={styles.syncIndicatorDot} />
+            <Text style={styles.syncIndicatorText}>
+              {isConnected ? 'LIVE' : 'OFFLINE'}
+            </Text>
+          </View>
+          
+          <UnassignedShiftNotifications
+            themeColor={themeColor}
+            onAssignShift={(notification) => {
+              console.log('Assign shift from notification:', notification);
+              // Navigate to the shift date and open assignment modal
+              if (notification.shift_date) {
+                setCurrentDate(new Date(notification.shift_date));
+              }
+            }}
+            onRemoveShift={(notification) => {
+              console.log('Remove shift from notification:', notification);
+              // Handle shift removal
+            }}
+          />
+          
           <TouchableOpacity
             onPress={() => setShowFiltersModal(true)}
             style={[buttonStyles.backButton, { backgroundColor: 'rgba(255,255,255,0.2)', position: 'relative' }]}
@@ -1318,7 +1638,6 @@ export default function ScheduleView() {
         </View>
       </View>
 
-      {/* Controls */}
       <View style={styles.controls}>
         <View style={styles.viewToggle}>
           <TouchableOpacity
@@ -1395,10 +1714,8 @@ export default function ScheduleView() {
         </View>
       </View>
 
-      {/* Main Content */}
       {renderMainContent()}
 
-      {/* Draggable FAB - Add Single Shift */}
       <DraggableButton
         icon="add"
         iconSize={28}
@@ -1416,7 +1733,20 @@ export default function ScheduleView() {
         }}
       />
 
-      {/* Draggable FAB - Schedule Building Group */}
+      <DraggableButton
+        icon="repeat"
+        iconSize={24}
+        iconColor={colors.textInverse}
+        backgroundColor={colors.warning}
+        size={48}
+        initialX={Platform.select({ ios: 20, android: 20, default: 20 })}
+        initialY={Platform.select({ ios: 200, android: 200, default: 200 })}
+        onPress={() => {
+          console.log('Recurring FAB pressed');
+          setRecurringModalVisible(true);
+        }}
+      />
+
       <DraggableButton
         icon="albums"
         iconSize={24}
@@ -1430,7 +1760,6 @@ export default function ScheduleView() {
         }}
       />
 
-      {/* Date Picker */}
       {showDatePicker && (
         <DateTimePicker
           value={currentDate}
@@ -1440,7 +1769,6 @@ export default function ScheduleView() {
         />
       )}
 
-      {/* Schedule Filters Modal */}
       <ScheduleFiltersModal
         visible={showFiltersModal}
         onClose={() => setShowFiltersModal(false)}
@@ -1462,7 +1790,6 @@ export default function ScheduleView() {
         hasActiveFilters={hasActiveFilters}
       />
 
-      {/* Schedule Modal */}
       <ScheduleModal
         visible={modalVisible}
         modalType={modalType}
@@ -1517,7 +1844,6 @@ export default function ScheduleView() {
         onOpenRecurringModal={handleOpenRecurringModal}
       />
 
-      {/* Recurring Task Modal */}
       <RecurringTaskModal
         visible={recurringModalVisible}
         clientBuildings={clientBuildings}
@@ -1531,12 +1857,15 @@ export default function ScheduleView() {
         onSave={handleRecurringTaskSave}
       />
 
-      {/* Building Group Schedule Modal */}
       <BuildingGroupScheduleModal
         visible={buildingGroupModalVisible}
         onClose={() => setBuildingGroupModalVisible(false)}
         cleaners={cleaners}
-        onScheduleCreated={loadCurrentWeekSchedule}
+        onScheduleCreated={() => {
+          // Refresh the schedule display
+          const schedule = getWeekSchedule(currentWeekId, true);
+          setCurrentWeekSchedule(schedule);
+        }}
         weekId={currentWeekId}
         day={selectedDay || 'monday'}
         date={currentDate.toISOString().split('T')[0]}

@@ -489,6 +489,14 @@ const SupervisorDashboard = () => {
             <Icon name="briefcase" size={24} style={{ color: themeColor }} />
             <Text style={styles.actionButtonText}>Projects</Text>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => router.push('/supervisor/time-off-requests')}
+          >
+            <Icon name="calendar-outline" size={24} style={{ color: themeColor }} />
+            <Text style={styles.actionButtonText}>Time Off</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
 

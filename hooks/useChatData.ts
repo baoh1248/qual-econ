@@ -696,18 +696,19 @@ export const useChatData = () => {
 
   // Cleanup subscriptions - Fix for ref value warning
   useEffect(() => {
+    // Capture ref values in local variables at effect creation time
+    const currentSubscriptions = subscriptionsRef.current;
+    const currentTypingTimeouts = typingTimeoutRef.current;
+    
     return () => {
-      // Capture ref values in local variables
-      const subscriptions = subscriptionsRef.current;
-      const typingTimeouts = typingTimeoutRef.current;
-      
-      Object.keys(subscriptions).forEach(roomId => {
-        if (subscriptions[roomId]) {
-          supabase.removeChannel(subscriptions[roomId]);
+      // Use the captured values in cleanup
+      Object.keys(currentSubscriptions).forEach(roomId => {
+        if (currentSubscriptions[roomId]) {
+          supabase.removeChannel(currentSubscriptions[roomId]);
         }
       });
       
-      Object.values(typingTimeouts).forEach(timeout => {
+      Object.values(currentTypingTimeouts).forEach(timeout => {
         if (timeout) {
           clearTimeout(timeout);
         }

@@ -25,6 +25,11 @@ export default function SupervisorLayout() {
         <Stack.Screen name="chat" />
         <Stack.Screen name="chat-room-settings" />
         <Stack.Screen name="settings" />
+        <Stack.Screen name="time-off-requests" />
+        <Stack.Screen name="clients-list" />
+        <Stack.Screen name="buildings" />
+        <Stack.Screen name="building-detail" />
+        <Stack.Screen name="contract-details" />
       </Stack>
       <BottomNavigation role="supervisor" />
     </View>

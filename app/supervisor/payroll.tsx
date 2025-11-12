@@ -488,11 +488,23 @@ export default function PayrollScreen() {
           // Calculate payment based on type
           let entryPay = 0;
           if (paymentType === 'flat_rate') {
+            // FIXED: Flat rate is NOT multiplied by hours
             const flatRateAmount = entry.flatRateAmount || 0;
+            // Split flat rate among multiple cleaners if needed
             entryPay = entryCleaners.length > 1 ? flatRateAmount / entryCleaners.length : flatRateAmount;
             cleanerData.totalFlatRatePay += entryPay;
             cleanerData.flatRateJobs.push(entry);
+            
+            console.log('Flat rate payment calculated:', {
+              entryId: entry.id,
+              cleanerName,
+              flatRateAmount,
+              numberOfCleaners: entryCleaners.length,
+              entryPay,
+              hours: splitHours
+            });
           } else {
+            // Hourly rate calculation
             const hourlyRate = entry.hourlyRate || cleaner?.default_hourly_rate || 15;
             const regularHoursForThisEntry = Math.min(splitHours, Math.max(0, 40 - previousRegularHours));
             const overtimeHoursForThisEntry = Math.max(0, splitHours - regularHoursForThisEntry);
@@ -500,6 +512,16 @@ export default function PayrollScreen() {
             entryPay = (regularHoursForThisEntry * hourlyRate) + (overtimeHoursForThisEntry * hourlyRate * 1.5);
             cleanerData.totalHourlyPay += entryPay;
             cleanerData.hourlyJobs.push(entry);
+            
+            console.log('Hourly payment calculated:', {
+              entryId: entry.id,
+              cleanerName,
+              hourlyRate,
+              hours: splitHours,
+              regularHours: regularHoursForThisEntry,
+              overtimeHours: overtimeHoursForThisEntry,
+              entryPay
+            });
           }
           
           cleanerData.totalPay = cleanerData.totalHourlyPay + cleanerData.totalFlatRatePay;

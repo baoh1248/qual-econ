@@ -9,6 +9,7 @@ import Button from '../../components/Button';
 import Icon from '../../components/Icon';
 import { useToast } from '../../hooks/useToast';
 import Toast from '../../components/Toast';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function CleanerSigninScreen() {
   console.log('CleanerSigninScreen rendered');
@@ -16,8 +17,6 @@ export default function CleanerSigninScreen() {
   const { toast, showToast, hideToast } = useToast();
   
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSignin = async () => {
@@ -27,85 +26,64 @@ export default function CleanerSigninScreen() {
       showToast('Phone number is required', 'error');
       return;
     }
-    
-    if (!password) {
-      showToast('Password is required', 'error');
-      return;
-    }
 
     try {
       setIsLoading(true);
       console.log('Starting signin process...');
 
       const phoneValue = phoneNumber.trim();
+      console.log('Looking up user by phone number:', phoneValue);
 
-      console.log('Login attempt with phone number:', phoneValue);
-
-      // Sign in with phone number and password
-      const { data, error } = await supabase.auth.signInWithPassword({
-        phone: phoneValue,
-        password: password,
-      });
-
-      if (error) {
-        console.error('Phone signin error:', error);
-        
-        // Handle specific error cases
-        if (error.message.includes('Invalid login credentials')) {
-          showToast('Invalid credentials. Please check your phone number and password.', 'error');
-        } else if (error.message.includes('Phone not confirmed') || 
-                   error.message.includes('not confirmed') ||
-                   error.message.includes('Email not confirmed')) {
-          Alert.alert(
-            'Phone Not Verified',
-            'Your phone number has not been verified yet. Please check your SMS messages for the verification code, or contact your supervisor for assistance.',
-            [{ text: 'OK' }]
-          );
-        } else if (error.message.includes('Phone signups are disabled') || 
-                   error.message.includes('phone_provider_disabled')) {
-          Alert.alert(
-            'Phone Authentication Disabled',
-            'Phone number sign-in is currently disabled in the system. Please contact your supervisor to enable phone authentication.\n\nError: Phone provider is not configured.',
-            [{ text: 'OK' }]
-          );
-        } else {
-          showToast(error.message || 'Failed to sign in', 'error');
-        }
-        return;
-      }
-
-      if (!data.user) {
-        console.error('No user data returned from signin');
-        showToast('Failed to sign in', 'error');
-        return;
-      }
-
-      const userId = data.user.id;
-      console.log('Phone signin successful:', userId);
-
-      // Verify that the user has a cleaner profile
-      const { data: cleanerProfile, error: profileError } = await supabase
+      // Look up user by phone number
+      const { data: cleanerData, error: lookupError } = await supabase
         .from('cleaners')
-        .select('id, name')
-        .eq('user_id', userId)
-        .single();
+        .select('id, name, phone_number, is_active, employment_status')
+        .eq('phone_number', phoneValue)
+        .maybeSingle();
 
-      if (profileError || !cleanerProfile) {
-        console.error('Cleaner profile not found:', profileError);
-        showToast('Your profile is being set up. Please contact your supervisor.', 'warning');
-        // Sign out the user since they don't have a cleaner profile
-        await supabase.auth.signOut();
+      console.log('Cleaner lookup result:', { cleanerData, lookupError });
+
+      if (lookupError) {
+        console.error('Phone lookup error:', lookupError);
+        showToast('Failed to look up account. Please try again.', 'error');
         return;
       }
 
-      console.log('Cleaner profile found:', cleanerProfile.name);
+      if (!cleanerData) {
+        console.log('No cleaner found with phone number:', phoneValue);
+        showToast('No account found with this phone number. Please check your phone number or sign up.', 'error');
+        return;
+      }
+
+      // Check if the cleaner account is active
+      if (!cleanerData.is_active || cleanerData.employment_status !== 'active') {
+        console.log('Cleaner account is not active:', cleanerData);
+        Alert.alert(
+          'Account Inactive',
+          'Your account is not currently active. Please contact your supervisor for assistance.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
+      console.log('Cleaner account found and active:', cleanerData.name);
+
+      // Store cleaner info in AsyncStorage for session management
+      await AsyncStorage.setItem('cleaner_id', cleanerData.id);
+      await AsyncStorage.setItem('cleaner_name', cleanerData.name);
+      await AsyncStorage.setItem('cleaner_phone', cleanerData.phone_number);
+
+      console.log('Session data stored successfully');
+      showToast(`Welcome back, ${cleanerData.name}!`, 'success');
       
-      // Navigate to cleaner dashboard
-      router.replace('/cleaner');
+      // Small delay to show success message
+      setTimeout(() => {
+        router.replace('/cleaner');
+      }, 500);
 
     } catch (error: any) {
       console.error('Unexpected signin error:', error);
-      showToast(error?.message || 'An unexpected error occurred', 'error');
+      showToast(error?.message || 'An unexpected error occurred. Please try again.', 'error');
     } finally {
       setIsLoading(false);
     }
@@ -145,42 +123,24 @@ export default function CleanerSigninScreen() {
               keyboardType="phone-pad"
               autoCapitalize="none"
               autoCorrect={false}
+              editable={!isLoading}
+              onSubmitEditing={handleSignin}
+              returnKeyType="go"
             />
             <Text style={styles.inputHint}>
               Enter the phone number you used to sign up
             </Text>
-
-            <Text style={styles.label}>Password</Text>
-            <View style={styles.passwordContainer}>
-              <TextInput
-                style={[styles.input, styles.passwordInput]}
-                placeholder="Enter your password"
-                value={password}
-                onChangeText={setPassword}
-                placeholderTextColor={colors.textSecondary}
-                secureTextEntry={!showPassword}
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-              <TouchableOpacity
-                style={styles.eyeIcon}
-                onPress={() => setShowPassword(!showPassword)}
-              >
-                <Icon
-                  name={showPassword ? 'eye-off' : 'eye'}
-                  size={20}
-                  style={{ color: colors.textSecondary }}
-                />
-              </TouchableOpacity>
-            </View>
           </View>
 
-          {/* Info Box for Phone Auth Issues */}
+          {/* Info Box */}
           <View style={styles.infoBox}>
             <Icon name="information-circle" size={20} style={{ color: colors.primary }} />
             <View style={{ flex: 1 }}>
               <Text style={styles.infoText}>
-                Having trouble signing in? Contact your supervisor if you need help with phone verification or account setup.
+                Simply enter your phone number to access your account. No password required!
+              </Text>
+              <Text style={[styles.infoText, { marginTop: spacing.xs }]}>
+                If you&apos;re having trouble signing in, please contact your supervisor.
               </Text>
             </View>
           </View>
@@ -195,7 +155,10 @@ export default function CleanerSigninScreen() {
 
           <View style={styles.signupContainer}>
             <Text style={styles.signupText}>Don&apos;t have an account? </Text>
-            <TouchableOpacity onPress={() => router.push('/auth/cleaner-signup')}>
+            <TouchableOpacity 
+              onPress={() => router.push('/auth/cleaner-signup')}
+              disabled={isLoading}
+            >
               <Text style={styles.signupLink}>Sign Up</Text>
             </TouchableOpacity>
           </View>
@@ -247,20 +210,6 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     marginTop: -spacing.sm,
     marginBottom: spacing.md,
-  },
-  passwordContainer: {
-    position: 'relative',
-    marginBottom: spacing.md,
-  },
-  passwordInput: {
-    marginBottom: 0,
-    paddingRight: 50,
-  },
-  eyeIcon: {
-    position: 'absolute',
-    right: spacing.md,
-    top: spacing.md,
-    padding: spacing.xs,
   },
   infoBox: {
     flexDirection: 'row',

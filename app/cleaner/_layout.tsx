@@ -21,6 +21,7 @@ export default function CleanerLayout() {
         <Stack.Screen name="inventory" />
         <Stack.Screen name="task/[id]" />
         <Stack.Screen name="settings" />
+        <Stack.Screen name="time-off" />
       </Stack>
       <BottomNavigation role="cleaner" />
     </View>

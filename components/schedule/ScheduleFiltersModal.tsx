@@ -110,6 +110,7 @@ const ScheduleFiltersModal = memo<ScheduleFiltersModalProps>(({
           style={styles.content}
           contentContainerStyle={styles.contentContainer}
           showsVerticalScrollIndicator={false}
+          nestedScrollEnabled={true}
         >
           {/* Shift Type Filter */}
           <View style={styles.section}>
@@ -268,8 +269,8 @@ const ScheduleFiltersModal = memo<ScheduleFiltersModalProps>(({
           {/* Client & Building Filters */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Location</Text>
-            <View style={styles.dropdownRow}>
-              <View style={styles.dropdownHalf}>
+            <View style={styles.dropdownColumn}>
+              <View style={styles.dropdownWrapper}>
                 <FilterDropdown
                   label="Client"
                   value={filters.clientName}
@@ -282,7 +283,7 @@ const ScheduleFiltersModal = memo<ScheduleFiltersModalProps>(({
                   getOptionCount={getClientCount}
                 />
               </View>
-              <View style={styles.dropdownHalf}>
+              <View style={styles.dropdownWrapper}>
                 <FilterDropdown
                   label="Building"
                   value={filters.buildingName}
@@ -301,8 +302,8 @@ const ScheduleFiltersModal = memo<ScheduleFiltersModalProps>(({
           {/* Cleaner Filters */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Cleaners</Text>
-            <View style={styles.dropdownRow}>
-              <View style={styles.dropdownHalf}>
+            <View style={styles.dropdownColumn}>
+              <View style={styles.dropdownWrapper}>
                 <FilterDropdown
                   label="Cleaner"
                   value={filters.cleanerName}
@@ -315,7 +316,7 @@ const ScheduleFiltersModal = memo<ScheduleFiltersModalProps>(({
                   getOptionCount={getCleanerCount}
                 />
               </View>
-              <View style={styles.dropdownHalf}>
+              <View style={styles.dropdownWrapper}>
                 <FilterDropdown
                   label="Cleaner Group"
                   value={filters.cleanerGroupName}
@@ -334,17 +335,19 @@ const ScheduleFiltersModal = memo<ScheduleFiltersModalProps>(({
           {/* Building Group Filter */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Building Groups</Text>
-            <FilterDropdown
-              label="Building Group"
-              value={filters.buildingGroupName}
-              onValueChange={(value) => updateFilter('buildingGroupName', value)}
-              options={uniqueBuildingGroupNames}
-              placeholder="All Building Groups"
-              themeColor={themeColor}
-              allowManualInput={true}
-              showCount={true}
-              getOptionCount={getBuildingGroupCount}
-            />
+            <View style={styles.dropdownWrapper}>
+              <FilterDropdown
+                label="Building Group"
+                value={filters.buildingGroupName}
+                onValueChange={(value) => updateFilter('buildingGroupName', value)}
+                options={uniqueBuildingGroupNames}
+                placeholder="All Building Groups"
+                themeColor={themeColor}
+                allowManualInput={true}
+                showCount={true}
+                getOptionCount={getBuildingGroupCount}
+              />
+            </View>
           </View>
 
           {/* Active Filters Summary */}
@@ -563,12 +566,11 @@ const styles = StyleSheet.create({
   filterButtonTextActive: {
     fontWeight: '700',
   },
-  dropdownRow: {
-    flexDirection: 'row',
-    gap: spacing.md,
+  dropdownColumn: {
+    gap: spacing.lg,
   },
-  dropdownHalf: {
-    flex: 1,
+  dropdownWrapper: {
+    zIndex: 1,
   },
   summaryHeader: {
     flexDirection: 'row',

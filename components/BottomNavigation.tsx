@@ -25,6 +25,7 @@ export default function BottomNavigation({ role }: BottomNavigationProps) {
   const cleanerNavItems: NavItem[] = [
     { name: 'home', icon: 'home', path: '/cleaner', label: 'Home' },
     { name: 'chat', icon: 'chatbubbles', path: '/cleaner/chat', label: 'Chat' },
+    { name: 'time-off', icon: 'calendar-outline', path: '/cleaner/time-off', label: 'Time Off' },
     { name: 'inventory', icon: 'cube', path: '/cleaner/inventory', label: 'Inventory' },
   ];
 

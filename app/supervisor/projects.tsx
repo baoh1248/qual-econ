@@ -11,6 +11,7 @@ import Button from '../../components/Button';
 import AnimatedCard from '../../components/AnimatedCard';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import Icon from '../../components/Icon';
+import IconButton from '../../components/IconButton';
 import CompanyLogo from '../../components/CompanyLogo';
 import DateInput from '../../components/DateInput';
 import PricingCalculator from '../../components/PricingCalculator';
@@ -522,16 +523,16 @@ const ProjectsScreen = () => {
         const recurringData = {
           id: recurringPatternId,
           project_id: projectId,
-          pattern_type: recurringPattern.type,
+          pattern_type: recurringPattern.pattern_type,
           interval: recurringPattern.interval,
-          days_of_week: recurringPattern.daysOfWeek || null,
-          day_of_month: recurringPattern.dayOfMonth || null,
-          custom_days: recurringPattern.customDays || null,
-          start_date: recurringPattern.startDate,
-          end_date: recurringPattern.endDate || null,
-          max_occurrences: recurringPattern.maxOccurrences || null,
+          days_of_week: recurringPattern.days_of_week || null,
+          day_of_month: recurringPattern.day_of_month || null,
+          custom_days: recurringPattern.custom_days || null,
+          start_date: recurringPattern.start_date,
+          end_date: recurringPattern.end_date || null,
+          max_occurrences: recurringPattern.max_occurrences || null,
           is_active: true,
-          next_occurrence_date: recurringPattern.startDate,
+          next_occurrence_date: recurringPattern.start_date,
         };
         await executeQuery('insert', 'recurring_projects', recurringData);
         console.log('✓ Recurring pattern saved');
@@ -674,16 +675,16 @@ const ProjectsScreen = () => {
         const recurringData = {
           id: recurringPatternId,
           project_id: selectedProject.id,
-          pattern_type: recurringPattern.type,
+          pattern_type: recurringPattern.pattern_type,
           interval: recurringPattern.interval,
-          days_of_week: recurringPattern.daysOfWeek || null,
-          day_of_month: recurringPattern.dayOfMonth || null,
-          custom_days: recurringPattern.customDays || null,
-          start_date: recurringPattern.startDate,
-          end_date: recurringPattern.endDate || null,
-          max_occurrences: recurringPattern.maxOccurrences || null,
+          days_of_week: recurringPattern.days_of_week || null,
+          day_of_month: recurringPattern.day_of_month || null,
+          custom_days: recurringPattern.custom_days || null,
+          start_date: recurringPattern.start_date,
+          end_date: recurringPattern.end_date || null,
+          max_occurrences: recurringPattern.max_occurrences || null,
           is_active: true,
-          next_occurrence_date: recurringPattern.startDate,
+          next_occurrence_date: recurringPattern.start_date,
           updated_at: new Date().toISOString(),
         };
 
@@ -1641,22 +1642,24 @@ const ProjectsScreen = () => {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Icon name="arrow-back" size={24} style={{ color: colors.background }} />
-        </TouchableOpacity>
+        <IconButton 
+          icon="arrow-back" 
+          onPress={() => router.back()} 
+          variant="white"
+        />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
           <CompanyLogo size="small" showText={false} variant="light" />
           <Text style={commonStyles.headerTitle}>Client Projects</Text>
         </View>
-        <TouchableOpacity
+        <IconButton
+          icon="add"
           onPress={() => {
             console.log('Add button pressed');
             resetForm();
             setShowAddModal(true);
           }}
-        >
-          <Icon name="add" size={24} style={{ color: colors.background }} />
-        </TouchableOpacity>
+          variant="white"
+        />
       </View>
 
       {/* Filters */}
@@ -1851,10 +1854,13 @@ const ProjectsScreen = () => {
         )}
       </ScrollView>
 
-      {/* Add/Edit Modal - Truncated for brevity, same structure as before */}
-      {/* Details Modal - Truncated for brevity, same structure as before */}
-      {/* Completion Modal - Truncated for brevity, same structure as before */}
-      {/* Recurring Project Modal - Truncated for brevity, same structure as before */}
+      <RecurringProjectModal
+        visible={showRecurringModal}
+        onClose={() => setShowRecurringModal(false)}
+        onSave={handleRecurringPatternSave}
+        themeColor={themeColor}
+        initialPattern={recurringPattern || undefined}
+      />
 
       <Toast />
     </View>

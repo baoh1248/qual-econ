@@ -6,14 +6,14 @@ import CompanyLogo from '../../components/CompanyLogo';
 import Toast from '../../components/Toast';
 import { router } from 'expo-router';
 import { useToast } from '../../hooks/useToast';
-import { Text, View, ScrollView, TouchableOpacity, Alert, RefreshControl, StyleSheet, Animated, Linking, Modal } from 'react-native';
+import { Text, View, ScrollView, TouchableOpacity, Alert, RefreshControl, StyleSheet, Linking, Modal } from 'react-native';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
-import ProgressRing from '../../components/ProgressRing';
 import { useState, useEffect, useCallback } from 'react';
 import Icon from '../../components/Icon';
 import Button from '../../components/Button';
 import { supabase } from '../integrations/supabase/client';
 import { useTheme } from '../../hooks/useTheme';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface Task {
   id: string;
@@ -107,6 +107,40 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     marginTop: -spacing.xl,
+  },
+  quickActionsContainer: {
+    paddingHorizontal: spacing.xl,
+    marginBottom: spacing.lg,
+  },
+  quickActionCard: {
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 12,
+    padding: spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  quickActionIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  quickActionContent: {
+    flex: 1,
+  },
+  quickActionTitle: {
+    ...typography.bodyMedium,
+    color: colors.text,
+    fontWeight: '600',
+    marginBottom: spacing.xs,
+  },
+  quickActionDescription: {
+    ...typography.small,
+    color: colors.textSecondary,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -282,42 +316,68 @@ export default function CleanerDashboard() {
 
   const loadProfile = useCallback(async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (user) {
-        const { data: cleanerData, error } = await supabase
-          .from('cleaners')
-          .select('*')
-          .eq('email', user.email)
-          .single();
+      // Get cleaner info from AsyncStorage
+      const cleanerId = await AsyncStorage.getItem('cleaner_id');
+      const cleanerName = await AsyncStorage.getItem('cleaner_name');
+      const cleanerPhone = await AsyncStorage.getItem('cleaner_phone');
 
-        if (error) {
-          console.error('Error loading cleaner profile:', error);
-          setProfile({
-            id: user.id,
-            name: user.email?.split('@')[0] || 'Cleaner',
-            currentLocation: 'Unknown',
-            todayHours: 0,
-            todayTasks: 0,
-            todayPhotos: 0,
-            weeklyPhotos: 0,
-            efficiency: 0,
-          });
-        } else if (cleanerData) {
-          setProfile({
-            id: cleanerData.id,
-            name: cleanerData.name || cleanerData.go_by || 'Cleaner',
-            currentLocation: 'On Site',
-            todayHours: 0,
-            todayTasks: 0,
-            todayPhotos: 0,
-            weeklyPhotos: 0,
-            efficiency: 95,
-          });
-        }
+      console.log('Loading profile from AsyncStorage:', { cleanerId, cleanerName, cleanerPhone });
+
+      if (!cleanerId || !cleanerName) {
+        console.log('No session found, redirecting to signin');
+        router.replace('/auth/cleaner-signin');
+        return;
       }
+
+      // Optionally verify the cleaner still exists in the database
+      const { data: cleanerData, error } = await supabase
+        .from('cleaners')
+        .select('*')
+        .eq('id', cleanerId)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error loading cleaner profile:', error);
+      }
+
+      if (!cleanerData) {
+        console.log('Cleaner not found in database, clearing session');
+        await AsyncStorage.multiRemove(['cleaner_id', 'cleaner_name', 'cleaner_phone']);
+        router.replace('/auth/cleaner-signin');
+        return;
+      }
+
+      // Check if account is still active
+      if (!cleanerData.is_active || cleanerData.employment_status !== 'active') {
+        Alert.alert(
+          'Account Inactive',
+          'Your account is no longer active. Please contact your supervisor.',
+          [
+            {
+              text: 'OK',
+              onPress: async () => {
+                await AsyncStorage.multiRemove(['cleaner_id', 'cleaner_name', 'cleaner_phone']);
+                router.replace('/auth/cleaner-signin');
+              }
+            }
+          ]
+        );
+        return;
+      }
+
+      setProfile({
+        id: cleanerData.id,
+        name: cleanerData.name || cleanerData.go_by || cleanerName,
+        currentLocation: 'On Site',
+        todayHours: 0,
+        todayTasks: 0,
+        todayPhotos: 0,
+        weeklyPhotos: 0,
+        efficiency: 95,
+      });
     } catch (error) {
       console.error('Error in loadProfile:', error);
+      router.replace('/auth/cleaner-signin');
     }
   }, []);
 
@@ -399,7 +459,8 @@ export default function CleanerDashboard() {
 
   const handleLogoutConfirm = async () => {
     try {
-      await supabase.auth.signOut();
+      // Clear session from AsyncStorage
+      await AsyncStorage.multiRemove(['cleaner_id', 'cleaner_name', 'cleaner_phone']);
       setShowLogoutModal(false);
       router.replace('/');
     } catch (error) {
@@ -449,6 +510,10 @@ export default function CleanerDashboard() {
     );
   };
 
+  const handleTimeOffPress = () => {
+    router.push('/cleaner/time-off');
+  };
+
   const getPriorityColor = (priority: string) => {
     switch (priority) {
       case 'high': return colors.danger;
@@ -460,17 +525,6 @@ export default function CleanerDashboard() {
 
   const getStatusStyle = (status: string) => {
     return statusColors[status as keyof typeof statusColors] || statusColors.pending;
-  };
-
-  const getPhotoCompletionScore = (task: Task) => {
-    const total = Object.values(task.photoCategories).reduce((sum, count) => sum + count, 0);
-    const expected = 10;
-    return Math.min((total / expected) * 100, 100);
-  };
-
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   };
 
   return (
@@ -514,6 +568,24 @@ export default function CleanerDashboard() {
 
         {/* Content */}
         <View style={styles.content}>
+          {/* Quick Actions */}
+          <View style={styles.quickActionsContainer}>
+            <TouchableOpacity onPress={handleTimeOffPress}>
+              <View style={styles.quickActionCard}>
+                <View style={[styles.quickActionIcon, { backgroundColor: themeColor + '20' }]}>
+                  <Icon name="calendar-outline" size={24} color={themeColor} />
+                </View>
+                <View style={styles.quickActionContent}>
+                  <Text style={styles.quickActionTitle}>Request Time Off</Text>
+                  <Text style={styles.quickActionDescription}>
+                    Submit a time off request for approval
+                  </Text>
+                </View>
+                <Icon name="chevron-forward" size={20} color={colors.textSecondary} />
+              </View>
+            </TouchableOpacity>
+          </View>
+
           {/* Today's Tasks */}
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Today&apos;s Tasks</Text>

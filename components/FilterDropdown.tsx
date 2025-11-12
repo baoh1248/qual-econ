@@ -143,7 +143,7 @@ export default function FilterDropdown({
               style={styles.dropdownScroll}
               nestedScrollEnabled
               keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
+              showsVerticalScrollIndicator={true}
             >
               {/* Show "All" option */}
               <TouchableOpacity
@@ -241,9 +241,8 @@ export default function FilterDropdown({
 
 const styles = StyleSheet.create({
   container: {
-    position: 'relative',
-    zIndex: 1000,
     marginBottom: spacing.sm,
+    zIndex: 1,
   },
   labelContainer: {
     flexDirection: 'row',
@@ -272,6 +271,7 @@ const styles = StyleSheet.create({
   },
   inputContainer: {
     position: 'relative',
+    zIndex: 1,
   },
   inputWrapper: {
     flexDirection: 'row',
@@ -283,7 +283,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     minHeight: 48,
-    transition: 'all 0.2s ease',
+    zIndex: 1,
   },
   inputWrapperActive: {
     borderWidth: 2,
@@ -324,27 +324,28 @@ const styles = StyleSheet.create({
     top: '100%',
     left: 0,
     right: 0,
-    backgroundColor: colors.background,
+    backgroundColor: colors.card,
     borderWidth: 2,
     borderColor: colors.border,
     borderRadius: 12,
     marginTop: spacing.xs,
-    maxHeight: 280,
+    maxHeight: 300,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.2,
     shadowRadius: 12,
-    elevation: 8,
-    zIndex: 1001,
-    overflow: 'hidden',
+    elevation: 10,
+    zIndex: 9999,
+    overflow: 'visible',
   },
   dropdownScroll: {
-    maxHeight: 280,
+    maxHeight: 300,
   },
   dropdownItem: {
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.border + '40',
+    backgroundColor: colors.card,
   },
   dropdownItemLast: {
     borderBottomWidth: 0,
@@ -368,9 +369,9 @@ const styles = StyleSheet.create({
   countBadge: {
     backgroundColor: colors.backgroundAlt,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
+    paddingVertical: 4,
     borderRadius: 12,
-    minWidth: 28,
+    minWidth: 32,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -383,6 +384,7 @@ const styles = StyleSheet.create({
   noResults: {
     padding: spacing.xl,
     alignItems: 'center',
+    backgroundColor: colors.card,
   },
   noResultsText: {
     ...typography.body,
@@ -407,10 +409,10 @@ const styles = StyleSheet.create({
         position: 'absolute',
       },
     }),
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 999,
+    top: -10000,
+    left: -10000,
+    right: -10000,
+    bottom: -10000,
+    zIndex: 9998,
   },
 });
