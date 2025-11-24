@@ -15,6 +15,7 @@ import RecurringTaskModal from '../../components/schedule/RecurringTaskModal';
 import ScheduleModal from '../../components/schedule/ScheduleModal';
 import ScheduleFiltersModal from '../../components/schedule/ScheduleFiltersModal';
 import BuildingGroupScheduleModal from '../../components/schedule/BuildingGroupScheduleModal';
+import ScheduleActionButton from '../../components/schedule/ScheduleActionButton';
 import Toast from '../../components/Toast';
 import ErrorBoundary from '../../components/ErrorBoundary';
 import { Calendar } from 'react-native-calendars';
@@ -23,7 +24,6 @@ import DragDropScheduleGrid from '../../components/schedule/DragDropScheduleGrid
 import LoadingSpinner from '../../components/LoadingSpinner';
 import CompanyLogo from '../../components/CompanyLogo';
 import IconButton from '../../components/IconButton';
-import DraggableButton from '../../components/DraggableButton';
 import UnassignedShiftNotifications from '../../components/UnassignedShiftNotifications';
 import { projectToScheduleEntry, scheduleEntryExistsForProject } from '../../utils/projectScheduleSync';
 import { formatTimeRange } from '../../utils/timeFormatter';
@@ -34,7 +34,8 @@ import {
   patternToScheduleEntries, 
   isPatternActive,
   needsGeneration,
-  formatPatternDescription
+  formatPatternDescription,
+  validateRecurringPattern
 } from '../../utils/recurringShiftGenerator';
 
 type ModalType = 'add' | 'edit' | 'addClient' | 'addBuilding' | 'addCleaner' | 'editClient' | 'editBuilding' | 'details' | null;
@@ -78,6 +79,7 @@ export default function ScheduleView() {
   const [selectedEntry, setSelectedEntry] = useState<ScheduleEntry | null>(null);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [selectedClientBuilding, setSelectedClientBuilding] = useState<ClientBuilding | null>(null);
+  const [isAddingFromGrid, setIsAddingFromGrid] = useState(false);
   const [cleanerName, setCleanerName] = useState('');
   const [selectedCleaners, setSelectedCleaners] = useState<string[]>([]);
   const [hours, setHours] = useState('');
@@ -129,11 +131,28 @@ export default function ScheduleView() {
     deleteScheduleEntry,
     getCurrentWeekId,
     getWeekIdFromDate,
+    isSyncing,
   } = useScheduleStorage();
 
   const currentWeekId = useMemo(() => {
     return getWeekIdFromDate(currentDate);
   }, [currentDate, getWeekIdFromDate]);
+
+  // Realtime sync with proper error handling and UI refresh
+  const { isConnected, lastSyncTime } = useRealtimeSync({
+    enabled: true,
+    onSyncComplete: useCallback(() => {
+      console.log('✅ Realtime sync completed - refreshing schedule display');
+      // Force refresh the current week schedule
+      const weekId = getWeekIdFromDate(currentDate);
+      const schedule = getWeekSchedule(weekId, true);
+      setCurrentWeekSchedule(schedule);
+    }, [currentDate, getWeekIdFromDate, getWeekSchedule]),
+    onError: useCallback((error) => {
+      console.error('❌ Realtime sync error:', error);
+      showToast('Sync error - changes may not be reflected on other devices', 'error');
+    }, [showToast]),
+  });
 
   const syncProjectsToSchedule = useCallback(async () => {
     try {
@@ -206,48 +225,82 @@ export default function ScheduleView() {
       const today = new Date();
       const futureDate = new Date(today);
       futureDate.setDate(today.getDate() + 28);
+      const futureDateStr = futureDate.toISOString().split('T')[0];
       
       let totalGenerated = 0;
+      const updatePromises: Promise<any>[] = [];
       
       for (const pattern of activePatterns) {
+        // Validate pattern before processing
+        const validation = validateRecurringPattern(pattern);
+        if (!validation.valid) {
+          console.warn(`⚠️ Invalid pattern ${pattern.id}:`, validation.errors);
+          continue;
+        }
+        
         if (!needsGeneration(pattern, 4)) {
           console.log('Pattern does not need generation:', pattern.id);
           continue;
         }
         
+        console.log(`\n📅 Processing pattern: ${pattern.id}`);
+        console.log(`   Building: ${pattern.building_name}`);
+        console.log(`   Cleaners: ${pattern.cleaner_names.join(', ')}`);
+        console.log(`   Type: ${pattern.pattern_type}`);
+        
         const startDate = pattern.last_generated_date || pattern.start_date;
         const occurrences = generateOccurrences(
           pattern,
           startDate,
-          futureDate.toISOString().split('T')[0],
+          futureDateStr,
           50
         );
         
-        console.log(`Generated ${occurrences.length} occurrences for pattern ${pattern.id}`);
+        console.log(`   Generated ${occurrences.length} occurrences`);
         
         const entries = patternToScheduleEntries(pattern, occurrences, getWeekIdFromDate);
+        console.log(`   Created ${entries.length} schedule entries`);
         
+        let patternGenerated = 0;
         for (const entry of entries) {
-          const weekSchedule = getWeekSchedule(entry.weekId);
-          const exists = weekSchedule.some(e => 
-            e.recurringId === pattern.id && 
-            e.date === entry.date
-          );
-          
-          if (!exists) {
-            await addScheduleEntry(entry.weekId, entry);
-            totalGenerated++;
+          try {
+            const weekSchedule = getWeekSchedule(entry.weekId);
+            const exists = weekSchedule.some(e => 
+              e.recurringId === pattern.id && 
+              e.date === entry.date &&
+              e.buildingName === entry.buildingName
+            );
+            
+            if (!exists) {
+              console.log(`   ✅ Adding entry for ${entry.date}`);
+              await addScheduleEntry(entry.weekId, entry);
+              totalGenerated++;
+              patternGenerated++;
+            } else {
+              console.log(`   ⏭️ Entry already exists for ${entry.date}`);
+            }
+          } catch (entryError) {
+            console.error(`   ❌ Error adding entry for ${entry.date}:`, entryError);
           }
         }
         
-        await executeQuery('update', 'recurring_shifts', {
+        // Queue update for this pattern
+        const updatePromise = executeQuery('update', 'recurring_shifts', {
           id: pattern.id,
-          last_generated_date: futureDate.toISOString().split('T')[0],
+          last_generated_date: futureDateStr,
           occurrence_count: (pattern.occurrence_count || 0) + occurrences.length,
+          next_occurrence_date: occurrences.length > 0 ? occurrences[occurrences.length - 1].date : pattern.next_occurrence_date,
         });
+        updatePromises.push(updatePromise);
+        
+        console.log(`   ✅ Pattern generated ${patternGenerated} new entries`);
       }
       
+      // Execute all updates
+      await Promise.all(updatePromises);
+      
       console.log('✅ Generated', totalGenerated, 'recurring shift entries');
+      console.log('=== RECURRING SHIFT GENERATION COMPLETED ===\n');
       
       if (totalGenerated > 0) {
         showToast(`Generated ${totalGenerated} recurring shift${totalGenerated > 1 ? 's' : ''}`, 'success');
@@ -256,6 +309,7 @@ export default function ScheduleView() {
       return totalGenerated;
     } catch (error) {
       console.error('❌ Error generating recurring shifts:', error);
+      showToast('Failed to generate recurring shifts', 'error');
       return 0;
     }
   }, [executeQuery, getWeekSchedule, getWeekIdFromDate, addScheduleEntry, showToast]);
@@ -273,11 +327,13 @@ export default function ScheduleView() {
       
       const weekId = getWeekIdFromDate(currentDate);
       
-      // Always sync projects and generate recurring shifts first
-      await syncProjectsToSchedule();
-      await generateRecurringShifts();
+      // Only sync projects and generate recurring shifts on initial load
+      if (!initialLoadCompleteRef.current) {
+        await syncProjectsToSchedule();
+        await generateRecurringShifts();
+      }
       
-      // Then get the updated schedule
+      // Get the updated schedule (force refresh)
       const schedule = getWeekSchedule(weekId, true);
       setCurrentWeekSchedule(schedule);
       console.log('✅ Loaded schedule for week', weekId, ':', schedule.length, 'entries');
@@ -292,22 +348,6 @@ export default function ScheduleView() {
       loadingInProgressRef.current = false;
     }
   }, [currentDate, getWeekSchedule, getWeekIdFromDate, showToast, syncProjectsToSchedule, generateRecurringShifts]);
-
-  // Simplified realtime sync - only refresh the schedule display, don't reload everything
-  const { isConnected, lastSyncTime, syncToSupabase } = useRealtimeSync({
-    enabled: true,
-    onSyncComplete: useCallback(() => {
-      console.log('✅ Realtime sync completed - refreshing schedule display');
-      // Just refresh the current week schedule without reloading everything
-      const weekId = getWeekIdFromDate(currentDate);
-      const schedule = getWeekSchedule(weekId, true);
-      setCurrentWeekSchedule(schedule);
-    }, [currentDate, getWeekIdFromDate, getWeekSchedule]),
-    onError: useCallback((error) => {
-      console.error('❌ Realtime sync error:', error);
-      showToast('Sync error - changes may not be reflected on other devices', 'error');
-    }, [showToast]),
-  });
 
   const loadBuildingGroups = useCallback(async () => {
     try {
@@ -727,7 +767,7 @@ export default function ScheduleView() {
     };
 
     loadData();
-  }, []); // Empty dependency array - only run once on mount
+  }, []);
 
   // Reload schedule when date changes (but not on initial mount)
   useEffect(() => {
@@ -735,7 +775,7 @@ export default function ScheduleView() {
       console.log('🔄 Date changed, reloading schedule for new week');
       loadCurrentWeekSchedule();
     }
-  }, [currentDate, isLoading, loadCurrentWeekSchedule]);
+  }, [currentDate, isLoading]);
 
   // Add focus effect to refresh schedule when screen comes into focus
   useFocusEffect(
@@ -811,12 +851,13 @@ export default function ScheduleView() {
   }, []);
 
   const handleCellPress = useCallback((building: ClientBuilding, day: string) => {
-    console.log('Cell pressed:', building.buildingName, day);
+    console.log('Cell pressed - Auto-filling client and building:', building.buildingName, building.clientName, day);
     setSelectedClientBuilding(building);
     setSelectedDay(day);
     setSelectedCleaners([]);
     setHours('');
     setStartTime('09:00');
+    setIsAddingFromGrid(true);
     setModalType('add');
     setModalVisible(true);
   }, []);
@@ -859,6 +900,7 @@ export default function ScheduleView() {
     setSelectedDay(day);
     setHours('');
     setStartTime('09:00');
+    setIsAddingFromGrid(false);
     setModalType('add');
     setModalVisible(true);
   }, []);
@@ -871,6 +913,7 @@ export default function ScheduleView() {
     setHours(entry.hours.toString());
     setStartTime(entry.startTime || '09:00');
     setSelectedDay(entry.day);
+    setIsAddingFromGrid(false);
     setModalType('details');
     setModalVisible(true);
   }, [clientBuildings]);
@@ -882,6 +925,7 @@ export default function ScheduleView() {
     setSelectedEntry(null);
     setSelectedClient(null);
     setSelectedClientBuilding(null);
+    setIsAddingFromGrid(false);
     setCleanerName('');
     setSelectedCleaners([]);
     setHours('');
@@ -958,17 +1002,17 @@ export default function ScheduleView() {
           hourlyRate: 15,
         };
 
-        console.log('Adding new schedule entry:', newEntry);
+        console.log('📝 Adding new schedule entry:', newEntry);
         await addScheduleEntry(currentWeekId, newEntry);
-        
-        console.log('🔄 Syncing new entry to Supabase...');
-        await syncToSupabase(newEntry, 'insert');
+        console.log('✅ Entry added successfully');
         
         showToast('Shift added successfully', 'success');
         
         // Refresh the schedule display
+        console.log('🔄 Refreshing schedule display...');
         const schedule = getWeekSchedule(currentWeekId, true);
         setCurrentWeekSchedule(schedule);
+        console.log('✅ Schedule display refreshed with', schedule.length, 'entries');
         
         handleModalClose();
       } else if (modalType === 'edit') {
@@ -995,26 +1039,25 @@ export default function ScheduleView() {
           endTime,
         };
 
-        console.log('Updating schedule entry:', selectedEntry.id, updates);
+        console.log('📝 Updating schedule entry:', selectedEntry.id, updates);
         await updateScheduleEntry(selectedEntry.weekId, selectedEntry.id, updates);
-        
-        const updatedEntry = { ...selectedEntry, ...updates };
-        console.log('🔄 Syncing updated entry to Supabase...');
-        await syncToSupabase(updatedEntry as ScheduleEntry, 'update');
+        console.log('✅ Entry updated successfully');
         
         showToast('Shift updated successfully', 'success');
         
         // Refresh the schedule display
+        console.log('🔄 Refreshing schedule display...');
         const schedule = getWeekSchedule(currentWeekId, true);
         setCurrentWeekSchedule(schedule);
+        console.log('✅ Schedule display refreshed with', schedule.length, 'entries');
         
         handleModalClose();
       }
     } catch (error) {
-      console.error('Error saving schedule entry:', error);
+      console.error('❌ Error saving schedule entry:', error);
       showToast('Failed to save shift', 'error');
     }
-  }, [modalType, selectedClientBuilding, selectedCleaners, hours, startTime, selectedDay, currentDate, currentWeekId, selectedEntry, addScheduleEntry, updateScheduleEntry, syncToSupabase, getWeekSchedule, handleModalClose, showToast, addHoursToTime]);
+  }, [modalType, selectedClientBuilding, selectedCleaners, hours, startTime, selectedDay, currentDate, currentWeekId, selectedEntry, addScheduleEntry, updateScheduleEntry, getWeekSchedule, handleModalClose, showToast, addHoursToTime]);
 
   const handleModalDelete = useCallback(async () => {
     console.log('=== SCHEDULE MODAL DELETE HANDLER ===');
@@ -1035,28 +1078,28 @@ export default function ScheduleView() {
           style: 'destructive',
           onPress: async () => {
             try {
-              console.log('Deleting schedule entry:', selectedEntry.id);
+              console.log('📝 Deleting schedule entry:', selectedEntry.id);
               await deleteScheduleEntry(selectedEntry.weekId, selectedEntry.id);
-              
-              console.log('🔄 Syncing deleted entry to Supabase...');
-              await syncToSupabase(selectedEntry, 'delete');
+              console.log('✅ Entry deleted successfully');
               
               showToast('Shift deleted successfully', 'success');
               
               // Refresh the schedule display
+              console.log('🔄 Refreshing schedule display...');
               const schedule = getWeekSchedule(currentWeekId, true);
               setCurrentWeekSchedule(schedule);
+              console.log('✅ Schedule display refreshed with', schedule.length, 'entries');
               
               handleModalClose();
             } catch (error) {
-              console.error('Error deleting schedule entry:', error);
+              console.error('❌ Error deleting schedule entry:', error);
               showToast('Failed to delete shift', 'error');
             }
           },
         },
       ]
     );
-  }, [selectedEntry, deleteScheduleEntry, syncToSupabase, getWeekSchedule, currentWeekId, handleModalClose, showToast]);
+  }, [selectedEntry, deleteScheduleEntry, getWeekSchedule, currentWeekId, handleModalClose, showToast]);
 
   const handleAddClient = useCallback(async () => {
     console.log('Adding client:', newClientName);
@@ -1234,19 +1277,25 @@ export default function ScheduleView() {
         hourly_rate: 15,
       };
       
+      console.log('📝 Inserting recurring pattern to database:', recurringPattern);
       await executeQuery('insert', 'recurring_shifts', recurringPattern);
+      console.log('✅ Recurring pattern saved to database');
       
       showToast('Recurring shift created successfully!', 'success');
       
+      // Generate shifts from the pattern
+      console.log('🔄 Generating shifts from new pattern...');
       await generateRecurringShifts();
       
       // Refresh the schedule display
+      console.log('🔄 Refreshing schedule display...');
       const schedule = getWeekSchedule(currentWeekId, true);
       setCurrentWeekSchedule(schedule);
+      console.log('✅ Schedule display refreshed with', schedule.length, 'entries');
       
       setRecurringModalVisible(false);
     } catch (error) {
-      console.error('Error creating recurring task:', error);
+      console.error('❌ Error creating recurring task:', error);
       showToast('Failed to create recurring shift', 'error');
     }
   }, [executeQuery, generateRecurringShifts, getWeekSchedule, currentWeekId, showToast]);
@@ -1625,6 +1674,10 @@ export default function ScheduleView() {
             </Text>
           </View>
           
+          {isSyncing && (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          )}
+          
           <UnassignedShiftNotifications
             themeColor={themeColor}
             onAssignShift={(notification) => {
@@ -1733,46 +1786,24 @@ export default function ScheduleView() {
 
       {renderMainContent()}
 
-      <DraggableButton
-        icon="add"
-        iconSize={28}
-        iconColor={colors.textInverse}
-        backgroundColor={themeColor}
-        size={56}
-        onPress={() => {
-          console.log('FAB pressed');
+      <ScheduleActionButton
+        themeColor={themeColor}
+        onAddShift={() => {
+          console.log('Add shift pressed from action button');
           setSelectedClientBuilding(null);
           setSelectedCleaners([]);
           setHours('');
           setStartTime('09:00');
+          setIsAddingFromGrid(false);
           setModalType('add');
           setModalVisible(true);
         }}
-      />
-
-      <DraggableButton
-        icon="repeat"
-        iconSize={24}
-        iconColor={colors.textInverse}
-        backgroundColor={colors.warning}
-        size={48}
-        initialX={Platform.select({ ios: 20, android: 20, default: 20 })}
-        initialY={Platform.select({ ios: 200, android: 200, default: 200 })}
-        onPress={() => {
-          console.log('Recurring FAB pressed');
+        onCreateRecurringTask={() => {
+          console.log('Create recurring task pressed');
           setRecurringModalVisible(true);
         }}
-      />
-
-      <DraggableButton
-        icon="albums"
-        iconSize={24}
-        iconColor={colors.textInverse}
-        backgroundColor={colors.success}
-        size={48}
-        initialX={Platform.select({ ios: 100, android: 100, default: 100 })}
-        onPress={() => {
-          console.log('Building Group FAB pressed');
+        onScheduleBuildingGroup={() => {
+          console.log('Schedule building group pressed');
           setBuildingGroupModalVisible(true);
         }}
       />
@@ -1832,6 +1863,7 @@ export default function ScheduleView() {
         showCleanerDropdown={showCleanerDropdown}
         showSecurityLevelDropdown={showSecurityLevelDropdown}
         showBuildingDropdown={showBuildingDropdown}
+        isAddingFromGrid={isAddingFromGrid}
         setCleanerName={setCleanerName}
         setSelectedCleaners={setSelectedCleaners}
         setHours={setHours}
@@ -1864,6 +1896,7 @@ export default function ScheduleView() {
       <RecurringTaskModal
         visible={recurringModalVisible}
         clientBuildings={clientBuildings}
+        clients={clients}
         cleaners={cleaners}
         onClose={() => {
           setRecurringModalVisible(false);
@@ -1878,6 +1911,7 @@ export default function ScheduleView() {
         visible={buildingGroupModalVisible}
         onClose={() => setBuildingGroupModalVisible(false)}
         cleaners={cleaners}
+        clients={clients}
         onScheduleCreated={() => {
           // Refresh the schedule display
           const schedule = getWeekSchedule(currentWeekId, true);

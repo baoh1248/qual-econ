@@ -1,13 +1,13 @@
 
-import React, { memo, useState, useEffect } from 'react';
-import { View, Text, Modal, ScrollView, TouchableOpacity, TextInput, StyleSheet, Platform, Alert, Switch } from 'react-native';
+import React, { memo, useState, useEffect, useMemo } from 'react';
+import { View, Text, Modal, ScrollView, TouchableOpacity, TextInput, StyleSheet, Platform, Alert } from 'react-native';
 import { colors, spacing, typography, commonStyles } from '../../styles/commonStyles';
 import Button from '../Button';
 import Icon from '../Icon';
 import IconButton from '../IconButton';
 import DateInput from '../DateInput';
 import { supabase } from '../../app/integrations/supabase/client';
-import type { ClientBuilding, Cleaner } from '../../hooks/useClientData';
+import type { Client, ClientBuilding, Cleaner } from '../../hooks/useClientData';
 import uuid from 'react-native-uuid';
 
 interface BuildingGroup {
@@ -23,6 +23,7 @@ interface BuildingGroupScheduleModalProps {
   visible: boolean;
   onClose: () => void;
   cleaners: Cleaner[];
+  clients: Client[];
   onScheduleCreated: () => void;
   weekId: string;
   day: string;
@@ -33,6 +34,7 @@ const BuildingGroupScheduleModal = memo<BuildingGroupScheduleModalProps>(({
   visible, 
   onClose, 
   cleaners,
+  clients,
   onScheduleCreated,
   weekId,
   day,
@@ -59,7 +61,6 @@ const BuildingGroupScheduleModal = memo<BuildingGroupScheduleModalProps>(({
       return new Date().toISOString().split('T')[0];
     }
   });
-  const [isRecurring, setIsRecurring] = useState(false);
   const [paymentType, setPaymentType] = useState<'hourly' | 'flat_rate'>('hourly');
   const [flatRateAmount, setFlatRateAmount] = useState('100');
   const [notes, setNotes] = useState('');
@@ -80,7 +81,6 @@ const BuildingGroupScheduleModal = memo<BuildingGroupScheduleModalProps>(({
       setStartTime('09:00');
       const formattedDate = date ? date.split('T')[0] : new Date().toISOString().split('T')[0];
       setScheduleDate(formattedDate);
-      setIsRecurring(false);
       setPaymentType('hourly');
       setFlatRateAmount('100');
       setNotes('');
@@ -174,6 +174,17 @@ const BuildingGroupScheduleModal = memo<BuildingGroupScheduleModalProps>(({
     }
   };
 
+  // Group building groups by client
+  const groupsByClient = useMemo(() => {
+    return buildingGroups.reduce((acc, group) => {
+      if (!acc[group.client_name]) {
+        acc[group.client_name] = [];
+      }
+      acc[group.client_name].push(group);
+      return acc;
+    }, {} as Record<string, BuildingGroup[]>);
+  }, [buildingGroups]);
+
   const handleScheduleGroup = async () => {
     if (!selectedGroupId) {
       Alert.alert('Error', 'Please select a building group');
@@ -251,7 +262,7 @@ const BuildingGroupScheduleModal = memo<BuildingGroupScheduleModalProps>(({
         week_id: weekId,
         notes: notes.trim() || `Scheduled as part of ${selectedGroup.group_name}`,
         priority: 'medium',
-        is_recurring: isRecurring,
+        is_recurring: false,
         payment_type: paymentType,
         flat_rate_amount: paymentType === 'flat_rate' ? flatRate : 0,
         hourly_rate: paymentType === 'hourly' ? hourlyRate : 15,
@@ -262,9 +273,43 @@ const BuildingGroupScheduleModal = memo<BuildingGroupScheduleModalProps>(({
       console.log(`Creating ${scheduleEntries.length} schedule entries...`);
       console.log('Sample entry:', scheduleEntries[0]);
 
+      // Check for existing entries to prevent duplicates
+      const { data: existingEntries, error: checkError } = await supabase
+        .from('schedule_entries')
+        .select('id, building_name, date')
+        .eq('week_id', weekId)
+        .eq('date', scheduleDate)
+        .in('building_name', selectedGroup.buildings.map(b => b.buildingName));
+
+      if (checkError) {
+        console.error('❌ Error checking existing entries:', checkError);
+        throw checkError;
+      }
+
+      // Filter out entries that already exist
+      const existingBuildingDates = new Set(
+        (existingEntries || []).map(e => `${e.building_name}-${e.date}`)
+      );
+
+      const newEntries = scheduleEntries.filter(entry => 
+        !existingBuildingDates.has(`${entry.building_name}-${entry.date}`)
+      );
+
+      if (newEntries.length === 0) {
+        console.log('⚠️ All entries already exist, skipping insert');
+        Alert.alert(
+          'Already Scheduled',
+          'All buildings in this group are already scheduled for this date.',
+          [{ text: 'OK', onPress: onClose }]
+        );
+        return;
+      }
+
+      console.log(`Inserting ${newEntries.length} new entries (${scheduleEntries.length - newEntries.length} already exist)`);
+
       const { error } = await supabase
         .from('schedule_entries')
-        .insert(scheduleEntries);
+        .insert(newEntries);
 
       if (error) {
         console.error('❌ Error creating schedule entries:', error);
@@ -275,7 +320,7 @@ const BuildingGroupScheduleModal = memo<BuildingGroupScheduleModalProps>(({
       
       Alert.alert(
         'Success',
-        `Created ${scheduleEntries.length} schedule entries for ${selectedGroup.group_name}${isRecurring ? ' (Recurring)' : ''}`,
+        `Created ${newEntries.length} schedule entries for ${selectedGroup.group_name}`,
         [
           {
             text: 'OK',
@@ -296,14 +341,23 @@ const BuildingGroupScheduleModal = memo<BuildingGroupScheduleModalProps>(({
 
   const selectedGroup = buildingGroups.find(g => g.id === selectedGroupId);
 
-  // Group building groups by client
-  const groupsByClient = buildingGroups.reduce((acc, group) => {
-    if (!acc[group.client_name]) {
-      acc[group.client_name] = [];
+  const getSecurityLevelColor = (level: string) => {
+    switch (level) {
+      case 'high': return colors.danger;
+      case 'medium': return colors.warning;
+      case 'low': return colors.success;
+      default: return colors.text;
     }
-    acc[group.client_name].push(group);
-    return acc;
-  }, {} as Record<string, BuildingGroup[]>);
+  };
+
+  const getSecurityLevelIcon = (level: string) => {
+    switch (level) {
+      case 'high': return 'shield-checkmark';
+      case 'medium': return 'shield-half';
+      case 'low': return 'shield-outline';
+      default: return 'shield-outline';
+    }
+  };
 
   return (
     <Modal
@@ -362,57 +416,58 @@ const BuildingGroupScheduleModal = memo<BuildingGroupScheduleModalProps>(({
             <View style={{ marginBottom: spacing.lg }}>
               <Text style={styles.label}>Select Building Group *</Text>
               <ScrollView style={{ maxHeight: 250 }} showsVerticalScrollIndicator={false}>
-                {Object.entries(groupsByClient).map(([clientName, clientGroups]) => (
-                  <View key={clientName} style={{ marginBottom: spacing.md }}>
-                    <Text style={styles.clientHeader}>{clientName}</Text>
-                    {clientGroups.map(group => (
-                      <TouchableOpacity
-                        key={group.id}
-                        style={[
-                          styles.groupCard,
-                          selectedGroupId === group.id && styles.groupCardSelected,
-                        ]}
-                        onPress={() => setSelectedGroupId(group.id)}
-                      >
-                        <View style={[commonStyles.row, { alignItems: 'center', marginBottom: spacing.xs }]}>
-                          <Icon 
-                            name={selectedGroupId === group.id ? 'radio-button-on' : 'radio-button-off'} 
-                            size={20} 
-                            style={{ color: selectedGroupId === group.id ? colors.primary : colors.textSecondary, marginRight: spacing.sm }} 
-                          />
-                          <View style={{ flex: 1 }}>
-                            <Text style={[styles.groupName, selectedGroupId === group.id && { color: colors.primary }]}>
-                              {group.group_name}
-                            </Text>
-                            {group.description && (
-                              <Text style={styles.groupDescription}>{group.description}</Text>
-                            )}
-                          </View>
-                        </View>
-                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.xs, marginLeft: 28 }}>
-                          {group.buildings.map(building => (
-                            <View 
-                              key={building.id}
-                              style={styles.buildingChip}
-                            >
-                              <Text style={styles.buildingChipText}>
-                                {building.buildingName}
-                              </Text>
-                            </View>
-                          ))}
-                        </View>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                ))}
-                {buildingGroups.length === 0 && (
+                {Object.keys(groupsByClient).length === 0 ? (
                   <View style={styles.emptyState}>
                     <Icon name="albums-outline" size={48} style={{ color: colors.textSecondary }} />
                     <Text style={styles.emptyStateText}>
-                      No building groups available.{'\n'}
-                      Create groups in the Clients screen.
+                      No building groups available.
+                      {'\n'}Create groups in the Clients screen.
                     </Text>
                   </View>
+                ) : (
+                  Object.entries(groupsByClient).map(([clientName, clientGroups]) => (
+                    <View key={clientName} style={{ marginBottom: spacing.md }}>
+                      <Text style={styles.clientHeader}>{clientName}</Text>
+                      {clientGroups.map(group => (
+                        <TouchableOpacity
+                          key={group.id}
+                          style={[
+                            styles.groupCard,
+                            selectedGroupId === group.id && styles.groupCardSelected,
+                          ]}
+                          onPress={() => setSelectedGroupId(group.id)}
+                        >
+                          <View style={[commonStyles.row, { alignItems: 'center', marginBottom: spacing.xs }]}>
+                            <Icon 
+                              name={selectedGroupId === group.id ? 'radio-button-on' : 'radio-button-off'} 
+                              size={20} 
+                              style={{ color: selectedGroupId === group.id ? colors.primary : colors.textSecondary, marginRight: spacing.sm }} 
+                            />
+                            <View style={{ flex: 1 }}>
+                              <Text style={[styles.groupName, selectedGroupId === group.id && { color: colors.primary }]}>
+                                {group.group_name}
+                              </Text>
+                              {group.description && (
+                                <Text style={styles.groupDescription}>{group.description}</Text>
+                              )}
+                            </View>
+                          </View>
+                          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.xs, marginLeft: 28 }}>
+                            {group.buildings.map(building => (
+                              <View 
+                                key={building.id}
+                                style={styles.buildingChip}
+                              >
+                                <Text style={styles.buildingChipText}>
+                                  {building.buildingName}
+                                </Text>
+                              </View>
+                            ))}
+                          </View>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  ))
                 )}
               </ScrollView>
             </View>
@@ -494,17 +549,6 @@ const BuildingGroupScheduleModal = memo<BuildingGroupScheduleModalProps>(({
                 placeholderTextColor={colors.textSecondary}
                 value={startTime}
                 onChangeText={setStartTime}
-              />
-            </View>
-
-            {/* Recurring Shift Toggle */}
-            <View style={styles.switchRow}>
-              <Text style={styles.label}>Recurring Shift</Text>
-              <Switch
-                value={isRecurring}
-                onValueChange={setIsRecurring}
-                trackColor={{ false: colors.border, true: colors.primary }}
-                thumbColor={colors.background}
               />
             </View>
 
@@ -729,13 +773,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     borderWidth: 1,
     borderColor: colors.border,
-  },
-  switchRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-    marginBottom: spacing.lg,
   },
   paymentTypeButton: {
     flex: 1,

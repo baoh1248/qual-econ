@@ -40,7 +40,7 @@ export default function SupervisorTimeOffRequestsScreen() {
   const { themeColor } = useTheme();
   const { executeQuery } = useDatabase();
   const { showToast } = useToast();
-  const { getWeekSchedule, updateScheduleEntry, getWeekIdFromDate } = useScheduleStorage();
+  const { getWeekSchedule, updateScheduleEntry, getWeekIdFromDate, clearCaches, loadData: reloadScheduleData } = useScheduleStorage();
   
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -93,6 +93,285 @@ export default function SupervisorTimeOffRequestsScreen() {
     loadData();
   }, [loadData, filterStatus]);
 
+  /**
+   * FIXED: Properly unassign shifts in date range with better error handling
+   */
+  const unassignShiftsInDateRange = useCallback(async (cleanerName: string, startDate: string, endDate: string) => {
+    try {
+      console.log('=== UNASSIGNING SHIFTS IN DATE RANGE ===');
+      console.log('Cleaner:', cleanerName);
+      console.log('Date range:', startDate, 'to', endDate);
+      
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      
+      const weeks = new Set<string>();
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        weeks.add(getWeekIdFromDate(new Date(d)));
+      }
+
+      console.log('Processing weeks:', Array.from(weeks));
+
+      let totalUnassigned = 0;
+      const updatePromises: Promise<void>[] = [];
+      const shiftsToUpdate: Array<{ weekId: string; entryId: string; updates: any }> = [];
+
+      for (const weekId of weeks) {
+        const schedule = getWeekSchedule(weekId, true);
+        console.log(`Week ${weekId}: ${schedule.length} entries`);
+        
+        for (const entry of schedule) {
+          if (!entry || !entry.date) continue;
+          
+          const entryDate = new Date(entry.date);
+          entryDate.setHours(0, 0, 0, 0);
+          
+          if (entryDate >= start && entryDate <= end) {
+            const cleaners = entry.cleanerNames && entry.cleanerNames.length > 0 
+              ? entry.cleanerNames 
+              : (entry.cleanerName ? [entry.cleanerName] : []);
+            
+            if (cleaners.includes(cleanerName)) {
+              console.log(`Found shift to unassign: ${entry.id} on ${entry.date}`);
+              
+              const updatedCleaners = cleaners.filter(name => name !== cleanerName);
+              
+              if (updatedCleaners.length === 0) {
+                const updates = {
+                  cleanerName: 'UNASSIGNED',
+                  cleanerNames: ['UNASSIGNED'],
+                  cleanerIds: [],
+                  status: 'scheduled' as const,
+                  notes: `${entry.notes || ''}\n[Time off approved for ${cleanerName}]`.trim(),
+                };
+                
+                shiftsToUpdate.push({ weekId, entryId: entry.id, updates });
+                console.log(`✅ Queued shift ${entry.id} to be marked as UNASSIGNED`);
+                totalUnassigned++;
+              } else {
+                const updates = {
+                  cleanerName: updatedCleaners[0],
+                  cleanerNames: updatedCleaners,
+                  cleanerIds: entry.cleanerIds?.filter((_, index) => cleaners[index] !== cleanerName) || [],
+                  notes: `${entry.notes || ''}\n[${cleanerName} removed - time off approved]`.trim(),
+                };
+                
+                shiftsToUpdate.push({ weekId, entryId: entry.id, updates });
+                console.log(`✅ Queued cleaner ${cleanerName} to be removed from shift ${entry.id}`);
+                totalUnassigned++;
+              }
+            }
+          }
+        }
+      }
+
+      // Execute all updates
+      for (const { weekId, entryId, updates } of shiftsToUpdate) {
+        const updatePromise = updateScheduleEntry(weekId, entryId, updates);
+        updatePromises.push(updatePromise);
+      }
+
+      await Promise.all(updatePromises);
+      console.log(`✅ Total shifts unassigned: ${totalUnassigned}`);
+      console.log('=== UNASSIGN SHIFTS IN DATE RANGE COMPLETED ===');
+      
+      return totalUnassigned;
+    } catch (error) {
+      console.error('❌ Error unassigning shifts in date range:', error);
+      throw error;
+    }
+  }, [getWeekSchedule, getWeekIdFromDate, updateScheduleEntry]);
+
+  /**
+   * FIXED: Properly unassign shifts on specific dates
+   */
+  const unassignShiftsOnDates = useCallback(async (
+    cleanerName: string,
+    dates: string[],
+    recurringShiftId?: string
+  ) => {
+    try {
+      console.log('=== UNASSIGNING SHIFTS ON SPECIFIC DATES ===');
+      console.log('Cleaner:', cleanerName);
+      console.log('Dates:', dates);
+      console.log('Recurring shift ID:', recurringShiftId);
+      
+      let totalUnassigned = 0;
+      const updatePromises: Promise<void>[] = [];
+
+      for (const date of dates) {
+        const weekId = getWeekIdFromDate(new Date(date));
+        const schedule = getWeekSchedule(weekId, true);
+        
+        console.log(`Processing date ${date} in week ${weekId}: ${schedule.length} entries`);
+        
+        for (const entry of schedule) {
+          if (entry.date === date) {
+            if (recurringShiftId && entry.recurringId !== recurringShiftId) {
+              continue;
+            }
+            
+            const cleaners = entry.cleanerNames || [entry.cleanerName];
+            
+            if (cleaners.includes(cleanerName)) {
+              console.log(`Found shift to unassign: ${entry.id} on ${entry.date}`);
+              
+              const updatedCleaners = cleaners.filter(name => name !== cleanerName);
+              
+              if (updatedCleaners.length === 0) {
+                const updates = {
+                  cleanerName: 'UNASSIGNED',
+                  cleanerNames: ['UNASSIGNED'],
+                  cleanerIds: [],
+                  status: 'scheduled' as const,
+                  notes: `${entry.notes || ''}\n[Time off approved for ${cleanerName}]`.trim(),
+                };
+                
+                const updatePromise = updateScheduleEntry(weekId, entry.id, updates);
+                updatePromises.push(updatePromise);
+                
+                console.log(`✅ Queued shift ${entry.id} to be marked as UNASSIGNED`);
+                totalUnassigned++;
+              } else {
+                const updates = {
+                  cleanerName: updatedCleaners[0],
+                  cleanerNames: updatedCleaners,
+                  cleanerIds: entry.cleanerIds?.filter((_, index) => cleaners[index] !== cleanerName) || [],
+                  notes: `${entry.notes || ''}\n[${cleanerName} removed - time off approved]`.trim(),
+                };
+                
+                const updatePromise = updateScheduleEntry(weekId, entry.id, updates);
+                updatePromises.push(updatePromise);
+                
+                console.log(`✅ Queued cleaner ${cleanerName} to be removed from shift ${entry.id}`);
+                totalUnassigned++;
+              }
+            }
+          }
+        }
+      }
+
+      await Promise.all(updatePromises);
+      console.log(`✅ Total shifts unassigned: ${totalUnassigned}`);
+      console.log('=== UNASSIGN SHIFTS ON DATES COMPLETED ===');
+      
+      return totalUnassigned;
+    } catch (error) {
+      console.error('❌ Error unassigning shifts on dates:', error);
+      throw error;
+    }
+  }, [getWeekSchedule, getWeekIdFromDate, updateScheduleEntry]);
+
+  /**
+   * FIXED: Create notifications for unassigned shifts
+   */
+  const createUnassignedShiftNotifications = useCallback(async (request: TimeOffRequest, unassignedCount: number) => {
+    try {
+      if (unassignedCount === 0) {
+        console.log('No shifts were unassigned, skipping notification creation');
+        return;
+      }
+
+      console.log('=== CREATING UNASSIGNED SHIFT NOTIFICATIONS ===');
+      
+      const notifications: any[] = [];
+      
+      if (request.request_type === 'date_range' && request.start_date && request.end_date) {
+        const start = new Date(request.start_date);
+        const end = new Date(request.end_date);
+        
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+          const dateStr = d.toISOString().split('T')[0];
+          const weekId = getWeekIdFromDate(new Date(d));
+          const schedule = getWeekSchedule(weekId, true);
+          
+          for (const entry of schedule) {
+            if (entry.date === dateStr && 
+                (entry.cleanerName === 'UNASSIGNED' || entry.cleanerNames?.includes('UNASSIGNED'))) {
+              notifications.push({
+                id: uuid.v4() as string,
+                notification_type: 'unassigned_shift',
+                shift_id: entry.id,
+                shift_date: entry.date,
+                building_name: entry.buildingName,
+                client_name: entry.clientName,
+                time_off_request_id: request.id,
+                message: `Shift at ${entry.clientName} - ${entry.buildingName} on ${new Date(entry.date).toLocaleDateString()} is now unassigned due to approved time off for ${request.cleaner_name}`,
+                is_read: false,
+                is_dismissed: false,
+                created_at: new Date().toISOString(),
+              });
+            }
+          }
+        }
+      } else if (request.request_type === 'recurring_instances' && request.requested_dates) {
+        for (const date of request.requested_dates) {
+          const weekId = getWeekIdFromDate(new Date(date));
+          const schedule = getWeekSchedule(weekId, true);
+          
+          for (const entry of schedule) {
+            if (entry.date === date && 
+                (entry.cleanerName === 'UNASSIGNED' || entry.cleanerNames?.includes('UNASSIGNED'))) {
+              notifications.push({
+                id: uuid.v4() as string,
+                notification_type: 'unassigned_shift',
+                shift_id: entry.id,
+                shift_date: entry.date,
+                building_name: entry.buildingName,
+                client_name: entry.clientName,
+                time_off_request_id: request.id,
+                message: `Shift at ${entry.clientName} - ${entry.buildingName} on ${new Date(entry.date).toLocaleDateString()} is now unassigned due to approved time off for ${request.cleaner_name}`,
+                is_read: false,
+                is_dismissed: false,
+                created_at: new Date().toISOString(),
+              });
+            }
+          }
+        }
+      } else if (request.request_type === 'single_shift' && request.shift_date) {
+        const weekId = getWeekIdFromDate(new Date(request.shift_date));
+        const schedule = getWeekSchedule(weekId, true);
+        
+        for (const entry of schedule) {
+          if (entry.date === request.shift_date && 
+              (entry.cleanerName === 'UNASSIGNED' || entry.cleanerNames?.includes('UNASSIGNED'))) {
+            notifications.push({
+              id: uuid.v4() as string,
+              notification_type: 'unassigned_shift',
+              shift_id: entry.id,
+              shift_date: entry.date,
+              building_name: entry.buildingName,
+              client_name: entry.clientName,
+              time_off_request_id: request.id,
+              message: `Shift at ${entry.clientName} - ${entry.buildingName} on ${new Date(entry.date).toLocaleDateString()} is now unassigned due to approved time off for ${request.cleaner_name}`,
+              is_read: false,
+              is_dismissed: false,
+              created_at: new Date().toISOString(),
+            });
+          }
+        }
+      }
+
+      if (notifications.length > 0) {
+        const { error } = await supabase
+          .from('shift_notifications')
+          .insert(notifications);
+
+        if (error) throw error;
+        
+        console.log(`✅ Created ${notifications.length} unassigned shift notifications`);
+      } else {
+        console.log('No unassigned shifts found to create notifications for');
+      }
+      
+      console.log('=== NOTIFICATION CREATION COMPLETED ===');
+    } catch (error) {
+      console.error('❌ Error creating notifications:', error);
+    }
+  }, [getWeekSchedule, getWeekIdFromDate]);
+
   const handleApproveRequest = async (request: TimeOffRequest) => {
     Alert.alert(
       'Approve Time Off Request',
@@ -106,7 +385,6 @@ export default function SupervisorTimeOffRequestsScreen() {
               console.log('=== APPROVING TIME OFF REQUEST ===');
               console.log('Request:', request);
 
-              // Update request status
               const { error: updateError } = await supabase
                 .from('time_off_requests')
                 .update({
@@ -121,31 +399,35 @@ export default function SupervisorTimeOffRequestsScreen() {
 
               console.log('✅ Time off request status updated in database');
 
-              // Unassign shifts based on request type
+              let unassignedCount = 0;
+
               if (request.request_type === 'date_range' && request.start_date && request.end_date) {
-                await unassignShiftsInDateRange(
+                unassignedCount = await unassignShiftsInDateRange(
                   request.cleaner_name,
                   request.start_date,
                   request.end_date
                 );
               } else if (request.request_type === 'recurring_instances' && request.requested_dates) {
-                await unassignShiftsOnDates(
+                unassignedCount = await unassignShiftsOnDates(
                   request.cleaner_name,
                   request.requested_dates,
                   request.recurring_shift_id
                 );
-              } else if (request.request_type === 'single_shift' && request.shift_id && request.shift_date) {
-                await unassignShiftsOnDates(
+              } else if (request.request_type === 'single_shift' && request.shift_date) {
+                unassignedCount = await unassignShiftsOnDates(
                   request.cleaner_name,
                   [request.shift_date],
                   undefined
                 );
               }
 
-              // Create notifications for unassigned shifts
-              await createUnassignedShiftNotifications(request);
+              await createUnassignedShiftNotifications(request, unassignedCount);
 
-              showToast('Time off request approved and shifts unassigned', 'success');
+              console.log('🔄 Clearing all schedule caches and reloading data...');
+              clearCaches();
+              await reloadScheduleData();
+
+              showToast(`Time off approved - ${unassignedCount} shift${unassignedCount !== 1 ? 's' : ''} unassigned`, 'success');
               await loadTimeOffRequests();
               
               console.log('✅ TIME OFF REQUEST APPROVAL COMPLETED ===');
@@ -195,300 +477,6 @@ export default function SupervisorTimeOffRequestsScreen() {
     } catch (error) {
       console.error('Error declining request:', error);
       showToast('Failed to decline request', 'error');
-    }
-  };
-
-  const unassignShiftsInDateRange = async (cleanerName: string, startDate: string, endDate: string) => {
-    try {
-      console.log('=== UNASSIGNING SHIFTS IN DATE RANGE ===');
-      console.log('Cleaner:', cleanerName);
-      console.log('Date range:', startDate, 'to', endDate);
-      
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      
-      // Get all weeks in the date range
-      const weeks = new Set<string>();
-      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        weeks.add(getWeekIdFromDate(new Date(d)));
-      }
-
-      console.log('Processing weeks:', Array.from(weeks));
-
-      let totalUnassigned = 0;
-
-      // Process each week
-      for (const weekId of weeks) {
-        const schedule = getWeekSchedule(weekId);
-        console.log(`Week ${weekId}: ${schedule.length} entries`);
-        
-        for (const entry of schedule) {
-          const entryDate = new Date(entry.date);
-          
-          if (entryDate >= start && entryDate <= end) {
-            const cleaners = entry.cleanerNames || [entry.cleanerName];
-            
-            if (cleaners.includes(cleanerName)) {
-              console.log(`Found shift to unassign: ${entry.id} on ${entry.date}`);
-              
-              // Remove cleaner from shift
-              const updatedCleaners = cleaners.filter(name => name !== cleanerName);
-              
-              if (updatedCleaners.length === 0) {
-                // Mark shift as unassigned
-                const updates = {
-                  cleanerName: 'UNASSIGNED',
-                  cleanerNames: ['UNASSIGNED'],
-                  status: 'scheduled' as const,
-                  notes: `${entry.notes || ''}\n[Time off approved for ${cleanerName}]`.trim(),
-                };
-                
-                // Update in AsyncStorage
-                await updateScheduleEntry(weekId, entry.id, updates);
-                
-                // Update in Supabase
-                await supabase
-                  .from('schedule_entries')
-                  .update({
-                    cleaner_name: 'UNASSIGNED',
-                    cleaner_names: ['UNASSIGNED'],
-                    status: 'scheduled',
-                    notes: updates.notes,
-                    updated_at: new Date().toISOString(),
-                  })
-                  .eq('id', entry.id);
-                
-                console.log(`✅ Shift ${entry.id} marked as UNASSIGNED`);
-                totalUnassigned++;
-              } else {
-                // Update with remaining cleaners
-                const updates = {
-                  cleanerName: updatedCleaners[0],
-                  cleanerNames: updatedCleaners,
-                  notes: `${entry.notes || ''}\n[${cleanerName} removed - time off approved]`.trim(),
-                };
-                
-                // Update in AsyncStorage
-                await updateScheduleEntry(weekId, entry.id, updates);
-                
-                // Update in Supabase
-                await supabase
-                  .from('schedule_entries')
-                  .update({
-                    cleaner_name: updatedCleaners[0],
-                    cleaner_names: updatedCleaners,
-                    notes: updates.notes,
-                    updated_at: new Date().toISOString(),
-                  })
-                  .eq('id', entry.id);
-                
-                console.log(`✅ Cleaner ${cleanerName} removed from shift ${entry.id}`);
-                totalUnassigned++;
-              }
-            }
-          }
-        }
-      }
-
-      console.log(`✅ Total shifts unassigned: ${totalUnassigned}`);
-      console.log('=== UNASSIGN SHIFTS IN DATE RANGE COMPLETED ===');
-    } catch (error) {
-      console.error('❌ Error unassigning shifts in date range:', error);
-      throw error;
-    }
-  };
-
-  const unassignShiftsOnDates = async (
-    cleanerName: string,
-    dates: string[],
-    recurringShiftId?: string
-  ) => {
-    try {
-      console.log('=== UNASSIGNING SHIFTS ON SPECIFIC DATES ===');
-      console.log('Cleaner:', cleanerName);
-      console.log('Dates:', dates);
-      console.log('Recurring shift ID:', recurringShiftId);
-      
-      let totalUnassigned = 0;
-
-      for (const date of dates) {
-        const weekId = getWeekIdFromDate(new Date(date));
-        const schedule = getWeekSchedule(weekId);
-        
-        console.log(`Processing date ${date} in week ${weekId}: ${schedule.length} entries`);
-        
-        for (const entry of schedule) {
-          if (entry.date === date) {
-            // If recurring shift ID is specified, only unassign matching shifts
-            if (recurringShiftId && entry.recurringId !== recurringShiftId) {
-              continue;
-            }
-            
-            const cleaners = entry.cleanerNames || [entry.cleanerName];
-            
-            if (cleaners.includes(cleanerName)) {
-              console.log(`Found shift to unassign: ${entry.id} on ${entry.date}`);
-              
-              const updatedCleaners = cleaners.filter(name => name !== cleanerName);
-              
-              if (updatedCleaners.length === 0) {
-                const updates = {
-                  cleanerName: 'UNASSIGNED',
-                  cleanerNames: ['UNASSIGNED'],
-                  status: 'scheduled' as const,
-                  notes: `${entry.notes || ''}\n[Time off approved for ${cleanerName}]`.trim(),
-                };
-                
-                // Update in AsyncStorage
-                await updateScheduleEntry(weekId, entry.id, updates);
-                
-                // Update in Supabase
-                await supabase
-                  .from('schedule_entries')
-                  .update({
-                    cleaner_name: 'UNASSIGNED',
-                    cleaner_names: ['UNASSIGNED'],
-                    status: 'scheduled',
-                    notes: updates.notes,
-                    updated_at: new Date().toISOString(),
-                  })
-                  .eq('id', entry.id);
-                
-                console.log(`✅ Shift ${entry.id} marked as UNASSIGNED`);
-                totalUnassigned++;
-              } else {
-                const updates = {
-                  cleanerName: updatedCleaners[0],
-                  cleanerNames: updatedCleaners,
-                  notes: `${entry.notes || ''}\n[${cleanerName} removed - time off approved]`.trim(),
-                };
-                
-                // Update in AsyncStorage
-                await updateScheduleEntry(weekId, entry.id, updates);
-                
-                // Update in Supabase
-                await supabase
-                  .from('schedule_entries')
-                  .update({
-                    cleaner_name: updatedCleaners[0],
-                    cleaner_names: updatedCleaners,
-                    notes: updates.notes,
-                    updated_at: new Date().toISOString(),
-                  })
-                  .eq('id', entry.id);
-                
-                console.log(`✅ Cleaner ${cleanerName} removed from shift ${entry.id}`);
-                totalUnassigned++;
-              }
-            }
-          }
-        }
-      }
-
-      console.log(`✅ Total shifts unassigned: ${totalUnassigned}`);
-      console.log('=== UNASSIGN SHIFTS ON DATES COMPLETED ===');
-    } catch (error) {
-      console.error('❌ Error unassigning shifts on dates:', error);
-      throw error;
-    }
-  };
-
-  const createUnassignedShiftNotifications = async (request: TimeOffRequest) => {
-    try {
-      console.log('=== CREATING UNASSIGNED SHIFT NOTIFICATIONS ===');
-      
-      const notifications: any[] = [];
-      
-      if (request.request_type === 'date_range' && request.start_date && request.end_date) {
-        const start = new Date(request.start_date);
-        const end = new Date(request.end_date);
-        
-        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-          const weekId = getWeekIdFromDate(new Date(d));
-          const schedule = getWeekSchedule(weekId);
-          
-          for (const entry of schedule) {
-            if (entry.date === d.toISOString().split('T')[0] && 
-                (entry.cleanerName === 'UNASSIGNED' || entry.cleanerNames?.includes('UNASSIGNED'))) {
-              notifications.push({
-                id: uuid.v4() as string,
-                notification_type: 'unassigned_shift',
-                shift_id: entry.id,
-                shift_date: entry.date,
-                building_name: entry.buildingName,
-                client_name: entry.clientName,
-                time_off_request_id: request.id,
-                message: `Shift at ${entry.clientName} - ${entry.buildingName} on ${new Date(entry.date).toLocaleDateString()} is now unassigned due to approved time off for ${request.cleaner_name}`,
-                is_read: false,
-                is_dismissed: false,
-                created_at: new Date().toISOString(),
-              });
-            }
-          }
-        }
-      } else if (request.request_type === 'recurring_instances' && request.requested_dates) {
-        for (const date of request.requested_dates) {
-          const weekId = getWeekIdFromDate(new Date(date));
-          const schedule = getWeekSchedule(weekId);
-          
-          for (const entry of schedule) {
-            if (entry.date === date && 
-                (entry.cleanerName === 'UNASSIGNED' || entry.cleanerNames?.includes('UNASSIGNED'))) {
-              notifications.push({
-                id: uuid.v4() as string,
-                notification_type: 'unassigned_shift',
-                shift_id: entry.id,
-                shift_date: entry.date,
-                building_name: entry.buildingName,
-                client_name: entry.clientName,
-                time_off_request_id: request.id,
-                message: `Shift at ${entry.clientName} - ${entry.buildingName} on ${new Date(entry.date).toLocaleDateString()} is now unassigned due to approved time off for ${request.cleaner_name}`,
-                is_read: false,
-                is_dismissed: false,
-                created_at: new Date().toISOString(),
-              });
-            }
-          }
-        }
-      } else if (request.request_type === 'single_shift' && request.shift_date) {
-        const weekId = getWeekIdFromDate(new Date(request.shift_date));
-        const schedule = getWeekSchedule(weekId);
-        
-        for (const entry of schedule) {
-          if (entry.date === request.shift_date && 
-              (entry.cleanerName === 'UNASSIGNED' || entry.cleanerNames?.includes('UNASSIGNED'))) {
-            notifications.push({
-              id: uuid.v4() as string,
-              notification_type: 'unassigned_shift',
-              shift_id: entry.id,
-              shift_date: entry.date,
-              building_name: entry.buildingName,
-              client_name: entry.clientName,
-              time_off_request_id: request.id,
-              message: `Shift at ${entry.clientName} - ${entry.buildingName} on ${new Date(entry.date).toLocaleDateString()} is now unassigned due to approved time off for ${request.cleaner_name}`,
-              is_read: false,
-              is_dismissed: false,
-              created_at: new Date().toISOString(),
-            });
-          }
-        }
-      }
-
-      if (notifications.length > 0) {
-        const { error } = await supabase
-          .from('shift_notifications')
-          .insert(notifications);
-
-        if (error) throw error;
-        
-        console.log(`✅ Created ${notifications.length} unassigned shift notifications`);
-      } else {
-        console.log('No unassigned shifts found to create notifications for');
-      }
-      
-      console.log('=== NOTIFICATION CREATION COMPLETED ===');
-    } catch (error) {
-      console.error('❌ Error creating notifications:', error);
     }
   };
 
@@ -729,7 +717,6 @@ export default function SupervisorTimeOffRequestsScreen() {
         )}
       </ScrollView>
 
-      {/* Decline Modal */}
       <Modal
         visible={declineModalVisible}
         animationType="slide"

@@ -1,6 +1,7 @@
 
 /**
  * Utility functions for generating recurring shift occurrences
+ * FIXED: Improved date handling and occurrence generation accuracy
  */
 
 import type { ScheduleEntry } from '../hooks/useScheduleStorage';
@@ -43,84 +44,114 @@ const DAY_NAMES: ('sunday' | 'monday' | 'tuesday' | 'wednesday' | 'thursday' | '
 ];
 
 /**
- * Calculate the next occurrence date based on the recurring pattern
+ * FIXED: Create date from string without timezone issues
+ */
+function createDateFromString(dateString: string): Date {
+  const [year, month, day] = dateString.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+/**
+ * FIXED: Format date to YYYY-MM-DD without timezone issues
+ */
+function formatDateToString(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * FIXED: Calculate the next occurrence date based on the recurring pattern
  */
 export function calculateNextOccurrence(
   currentDate: string,
   pattern: RecurringShiftPattern
 ): string | null {
-  const current = new Date(currentDate);
-  let next: Date;
+  try {
+    const current = createDateFromString(currentDate);
+    let next: Date;
 
-  switch (pattern.pattern_type) {
-    case 'daily':
-      next = new Date(current);
-      next.setDate(current.getDate() + pattern.interval);
-      break;
+    switch (pattern.pattern_type) {
+      case 'daily':
+        next = new Date(current);
+        next.setDate(current.getDate() + pattern.interval);
+        break;
 
-    case 'weekly':
-      if (!pattern.days_of_week || pattern.days_of_week.length === 0) {
-        return null;
-      }
-      
-      next = new Date(current);
-      next.setDate(current.getDate() + 1);
-      
-      let daysChecked = 0;
-      const maxDaysToCheck = 7 * pattern.interval;
-      
-      while (daysChecked < maxDaysToCheck) {
-        const dayOfWeek = next.getDay();
-        const weeksSinceStart = Math.floor(
-          (next.getTime() - new Date(pattern.start_date).getTime()) / (7 * 24 * 60 * 60 * 1000)
-        );
-        
-        if (
-          pattern.days_of_week.includes(dayOfWeek) &&
-          weeksSinceStart % pattern.interval === 0
-        ) {
-          break;
+      case 'weekly':
+        if (!pattern.days_of_week || pattern.days_of_week.length === 0) {
+          console.error('Weekly pattern missing days_of_week');
+          return null;
         }
         
-        next.setDate(next.getDate() + 1);
-        daysChecked++;
-      }
-      break;
+        next = new Date(current);
+        next.setDate(current.getDate() + 1);
+        
+        let daysChecked = 0;
+        const maxDaysToCheck = 7 * pattern.interval + 7;
+        
+        const startDate = createDateFromString(pattern.start_date);
+        
+        while (daysChecked < maxDaysToCheck) {
+          const dayOfWeek = next.getDay();
+          
+          const daysSinceStart = Math.floor((next.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000));
+          const weeksSinceStart = Math.floor(daysSinceStart / 7);
+          
+          if (
+            pattern.days_of_week.includes(dayOfWeek) &&
+            weeksSinceStart % pattern.interval === 0
+          ) {
+            break;
+          }
+          
+          next.setDate(next.getDate() + 1);
+          daysChecked++;
+        }
+        
+        if (daysChecked >= maxDaysToCheck) {
+          console.error('Could not find next weekly occurrence');
+          return null;
+        }
+        break;
 
-    case 'monthly':
-      next = new Date(current);
-      next.setMonth(current.getMonth() + pattern.interval);
-      
-      if (pattern.day_of_month) {
-        const targetDay = Math.min(
-          pattern.day_of_month,
-          new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate()
-        );
-        next.setDate(targetDay);
-      }
-      break;
+      case 'monthly':
+        next = new Date(current);
+        next.setMonth(current.getMonth() + pattern.interval);
+        
+        if (pattern.day_of_month) {
+          const daysInMonth = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+          const targetDay = Math.min(pattern.day_of_month, daysInMonth);
+          next.setDate(targetDay);
+        }
+        break;
 
-    case 'custom':
-      next = new Date(current);
-      next.setDate(current.getDate() + (pattern.custom_days || 1));
-      break;
+      case 'custom':
+        next = new Date(current);
+        next.setDate(current.getDate() + (pattern.custom_days || 1));
+        break;
 
-    default:
-      return null;
-  }
-
-  if (pattern.end_date) {
-    const endDate = new Date(pattern.end_date);
-    if (next > endDate) {
-      return null;
+      default:
+        console.error('Unknown pattern type:', pattern.pattern_type);
+        return null;
     }
-  }
 
-  return next.toISOString().split('T')[0];
+    if (pattern.end_date) {
+      const endDate = createDateFromString(pattern.end_date);
+      if (next > endDate) {
+        return null;
+      }
+    }
+
+    return formatDateToString(next);
+  } catch (error) {
+    console.error('Error calculating next occurrence:', error);
+    return null;
+  }
 }
 
 /**
- * Generate all occurrences for a recurring pattern within a date range
+ * FIXED: Generate all occurrences for a recurring pattern within a date range
  */
 export function generateOccurrences(
   pattern: RecurringShiftPattern,
@@ -128,139 +159,165 @@ export function generateOccurrences(
   endDate?: string,
   maxCount?: number
 ): ShiftOccurrence[] {
-  const occurrences: ShiftOccurrence[] = [];
-  const start = startDate ? new Date(startDate) : new Date(pattern.start_date);
-  const end = endDate ? new Date(endDate) : pattern.end_date ? new Date(pattern.end_date) : null;
-  const limit = maxCount || pattern.max_occurrences || 100;
+  try {
+    const occurrences: ShiftOccurrence[] = [];
+    const start = startDate ? createDateFromString(startDate) : createDateFromString(pattern.start_date);
+    const end = endDate ? createDateFromString(endDate) : pattern.end_date ? createDateFromString(pattern.end_date) : null;
+    const limit = maxCount || pattern.max_occurrences || 100;
 
-  let currentDate = pattern.start_date;
-  let occurrenceNumber = 1;
+    let currentDate = pattern.start_date;
+    let occurrenceNumber = 1;
 
-  if (new Date(currentDate) >= start && (!end || new Date(currentDate) <= end)) {
-    const date = new Date(currentDate);
-    occurrences.push({
-      date: currentDate,
-      day: DAY_NAMES[date.getDay()] as any,
-      occurrenceNumber: occurrenceNumber++,
-    });
-  }
-
-  while (occurrences.length < limit) {
-    const nextDate = calculateNextOccurrence(currentDate, pattern);
-    
-    if (!nextDate) {
-      break;
+    const firstDate = createDateFromString(currentDate);
+    if (firstDate >= start && (!end || firstDate <= end)) {
+      occurrences.push({
+        date: currentDate,
+        day: DAY_NAMES[firstDate.getDay()] as any,
+        occurrenceNumber: occurrenceNumber++,
+      });
     }
 
-    const nextDateObj = new Date(nextDate);
-    
-    if (nextDateObj < start) {
+    while (occurrences.length < limit) {
+      const nextDate = calculateNextOccurrence(currentDate, pattern);
+      
+      if (!nextDate) {
+        break;
+      }
+
+      const nextDateObj = createDateFromString(nextDate);
+      
+      if (nextDateObj < start) {
+        currentDate = nextDate;
+        continue;
+      }
+      
+      if (end && nextDateObj > end) {
+        break;
+      }
+
+      occurrences.push({
+        date: nextDate,
+        day: DAY_NAMES[nextDateObj.getDay()] as any,
+        occurrenceNumber: occurrenceNumber++,
+      });
+
       currentDate = nextDate;
-      continue;
-    }
-    
-    if (end && nextDateObj > end) {
-      break;
     }
 
-    occurrences.push({
-      date: nextDate,
-      day: DAY_NAMES[nextDateObj.getDay()] as any,
-      occurrenceNumber: occurrenceNumber++,
-    });
-
-    currentDate = nextDate;
+    console.log(`Generated ${occurrences.length} occurrences for pattern ${pattern.id}`);
+    return occurrences;
+  } catch (error) {
+    console.error('Error generating occurrences:', error);
+    return [];
   }
-
-  return occurrences;
 }
 
 /**
- * Convert a recurring shift pattern to schedule entries
+ * FIXED: Convert a recurring shift pattern to schedule entries
  */
 export function patternToScheduleEntries(
   pattern: RecurringShiftPattern,
   occurrences: ShiftOccurrence[],
   getWeekIdFromDate: (date: Date) => string
 ): ScheduleEntry[] {
-  const entries: ScheduleEntry[] = [];
+  try {
+    const entries: ScheduleEntry[] = [];
 
-  for (const occurrence of occurrences) {
-    const date = new Date(occurrence.date);
-    const weekId = getWeekIdFromDate(date);
-    
-    const endTime = pattern.start_time 
-      ? addHoursToTime(pattern.start_time, pattern.hours)
-      : undefined;
+    for (const occurrence of occurrences) {
+      const date = createDateFromString(occurrence.date);
+      const weekId = getWeekIdFromDate(date);
+      
+      const endTime = pattern.start_time 
+        ? addHoursToTime(pattern.start_time, pattern.hours)
+        : undefined;
 
-    const entry: ScheduleEntry = {
-      id: `recurring-${pattern.id}-${occurrence.date}-${Date.now()}`,
-      clientName: pattern.client_name,
-      buildingName: pattern.building_name,
-      cleanerName: pattern.cleaner_names[0],
-      cleanerNames: pattern.cleaner_names,
-      cleanerIds: pattern.cleaner_ids,
-      hours: pattern.hours,
-      day: occurrence.day,
-      date: occurrence.date,
-      startTime: pattern.start_time,
-      endTime,
-      status: 'scheduled',
-      weekId,
-      notes: pattern.notes,
-      isRecurring: true,
-      recurringId: pattern.id,
-      paymentType: pattern.payment_type || 'hourly',
-      flatRateAmount: pattern.flat_rate_amount || 0,
-      hourlyRate: pattern.hourly_rate || 15,
-    };
+      const entry: ScheduleEntry = {
+        id: `recurring-${pattern.id}-${occurrence.date}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        clientName: pattern.client_name,
+        buildingName: pattern.building_name,
+        cleanerName: pattern.cleaner_names[0] || 'UNASSIGNED',
+        cleanerNames: pattern.cleaner_names.length > 0 ? pattern.cleaner_names : ['UNASSIGNED'],
+        cleanerIds: pattern.cleaner_ids || [],
+        hours: pattern.hours,
+        day: occurrence.day,
+        date: occurrence.date,
+        startTime: pattern.start_time,
+        endTime,
+        status: 'scheduled',
+        weekId,
+        notes: pattern.notes,
+        isRecurring: true,
+        recurringId: pattern.id,
+        paymentType: pattern.payment_type || 'hourly',
+        flatRateAmount: pattern.flat_rate_amount || 0,
+        hourlyRate: pattern.hourly_rate || 15,
+      };
 
-    entries.push(entry);
+      entries.push(entry);
+    }
+
+    console.log(`Created ${entries.length} schedule entries from pattern ${pattern.id}`);
+    return entries;
+  } catch (error) {
+    console.error('Error converting pattern to schedule entries:', error);
+    return [];
   }
-
-  return entries;
 }
 
 /**
  * Helper function to add hours to a time string
  */
 function addHoursToTime(time: string, hours: number): string {
-  const [hoursStr, minutesStr] = time.split(':');
-  const totalMinutes = parseInt(hoursStr) * 60 + parseInt(minutesStr) + hours * 60;
-  const newHours = Math.floor(totalMinutes / 60) % 24;
-  const newMinutes = totalMinutes % 60;
-  return `${String(newHours).padStart(2, '0')}:${String(newMinutes).padStart(2, '0')}`;
+  try {
+    const [hoursStr, minutesStr] = time.split(':');
+    const totalMinutes = parseInt(hoursStr) * 60 + parseInt(minutesStr) + hours * 60;
+    const newHours = Math.floor(totalMinutes / 60) % 24;
+    const newMinutes = totalMinutes % 60;
+    return `${String(newHours).padStart(2, '0')}:${String(newMinutes).padStart(2, '0')}`;
+  } catch (error) {
+    console.error('Error adding hours to time:', error);
+    return time;
+  }
 }
 
 /**
- * Check if a recurring pattern is still active
+ * FIXED: Check if a recurring pattern is still active
  */
 export function isPatternActive(pattern: RecurringShiftPattern): boolean {
-  if (!pattern.is_active) {
-    return false;
-  }
-
-  const now = new Date();
-  const startDate = new Date(pattern.start_date);
-
-  if (now < startDate) {
-    return false;
-  }
-
-  if (pattern.end_date) {
-    const endDate = new Date(pattern.end_date);
-    if (now > endDate) {
+  try {
+    if (!pattern.is_active) {
       return false;
     }
-  }
 
-  if (pattern.max_occurrences && pattern.occurrence_count) {
-    if (pattern.occurrence_count >= pattern.max_occurrences) {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    
+    const startDate = createDateFromString(pattern.start_date);
+    startDate.setHours(0, 0, 0, 0);
+
+    if (now < startDate) {
       return false;
     }
-  }
 
-  return true;
+    if (pattern.end_date) {
+      const endDate = createDateFromString(pattern.end_date);
+      endDate.setHours(23, 59, 59, 999);
+      if (now > endDate) {
+        return false;
+      }
+    }
+
+    if (pattern.max_occurrences && pattern.occurrence_count) {
+      if (pattern.occurrence_count >= pattern.max_occurrences) {
+        return false;
+      }
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error checking if pattern is active:', error);
+    return false;
+  }
 }
 
 /**
@@ -270,79 +327,141 @@ export function getUpcomingOccurrences(
   pattern: RecurringShiftPattern,
   count: number = 5
 ): ShiftOccurrence[] {
-  const today = new Date().toISOString().split('T')[0];
-  const endDate = pattern.end_date || 
-    new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  try {
+    const today = formatDateToString(new Date());
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + 365);
+    const endDate = pattern.end_date || formatDateToString(futureDate);
 
-  return generateOccurrences(pattern, today, endDate, count);
+    return generateOccurrences(pattern, today, endDate, count);
+  } catch (error) {
+    console.error('Error getting upcoming occurrences:', error);
+    return [];
+  }
 }
 
 /**
  * Format a recurring pattern description for display
  */
 export function formatPatternDescription(pattern: RecurringShiftPattern): string {
-  const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  let description = '';
+  try {
+    const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    let description = '';
 
-  switch (pattern.pattern_type) {
-    case 'daily':
-      description = pattern.interval === 1 ? 'Every day' : `Every ${pattern.interval} days`;
-      break;
+    switch (pattern.pattern_type) {
+      case 'daily':
+        description = pattern.interval === 1 ? 'Every day' : `Every ${pattern.interval} days`;
+        break;
 
-    case 'weekly':
-      const dayNames = pattern.days_of_week
-        ?.map(d => daysOfWeek[d])
-        .join(', ') || '';
-      description =
-        pattern.interval === 1
-          ? `Every week on ${dayNames}`
-          : `Every ${pattern.interval} weeks on ${dayNames}`;
-      break;
+      case 'weekly':
+        const dayNames = pattern.days_of_week
+          ?.map(d => daysOfWeek[d])
+          .join(', ') || '';
+        description =
+          pattern.interval === 1
+            ? `Every week on ${dayNames}`
+            : `Every ${pattern.interval} weeks on ${dayNames}`;
+        break;
 
-    case 'monthly':
-      description =
-        pattern.interval === 1
-          ? `Every month on day ${pattern.day_of_month}`
-          : `Every ${pattern.interval} months on day ${pattern.day_of_month}`;
-      break;
+      case 'monthly':
+        description =
+          pattern.interval === 1
+            ? `Every month on day ${pattern.day_of_month}`
+            : `Every ${pattern.interval} months on day ${pattern.day_of_month}`;
+        break;
 
-    case 'custom':
-      description = pattern.custom_days === 1 ? 'Every day' : `Every ${pattern.custom_days} days`;
-      break;
+      case 'custom':
+        description = pattern.custom_days === 1 ? 'Every day' : `Every ${pattern.custom_days} days`;
+        break;
+    }
+
+    if (pattern.start_date) {
+      const startDate = createDateFromString(pattern.start_date);
+      description += `, starting ${startDate.toLocaleDateString()}`;
+    }
+
+    if (pattern.end_date) {
+      const endDate = createDateFromString(pattern.end_date);
+      description += `, until ${endDate.toLocaleDateString()}`;
+    } else if (pattern.max_occurrences) {
+      description += `, for ${pattern.max_occurrences} occurrence${pattern.max_occurrences !== 1 ? 's' : ''}`;
+    }
+
+    return description;
+  } catch (error) {
+    console.error('Error formatting pattern description:', error);
+    return 'Invalid pattern';
   }
-
-  if (pattern.start_date) {
-    const startDate = new Date(pattern.start_date);
-    description += `, starting ${startDate.toLocaleDateString()}`;
-  }
-
-  if (pattern.end_date) {
-    const endDate = new Date(pattern.end_date);
-    description += `, until ${endDate.toLocaleDateString()}`;
-  } else if (pattern.max_occurrences) {
-    description += `, for ${pattern.max_occurrences} occurrence${pattern.max_occurrences !== 1 ? 's' : ''}`;
-  }
-
-  return description;
 }
 
 /**
- * Check if occurrences need to be generated for a pattern
+ * FIXED: Check if occurrences need to be generated for a pattern
  */
 export function needsGeneration(pattern: RecurringShiftPattern, weeksAhead: number = 4): boolean {
-  if (!isPatternActive(pattern)) {
+  try {
+    if (!isPatternActive(pattern)) {
+      return false;
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const futureDate = new Date(today);
+    futureDate.setDate(today.getDate() + (weeksAhead * 7));
+
+    if (!pattern.last_generated_date) {
+      return true;
+    }
+
+    const lastGenerated = createDateFromString(pattern.last_generated_date);
+    lastGenerated.setHours(0, 0, 0, 0);
+    
+    return lastGenerated < futureDate;
+  } catch (error) {
+    console.error('Error checking if generation needed:', error);
     return false;
   }
+}
 
-  const today = new Date();
-  const futureDate = new Date(today);
-  futureDate.setDate(today.getDate() + (weeksAhead * 7));
+/**
+ * FIXED: Validate recurring shift pattern for accuracy
+ */
+export function validateRecurringPattern(pattern: RecurringShiftPattern): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
 
-  if (!pattern.last_generated_date) {
-    return true;
+  if (!pattern.id) errors.push('Pattern must have an ID');
+  if (!pattern.building_name) errors.push('Pattern must have a building name');
+  if (!pattern.client_name) errors.push('Pattern must have a client name');
+  if (!pattern.cleaner_names || pattern.cleaner_names.length === 0) errors.push('Pattern must have at least one cleaner');
+  if (pattern.hours <= 0) errors.push('Pattern must have positive hours');
+  if (!pattern.start_date) errors.push('Pattern must have a start date');
+  
+  if (!['daily', 'weekly', 'monthly', 'custom'].includes(pattern.pattern_type)) {
+    errors.push('Invalid pattern type');
   }
 
-  const lastGenerated = new Date(pattern.last_generated_date);
-  
-  return lastGenerated < futureDate;
+  if (pattern.pattern_type === 'weekly' && (!pattern.days_of_week || pattern.days_of_week.length === 0)) {
+    errors.push('Weekly pattern must specify days of week');
+  }
+
+  if (pattern.pattern_type === 'monthly' && !pattern.day_of_month) {
+    errors.push('Monthly pattern must specify day of month');
+  }
+
+  if (pattern.end_date) {
+    const startDate = createDateFromString(pattern.start_date);
+    const endDate = createDateFromString(pattern.end_date);
+    if (endDate < startDate) {
+      errors.push('End date must be after start date');
+    }
+  }
+
+  if (pattern.max_occurrences && pattern.max_occurrences <= 0) {
+    errors.push('Max occurrences must be positive');
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors
+  };
 }

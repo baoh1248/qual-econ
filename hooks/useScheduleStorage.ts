@@ -1,6 +1,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from '../app/integrations/supabase/client';
 
 export interface ScheduleEntry {
   id: string;
@@ -68,9 +69,10 @@ export interface ScheduleStats {
 }
 
 const STORAGE_KEYS = {
-  WEEKLY_SCHEDULES: 'weekly_schedules_v7',
-  SCHEDULE_CACHE: 'schedule_cache_v7',
+  WEEKLY_SCHEDULES: 'weekly_schedules_v8',
+  SCHEDULE_CACHE: 'schedule_cache_v8',
   LAST_CLEANUP_DATE: 'last_cleanup_date',
+  LAST_SUPABASE_SYNC: 'last_supabase_sync',
 };
 
 const scheduleCache = new Map<string, ScheduleEntry[]>();
@@ -78,14 +80,150 @@ const statsCache = new Map<string, ScheduleStats>();
 const conflictsCache = new Map<string, ScheduleConflict[]>();
 let cacheVersion = 0;
 
+// Convert database entry to local ScheduleEntry format
+const convertFromDatabaseEntry = (dbEntry: any): ScheduleEntry => {
+  return {
+    id: dbEntry.id,
+    clientName: dbEntry.client_name,
+    buildingName: dbEntry.building_name,
+    cleanerName: dbEntry.cleaner_name || (dbEntry.cleaner_names && dbEntry.cleaner_names[0]) || '',
+    cleanerNames: dbEntry.cleaner_names || (dbEntry.cleaner_name ? [dbEntry.cleaner_name] : []),
+    cleanerIds: dbEntry.cleaner_ids || [],
+    hours: parseFloat(dbEntry.hours) || 0,
+    day: dbEntry.day,
+    date: dbEntry.date,
+    startTime: dbEntry.start_time,
+    endTime: dbEntry.end_time,
+    status: dbEntry.status,
+    weekId: dbEntry.week_id,
+    notes: dbEntry.notes,
+    priority: dbEntry.priority || 'medium',
+    isRecurring: dbEntry.is_recurring || false,
+    recurringId: dbEntry.recurring_id,
+    estimatedDuration: dbEntry.estimated_duration,
+    actualDuration: dbEntry.actual_duration,
+    tags: dbEntry.tags || [],
+    paymentType: dbEntry.payment_type || 'hourly',
+    flatRateAmount: parseFloat(dbEntry.flat_rate_amount) || 0,
+    hourlyRate: parseFloat(dbEntry.hourly_rate) || 15,
+    overtimeRate: parseFloat(dbEntry.overtime_rate) || 1.5,
+    bonusAmount: parseFloat(dbEntry.bonus_amount) || 0,
+    deductions: parseFloat(dbEntry.deductions) || 0,
+    isProject: dbEntry.is_project || false,
+    projectId: dbEntry.project_id,
+    projectName: dbEntry.project_name,
+    address: dbEntry.address,
+  };
+};
+
+// Convert local ScheduleEntry to database format
+const convertToDatabaseEntry = (entry: ScheduleEntry): any => {
+  return {
+    id: entry.id,
+    client_name: entry.clientName,
+    building_name: entry.buildingName,
+    cleaner_name: entry.cleanerName || (entry.cleanerNames && entry.cleanerNames[0]) || '',
+    cleaner_names: entry.cleanerNames || (entry.cleanerName ? [entry.cleanerName] : []),
+    cleaner_ids: entry.cleanerIds || [],
+    hours: entry.hours,
+    day: entry.day,
+    date: entry.date,
+    start_time: entry.startTime,
+    end_time: entry.endTime,
+    status: entry.status,
+    week_id: entry.weekId,
+    notes: entry.notes,
+    priority: entry.priority || 'medium',
+    is_recurring: entry.isRecurring || false,
+    recurring_id: entry.recurringId,
+    estimated_duration: entry.estimatedDuration,
+    actual_duration: entry.actualDuration,
+    tags: entry.tags || [],
+    payment_type: entry.paymentType || 'hourly',
+    flat_rate_amount: entry.flatRateAmount || 0,
+    hourly_rate: entry.hourlyRate || 15,
+    overtime_rate: entry.overtimeRate || 1.5,
+    bonus_amount: entry.bonusAmount || 0,
+    deductions: entry.deductions || 0,
+    is_project: entry.isProject || false,
+    project_id: entry.projectId,
+    project_name: entry.projectName,
+    address: entry.address,
+    updated_at: new Date().toISOString(),
+  };
+};
+
+// Sync entry to Supabase with retry logic
+const syncEntryToSupabase = async (
+  entry: ScheduleEntry,
+  operation: 'insert' | 'update' | 'delete',
+  retries: number = 3
+): Promise<boolean> => {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      console.log(`🔄 Syncing ${operation} to Supabase (attempt ${attempt}/${retries}):`, entry.id);
+
+      const dbEntry = convertToDatabaseEntry(entry);
+
+      switch (operation) {
+        case 'insert':
+          const { data: insertData, error: insertError } = await supabase
+            .from('schedule_entries')
+            .insert(dbEntry)
+            .select();
+          
+          if (insertError) throw insertError;
+          console.log('✅ Entry inserted to Supabase:', insertData);
+          return true;
+
+        case 'update':
+          const { data: updateData, error: updateError } = await supabase
+            .from('schedule_entries')
+            .update(dbEntry)
+            .eq('id', entry.id)
+            .select();
+          
+          if (updateError) throw updateError;
+          console.log('✅ Entry updated in Supabase:', updateData);
+          return true;
+
+        case 'delete':
+          const { error: deleteError } = await supabase
+            .from('schedule_entries')
+            .delete()
+            .eq('id', entry.id);
+          
+          if (deleteError) throw deleteError;
+          console.log('✅ Entry deleted from Supabase');
+          return true;
+      }
+    } catch (error: any) {
+      console.error(`❌ Sync attempt ${attempt} failed:`, error);
+      
+      // If it's the last attempt, throw the error
+      if (attempt === retries) {
+        console.error('❌ All sync attempts failed');
+        throw error;
+      }
+      
+      // Wait before retrying (exponential backoff)
+      await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+    }
+  }
+  
+  return false;
+};
+
 export const useScheduleStorage = () => {
   const [weeklySchedules, setWeeklySchedules] = useState<WeeklySchedule>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
   
   const loadingRef = useRef(false);
   const saveQueueRef = useRef<Map<string, ScheduleEntry[]>>(new Map());
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const supabaseSyncedRef = useRef(false);
 
   const invalidateAllCaches = useCallback(() => {
     console.log('=== INVALIDATING ALL CACHES ===');
@@ -351,16 +489,87 @@ export const useScheduleStorage = () => {
     }, 300);
   }, [saveSchedulesImmediately]);
 
+  const loadFromSupabase = useCallback(async () => {
+    try {
+      console.log('🔄 Loading schedule data from Supabase...');
+      
+      // Load all schedule entries from Supabase
+      const { data: entries, error } = await supabase
+        .from('schedule_entries')
+        .select('*')
+        .order('date', { ascending: true });
+
+      if (error) {
+        console.error('❌ Error loading from Supabase:', error);
+        throw error;
+      }
+
+      if (!entries || entries.length === 0) {
+        console.log('ℹ️ No schedule entries found in Supabase');
+        return {};
+      }
+
+      console.log(`✅ Loaded ${entries.length} entries from Supabase`);
+
+      // Group entries by week_id
+      const schedulesByWeek: WeeklySchedule = {};
+      
+      for (const dbEntry of entries) {
+        try {
+          const entry = convertFromDatabaseEntry(dbEntry);
+          
+          // Recalculate week_id from date to ensure consistency
+          const entryDate = new Date(entry.date);
+          const correctWeekId = getWeekIdFromDate(entryDate);
+          entry.weekId = correctWeekId;
+          
+          // Calculate pay
+          entry.totalCalculatedPay = calculateEntryPay(entry, 15);
+          
+          if (!schedulesByWeek[correctWeekId]) {
+            schedulesByWeek[correctWeekId] = [];
+          }
+          
+          schedulesByWeek[correctWeekId].push(entry);
+        } catch (conversionError) {
+          console.error('❌ Error converting entry:', dbEntry.id, conversionError);
+        }
+      }
+
+      console.log(`✅ Organized into ${Object.keys(schedulesByWeek).length} weeks`);
+      
+      // Update last sync time
+      await AsyncStorage.setItem(STORAGE_KEYS.LAST_SUPABASE_SYNC, new Date().toISOString());
+      
+      return schedulesByWeek;
+    } catch (error) {
+      console.error('❌ Error loading from Supabase:', error);
+      return {};
+    }
+  }, [getWeekIdFromDate, calculateEntryPay]);
+
   const loadData = useCallback(async () => {
     if (loadingRef.current) return;
     
     try {
-      console.log('Loading schedule data...');
+      console.log('🔄 Loading schedule data...');
       loadingRef.current = true;
       setIsLoading(true);
       setError(null);
 
+      // First, try to load from Supabase
+      let supabaseSchedules: WeeklySchedule = {};
+      
+      if (!supabaseSyncedRef.current) {
+        console.log('📥 First load - fetching from Supabase...');
+        supabaseSchedules = await loadFromSupabase();
+        supabaseSyncedRef.current = true;
+      }
+
+      // Then load from AsyncStorage
       const schedulesData = await AsyncStorage.getItem(STORAGE_KEYS.WEEKLY_SCHEDULES);
+
+      let finalSchedules: WeeklySchedule = {};
 
       if (schedulesData) {
         const parsedSchedules = JSON.parse(schedulesData);
@@ -392,30 +601,38 @@ export const useScheduleStorage = () => {
             }
           });
 
-          setWeeklySchedules(cleanedSchedules);
-          
-          Object.entries(cleanedSchedules).forEach(([weekId, entries]) => {
-            scheduleCache.set(weekId, entries);
-          });
-          
-          console.log('Loaded schedules:', Object.keys(cleanedSchedules).length, 'weeks');
-        } else {
-          console.warn('Invalid schedule data format');
-          setWeeklySchedules({});
+          finalSchedules = cleanedSchedules;
+          console.log('✅ Loaded from AsyncStorage:', Object.keys(cleanedSchedules).length, 'weeks');
         }
-      } else {
-        console.log('No existing schedule data found');
-        setWeeklySchedules({});
       }
+
+      // Merge Supabase data with local data (Supabase takes precedence)
+      if (Object.keys(supabaseSchedules).length > 0) {
+        console.log('🔄 Merging Supabase data with local data...');
+        finalSchedules = { ...finalSchedules, ...supabaseSchedules };
+        
+        // Save merged data to AsyncStorage
+        await saveSchedulesImmediately(finalSchedules);
+        console.log('✅ Merged data saved to AsyncStorage');
+      }
+
+      setWeeklySchedules(finalSchedules);
+      
+      // Update cache
+      Object.entries(finalSchedules).forEach(([weekId, entries]) => {
+        scheduleCache.set(weekId, entries);
+      });
+      
+      console.log('✅ Final schedule loaded:', Object.keys(finalSchedules).length, 'weeks');
     } catch (err) {
-      console.error('Error loading schedule data:', err);
+      console.error('❌ Error loading schedule data:', err);
       setError('Failed to load schedule data');
       setWeeklySchedules({});
     } finally {
       setIsLoading(false);
       loadingRef.current = false;
     }
-  }, [calculateEntryPay]);
+  }, [calculateEntryPay, loadFromSupabase, saveSchedulesImmediately]);
 
   const getWeekSchedule = useCallback((weekId: string, forceRefresh: boolean = false): ScheduleEntry[] => {
     try {
@@ -475,7 +692,6 @@ export const useScheduleStorage = () => {
     try {
       console.log('🔄 Getting schedule for cleaner:', cleanerName);
       
-      // Get all schedules
       const allEntries: ScheduleEntry[] = [];
       
       Object.keys(weeklySchedules).forEach(weekId => {
@@ -483,7 +699,6 @@ export const useScheduleStorage = () => {
         allEntries.push(...weekSchedule);
       });
       
-      // Filter entries for this cleaner
       const cleanerEntries = allEntries.filter(entry => {
         if (entry.cleanerNames && entry.cleanerNames.length > 0) {
           return entry.cleanerNames.includes(cleanerName);
@@ -526,10 +741,14 @@ export const useScheduleStorage = () => {
           return true;
         })
         .map(entry => {
+          // Ensure date and weekId are properly aligned
+          const entryDate = entry.date ? new Date(entry.date) : new Date();
+          const calculatedWeekId = getWeekIdFromDate(entryDate);
+          
           const enhancedEntry = {
             ...entry,
-            weekId,
-            date: entry.date || weekId,
+            weekId: calculatedWeekId, // Use calculated weekId to ensure alignment
+            date: entry.date || calculatedWeekId,
             id: entry.id || String(Date.now() + Math.random()),
             hours: typeof entry.hours === 'number' ? entry.hours : parseFloat(entry.hours as any) || 0,
             status: entry.status || 'scheduled',
@@ -554,12 +773,16 @@ export const useScheduleStorage = () => {
       
       console.log('🔄 Setting updated schedules for week:', weekId);
       
+      // Update state immediately for optimistic UI
       setWeeklySchedules(updatedSchedules);
       
+      // Clear caches
       invalidateAllCaches();
       
+      // Update cache
       scheduleCache.set(weekId, validatedEntries);
       
+      // Save to AsyncStorage
       await saveSchedulesImmediately(updatedSchedules);
       
       console.log('✅ WEEK SCHEDULE UPDATE COMPLETED ===');
@@ -569,7 +792,7 @@ export const useScheduleStorage = () => {
       setError('Failed to update schedule');
       throw err;
     }
-  }, [weeklySchedules, saveSchedulesImmediately, invalidateAllCaches, calculateEntryPay]);
+  }, [weeklySchedules, saveSchedulesImmediately, invalidateAllCaches, calculateEntryPay, getWeekIdFromDate]);
 
   const getWeekStats = useCallback((weekId: string): ScheduleStats => {
     try {
@@ -610,6 +833,7 @@ export const useScheduleStorage = () => {
         hours: entry.hours,
         buildingName: entry.buildingName,
         day: entry.day,
+        date: entry.date,
         paymentType: entry.paymentType,
         flatRateAmount: entry.flatRateAmount,
         hourlyRate: entry.hourlyRate,
@@ -621,14 +845,25 @@ export const useScheduleStorage = () => {
         throw new Error('Invalid parameters for addScheduleEntry');
       }
 
-      const currentWeekSchedule = getWeekSchedule(weekId);
+      // Ensure date and weekId are properly aligned
+      const entryDate = entry.date ? new Date(entry.date) : new Date();
+      const calculatedWeekId = getWeekIdFromDate(entryDate);
+      
+      console.log('Date alignment check:', {
+        providedWeekId: weekId,
+        calculatedWeekId,
+        entryDate: entry.date,
+        aligned: weekId === calculatedWeekId
+      });
+
+      const currentWeekSchedule = getWeekSchedule(calculatedWeekId);
       console.log('Current week schedule has', currentWeekSchedule.length, 'entries');
       
       const validatedEntry = {
         ...entry,
-        weekId,
+        weekId: calculatedWeekId, // Use calculated weekId to ensure alignment
         id: entry.id || String(Date.now() + Math.random()),
-        date: entry.date || weekId,
+        date: entry.date || calculatedWeekId,
         hours: typeof entry.hours === 'number' ? entry.hours : parseFloat(entry.hours as any) || 0,
         status: entry.status || 'scheduled',
         day: entry.day || 'monday',
@@ -645,7 +880,21 @@ export const useScheduleStorage = () => {
       const updatedSchedule = [...currentWeekSchedule, validatedEntry];
       console.log('Updated schedule will have', updatedSchedule.length, 'entries');
       
-      await updateWeekSchedule(weekId, updatedSchedule);
+      // Update local storage first
+      await updateWeekSchedule(calculatedWeekId, updatedSchedule);
+      
+      // Then sync to Supabase
+      setIsSyncing(true);
+      try {
+        await syncEntryToSupabase(validatedEntry, 'insert');
+        console.log('✅ Entry synced to Supabase successfully');
+      } catch (syncError) {
+        console.error('❌ Failed to sync to Supabase:', syncError);
+        // Don't throw - we've already saved locally
+        setError('Entry saved locally but failed to sync to database');
+      } finally {
+        setIsSyncing(false);
+      }
       
       console.log('✅ SCHEDULE ENTRY ADDED SUCCESSFULLY ===');
     } catch (error) {
@@ -653,7 +902,7 @@ export const useScheduleStorage = () => {
       console.error('Error adding schedule entry:', error);
       throw error;
     }
-  }, [getWeekSchedule, updateWeekSchedule, calculateEntryPay]);
+  }, [getWeekSchedule, updateWeekSchedule, calculateEntryPay, getWeekIdFromDate]);
 
   const updateScheduleEntry = useCallback(async (weekId: string, entryId: string, updates: Partial<ScheduleEntry>) => {
     try {
@@ -704,7 +953,21 @@ export const useScheduleStorage = () => {
       
       console.log('Updated schedule will have', updatedSchedule.length, 'entries');
       
+      // Update local storage first
       await updateWeekSchedule(weekId, updatedSchedule);
+      
+      // Then sync to Supabase
+      setIsSyncing(true);
+      try {
+        await syncEntryToSupabase(updatedEntry, 'update');
+        console.log('✅ Entry synced to Supabase successfully');
+      } catch (syncError) {
+        console.error('❌ Failed to sync to Supabase:', syncError);
+        // Don't throw - we've already saved locally
+        setError('Entry updated locally but failed to sync to database');
+      } finally {
+        setIsSyncing(false);
+      }
       
       console.log('✅ SCHEDULE ENTRY UPDATED SUCCESSFULLY ===');
     } catch (error) {
@@ -741,7 +1004,21 @@ export const useScheduleStorage = () => {
       const updatedSchedule = currentWeekSchedule.filter(entry => entry?.id !== entryId);
       console.log('Updated schedule will have', updatedSchedule.length, 'entries');
       
+      // Update local storage first
       await updateWeekSchedule(weekId, updatedSchedule);
+      
+      // Then sync to Supabase
+      setIsSyncing(true);
+      try {
+        await syncEntryToSupabase(entryToDelete, 'delete');
+        console.log('✅ Entry deleted from Supabase successfully');
+      } catch (syncError) {
+        console.error('❌ Failed to sync deletion to Supabase:', syncError);
+        // Don't throw - we've already deleted locally
+        setError('Entry deleted locally but failed to sync to database');
+      } finally {
+        setIsSyncing(false);
+      }
       
       console.log('✅ SCHEDULE ENTRY DELETED SUCCESSFULLY ===');
     } catch (error) {
@@ -843,6 +1120,22 @@ export const useScheduleStorage = () => {
       });
       
       await updateWeekSchedule(weekId, updatedSchedule);
+      
+      // Sync all updated entries to Supabase
+      setIsSyncing(true);
+      try {
+        const syncPromises = updatedSchedule
+          .filter(entry => entryIdSet.has(entry.id))
+          .map(entry => syncEntryToSupabase(entry, 'update'));
+        
+        await Promise.all(syncPromises);
+        console.log('✅ All entries synced to Supabase successfully');
+      } catch (syncError) {
+        console.error('❌ Failed to sync some entries to Supabase:', syncError);
+        setError('Entries updated locally but some failed to sync to database');
+      } finally {
+        setIsSyncing(false);
+      }
     } catch (error) {
       console.error('Error bulk updating entries:', error);
       throw error;
@@ -858,8 +1151,23 @@ export const useScheduleStorage = () => {
       const currentWeekSchedule = getWeekSchedule(weekId);
       const entryIdSet = new Set(entryIds);
       
+      const entriesToDelete = currentWeekSchedule.filter(entry => entry && entryIdSet.has(entry.id));
       const updatedSchedule = currentWeekSchedule.filter(entry => entry && !entryIdSet.has(entry.id));
+      
       await updateWeekSchedule(weekId, updatedSchedule);
+      
+      // Sync all deletions to Supabase
+      setIsSyncing(true);
+      try {
+        const syncPromises = entriesToDelete.map(entry => syncEntryToSupabase(entry, 'delete'));
+        await Promise.all(syncPromises);
+        console.log('✅ All entries deleted from Supabase successfully');
+      } catch (syncError) {
+        console.error('❌ Failed to sync some deletions to Supabase:', syncError);
+        setError('Entries deleted locally but some failed to sync to database');
+      } finally {
+        setIsSyncing(false);
+      }
     } catch (error) {
       console.error('Error bulk deleting entries:', error);
       throw error;
@@ -901,9 +1209,11 @@ export const useScheduleStorage = () => {
         STORAGE_KEYS.WEEKLY_SCHEDULES,
         STORAGE_KEYS.SCHEDULE_CACHE,
         STORAGE_KEYS.LAST_CLEANUP_DATE,
+        STORAGE_KEYS.LAST_SUPABASE_SYNC,
       ]);
       setWeeklySchedules({});
       invalidateAllCaches();
+      supabaseSyncedRef.current = false;
     } catch (err) {
       console.error('Error resetting schedules:', err);
       setError('Failed to reset schedules');
@@ -960,6 +1270,19 @@ export const useScheduleStorage = () => {
       updatedSchedule[entryIndex] = updatedEntry;
       
       await updateWeekSchedule(weekId, updatedSchedule);
+      
+      // Sync to Supabase
+      setIsSyncing(true);
+      try {
+        await syncEntryToSupabase(updatedEntry, 'update');
+        console.log('✅ Cleaner addition synced to Supabase');
+      } catch (syncError) {
+        console.error('❌ Failed to sync cleaner addition:', syncError);
+        setError('Cleaner added locally but failed to sync to database');
+      } finally {
+        setIsSyncing(false);
+      }
+      
       console.log('Cleaner added to entry successfully');
     } catch (error) {
       console.error('Error adding cleaner to entry:', error);
@@ -1007,6 +1330,19 @@ export const useScheduleStorage = () => {
       updatedSchedule[entryIndex] = updatedEntry;
       
       await updateWeekSchedule(weekId, updatedSchedule);
+      
+      // Sync to Supabase
+      setIsSyncing(true);
+      try {
+        await syncEntryToSupabase(updatedEntry, 'update');
+        console.log('✅ Cleaner removal synced to Supabase');
+      } catch (syncError) {
+        console.error('❌ Failed to sync cleaner removal:', syncError);
+        setError('Cleaner removed locally but failed to sync to database');
+      } finally {
+        setIsSyncing(false);
+      }
+      
       console.log('Cleaner removed from entry successfully');
     } catch (error) {
       console.error('Error removing cleaner from entry:', error);
@@ -1043,6 +1379,19 @@ export const useScheduleStorage = () => {
       updatedSchedule[entryIndex] = updatedEntry;
       
       await updateWeekSchedule(weekId, updatedSchedule);
+      
+      // Sync to Supabase
+      setIsSyncing(true);
+      try {
+        await syncEntryToSupabase(updatedEntry, 'update');
+        console.log('✅ Cleaner update synced to Supabase');
+      } catch (syncError) {
+        console.error('❌ Failed to sync cleaner update:', syncError);
+        setError('Cleaners updated locally but failed to sync to database');
+      } finally {
+        setIsSyncing(false);
+      }
+      
       console.log('Entry cleaners updated successfully');
     } catch (error) {
       console.error('Error updating entry cleaners:', error);
@@ -1069,6 +1418,7 @@ export const useScheduleStorage = () => {
   return {
     weeklySchedules,
     isLoading,
+    isSyncing,
     error,
     
     getWeekSchedule,

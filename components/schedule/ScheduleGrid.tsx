@@ -25,7 +25,10 @@ const ScheduleGrid = memo(({
   onClientLongPress,
   onBuildingLongPress,
 }: ScheduleGridProps) => {
-  console.log('ScheduleGrid rendered with', clientBuildings.length, 'buildings and', schedule.length, 'schedule entries');
+  console.log('🎨 ScheduleGrid rendered with:');
+  console.log('  - Buildings:', clientBuildings.length);
+  console.log('  - Schedule entries:', schedule.length);
+  console.log('  - Clients:', clients.length);
 
   const days = useMemo(() => ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'], []);
   const screenWidth = Dimensions.get('window').width;
@@ -42,28 +45,42 @@ const ScheduleGrid = memo(({
       }
       grouped[building.clientName].push(building);
     });
-    console.log('Buildings grouped by client:', Object.keys(grouped));
+    console.log('📦 Buildings grouped by client:', Object.keys(grouped).length, 'clients');
     return grouped;
   }, [clientBuildings]);
 
   // Create a map for quick schedule lookup with better performance
   const scheduleMap = useMemo(() => {
-    const map = new Map<string, ScheduleEntry>();
+    const map = new Map<string, ScheduleEntry[]>();
+    
     schedule.forEach(entry => {
       if (entry && entry.clientName && entry.buildingName && entry.day) {
-        // Include clientName in the key to ensure uniqueness across different clients
-        const key = `${entry.clientName}-${entry.buildingName}-${entry.day.toLowerCase()}`;
-        map.set(key, entry);
+        // Create key with client name, building name, and day
+        const key = `${entry.clientName.toLowerCase()}-${entry.buildingName.toLowerCase()}-${entry.day.toLowerCase()}`;
+        
+        // Support multiple entries per cell
+        const existing = map.get(key) || [];
+        existing.push(entry);
+        map.set(key, existing);
       }
     });
-    console.log('Schedule map created with', map.size, 'entries');
+    
+    console.log('🗺️ Schedule map created with', map.size, 'unique cell keys');
+    console.log('📊 Sample keys:', Array.from(map.keys()).slice(0, 5));
+    
     return map;
   }, [schedule]);
 
-  const getScheduleEntry = useCallback((clientName: string, buildingName: string, day: string): ScheduleEntry | null => {
-    // Include clientName in the key to ensure uniqueness across different clients
-    const key = `${clientName}-${buildingName}-${day.toLowerCase()}`;
-    return scheduleMap.get(key) || null;
+  const getScheduleEntries = useCallback((clientName: string, buildingName: string, day: string): ScheduleEntry[] => {
+    // Create key matching the format used in scheduleMap
+    const key = `${clientName.toLowerCase()}-${buildingName.toLowerCase()}-${day.toLowerCase()}`;
+    const entries = scheduleMap.get(key) || [];
+    
+    if (entries.length > 0) {
+      console.log(`✅ Found ${entries.length} entries for ${buildingName} on ${day}`);
+    }
+    
+    return entries;
   }, [scheduleMap]);
 
   const getStatusColor = useCallback((status: string) => {
@@ -96,7 +113,11 @@ const ScheduleGrid = memo(({
 
   const renderCell = useCallback((building: ClientBuilding, day: string) => {
     const dayKey = day.toLowerCase() as 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
-    const entry = getScheduleEntry(building.clientName, building.buildingName, day);
+    const entries = getScheduleEntries(building.clientName, building.buildingName, day);
+    const hasEntries = entries.length > 0;
+    
+    // Use the first entry for display if multiple exist
+    const primaryEntry = entries[0];
     
     return (
       <TouchableOpacity
@@ -105,26 +126,38 @@ const ScheduleGrid = memo(({
           styles.cell,
           { 
             width: cellWidth,
-            backgroundColor: entry ? getStatusColor(entry.status) + '20' : colors.backgroundAlt,
-            borderColor: entry ? getStatusColor(entry.status) : colors.border,
+            backgroundColor: hasEntries ? getStatusColor(primaryEntry.status) + '20' : colors.backgroundAlt,
+            borderColor: hasEntries ? getStatusColor(primaryEntry.status) : colors.border,
           }
         ]}
         onPress={() => onCellPress(building, dayKey)}
         onLongPress={() => onCellLongPress(building, dayKey)}
         activeOpacity={0.7}
       >
-        {entry ? (
+        {hasEntries ? (
           <View style={styles.cellContent}>
-            <Text style={[styles.cleanerName, { color: getStatusColor(entry.status) }]} numberOfLines={1}>
-              {entry.cleanerName}
+            {entries.length > 1 && (
+              <View style={styles.multipleEntriesBadge}>
+                <Text style={styles.multipleEntriesText}>{entries.length}</Text>
+              </View>
+            )}
+            <Text style={[styles.cleanerName, { color: getStatusColor(primaryEntry.status) }]} numberOfLines={1}>
+              {primaryEntry.cleanerNames && primaryEntry.cleanerNames.length > 0 
+                ? primaryEntry.cleanerNames[0]
+                : primaryEntry.cleanerName}
             </Text>
             <Text style={[styles.hours, { color: colors.textSecondary }]} numberOfLines={1}>
-              {entry.hours}h
+              {primaryEntry.hours}h
             </Text>
-            {entry.startTime && (
+            {primaryEntry.startTime && (
               <Text style={[styles.time, { color: colors.textSecondary }]} numberOfLines={1}>
-                {entry.startTime}
+                {primaryEntry.startTime}
               </Text>
+            )}
+            {primaryEntry.isRecurring && (
+              <View style={styles.recurringIndicator}>
+                <Icon name="repeat" size={10} style={{ color: colors.warning }} />
+              </View>
             )}
           </View>
         ) : (
@@ -134,7 +167,7 @@ const ScheduleGrid = memo(({
         )}
       </TouchableOpacity>
     );
-  }, [cellWidth, getScheduleEntry, getStatusColor, onCellPress, onCellLongPress]);
+  }, [cellWidth, getScheduleEntries, getStatusColor, onCellPress, onCellLongPress]);
 
   const renderBuildingRow = useCallback((building: ClientBuilding) => (
     <View key={building.id} style={styles.row}>
@@ -164,7 +197,7 @@ const ScheduleGrid = memo(({
   const renderClientSection = useCallback((clientName: string, buildings: ClientBuilding[]) => {
     const client = clients.find(c => c.name === clientName);
     if (!client) {
-      console.log('Client not found for name:', clientName);
+      console.log('⚠️ Client not found for name:', clientName);
       return null;
     }
 
@@ -202,8 +235,8 @@ const ScheduleGrid = memo(({
     );
   }
 
-  console.log('Rendering grid with client groups:', Object.keys(buildingsByClient));
-  console.log('Grid dimensions - Total width:', totalGridWidth, 'Screen width:', screenWidth);
+  console.log('🎨 Rendering grid with', Object.keys(buildingsByClient).length, 'client groups');
+  console.log('📏 Grid dimensions - Total width:', totalGridWidth, 'Screen width:', screenWidth);
 
   return (
     <View style={styles.container}>
@@ -385,6 +418,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: spacing.xs,
+    position: 'relative',
   },
   cellContent: {
     alignItems: 'center',
@@ -411,6 +445,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     opacity: 0.5,
+  },
+  multipleEntriesBadge: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    backgroundColor: colors.primary,
+    borderRadius: 8,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    minWidth: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  multipleEntriesText: {
+    ...typography.small,
+    color: colors.textInverse,
+    fontWeight: '700',
+    fontSize: 9,
+  },
+  recurringIndicator: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
   },
   emptyState: {
     flex: 1,

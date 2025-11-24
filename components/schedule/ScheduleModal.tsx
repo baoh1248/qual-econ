@@ -1,6 +1,6 @@
 
 import React, { memo, useState, useEffect, useMemo } from 'react';
-import { View, Text, Modal, ScrollView, TouchableOpacity, TextInput, StyleSheet, Platform, Alert, Switch } from 'react-native';
+import { View, Text, Modal, ScrollView, TouchableOpacity, TextInput, StyleSheet, Platform, Alert } from 'react-native';
 import { colors, spacing, typography, commonStyles } from '../../styles/commonStyles';
 import Button from '../Button';
 import Icon from '../Icon';
@@ -38,6 +38,7 @@ interface ScheduleModalProps {
   showCleanerDropdown: boolean;
   showSecurityLevelDropdown: boolean;
   showBuildingDropdown: boolean;
+  isAddingFromGrid?: boolean;
 
   // Setters
   setCleanerName: (value: string) => void;
@@ -68,7 +69,7 @@ interface ScheduleModalProps {
   onEditClient: () => void;
   onEditBuilding: () => void;
   onSwitchToEdit: () => void;
-  onOpenRecurringModal?: () => void; // NEW: Callback to open recurring modal
+  onOpenRecurringModal?: () => void;
 }
 
 const ScheduleModal = memo(({
@@ -96,6 +97,7 @@ const ScheduleModal = memo(({
   showCleanerDropdown,
   showSecurityLevelDropdown,
   showBuildingDropdown = false,
+  isAddingFromGrid = false,
   setCleanerName,
   setSelectedCleaners,
   setHours,
@@ -122,9 +124,9 @@ const ScheduleModal = memo(({
   onEditClient,
   onEditBuilding,
   onSwitchToEdit,
-  onOpenRecurringModal, // NEW
+  onOpenRecurringModal,
 }: ScheduleModalProps) => {
-  console.log('ScheduleModal rendered with type:', modalType, 'visible:', visible);
+  console.log('ScheduleModal rendered with type:', modalType, 'visible:', visible, 'isAddingFromGrid:', isAddingFromGrid);
 
   const { themeColor } = useTheme();
 
@@ -137,7 +139,11 @@ const ScheduleModal = memo(({
   // Local state for save loading
   const [isSaving, setIsSaving] = useState(false);
 
-  // NEW: Date and recurring shift fields - Initialize with proper date format
+  // Local state for client selection
+  const [selectedClientName, setSelectedClientName] = useState<string>('');
+  const [showClientSelectorDropdown, setShowClientSelectorDropdown] = useState(false);
+
+  // Date field - Initialize with proper date format
   const [scheduleDate, setScheduleDate] = useState(() => {
     try {
       if (selectedEntry?.date) {
@@ -151,15 +157,6 @@ const ScheduleModal = memo(({
       return new Date().toISOString().split('T')[0];
     }
   });
-  
-  const [isRecurring, setIsRecurring] = useState(() => {
-    try {
-      return selectedEntry?.is_recurring || false;
-    } catch (error) {
-      console.error('Error initializing recurring state:', error);
-      return false;
-    }
-  });
 
   // Update scheduleDate when selectedEntry changes
   useEffect(() => {
@@ -171,10 +168,28 @@ const ScheduleModal = memo(({
     }
   }, [selectedEntry]);
 
+  // Reset client selection when modal opens/closes
+  useEffect(() => {
+    if (visible && modalType === 'add') {
+      setSelectedClientName('');
+      if (!isAddingFromGrid) {
+        setSelectedClientBuilding(null);
+      }
+    }
+  }, [visible, modalType, isAddingFromGrid]);
+
+  // Filter buildings based on selected client
+  const filteredBuildings = useMemo(() => {
+    if (!selectedClientName) {
+      return clientBuildings;
+    }
+    return clientBuildings.filter(building => building.clientName === selectedClientName);
+  }, [selectedClientName, clientBuildings]);
+
   // Payment-related state
   const [paymentType, setPaymentType] = useState<'hourly' | 'flat_rate'>(() => {
     try {
-      return selectedEntry?.payment_type || 'hourly';
+      return selectedEntry?.paymentType || 'hourly';
     } catch (error) {
       console.error('Error initializing payment type:', error);
       return 'hourly';
@@ -182,7 +197,7 @@ const ScheduleModal = memo(({
   });
   const [flatRateAmount, setFlatRateAmount] = useState(() => {
     try {
-      return selectedEntry?.flat_rate_amount?.toString() || '100';
+      return selectedEntry?.flatRateAmount?.toString() || '100';
     } catch (error) {
       console.error('Error initializing flat rate amount:', error);
       return '100';
@@ -380,11 +395,11 @@ const ScheduleModal = memo(({
         hours,
         startTime,
         scheduleDate,
-        isRecurring,
         paymentType,
         flatRateAmount,
         estimatedPayment,
         selectedEntry: selectedEntry?.id,
+        selectedBuilding: selectedClientBuilding?.buildingName,
         isSaving
       });
       
@@ -480,27 +495,27 @@ const ScheduleModal = memo(({
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Recurring:</Text>
                   <Text style={styles.detailValue}>
-                    {selectedEntry.is_recurring ? 'Yes' : 'No'}
+                    {selectedEntry.isRecurring ? 'Yes' : 'No'}
                   </Text>
                 </View>
                 
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Payment Type:</Text>
                   <View style={[styles.paymentTypeBadge, { 
-                    backgroundColor: selectedEntry.payment_type === 'flat_rate' ? colors.success + '20' : themeColor + '20' 
+                    backgroundColor: selectedEntry.paymentType === 'flat_rate' ? colors.success + '20' : themeColor + '20' 
                   }]}>
                     <Icon 
-                      name={selectedEntry.payment_type === 'flat_rate' ? 'cash' : 'time'} 
+                      name={selectedEntry.paymentType === 'flat_rate' ? 'cash' : 'time'} 
                       size={12} 
                       style={{ 
-                        color: selectedEntry.payment_type === 'flat_rate' ? colors.success : themeColor,
+                        color: selectedEntry.paymentType === 'flat_rate' ? colors.success : themeColor,
                         marginRight: spacing.xs 
                       }} 
                     />
                     <Text style={[styles.paymentTypeText, { 
-                      color: selectedEntry.payment_type === 'flat_rate' ? colors.success : themeColor 
+                      color: selectedEntry.paymentType === 'flat_rate' ? colors.success : themeColor 
                     }]}>
-                      {selectedEntry.payment_type === 'flat_rate' ? 'Flat Rate' : 'Hourly'}
+                      {selectedEntry.paymentType === 'flat_rate' ? 'Flat Rate' : 'Hourly'}
                     </Text>
                   </View>
                 </View>
@@ -508,17 +523,17 @@ const ScheduleModal = memo(({
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Payment Amount:</Text>
                   <Text style={[styles.detailValue, { color: colors.success, fontWeight: 'bold' }]}>
-                    ${selectedEntry.payment_type === 'flat_rate' 
-                      ? (selectedEntry.flat_rate_amount || 0).toFixed(2)
-                      : ((selectedEntry.hourly_rate || 15) * selectedEntry.hours).toFixed(2)
+                    ${selectedEntry.paymentType === 'flat_rate' 
+                      ? (selectedEntry.flatRateAmount || 0).toFixed(2)
+                      : ((selectedEntry.hourlyRate || 15) * selectedEntry.hours).toFixed(2)
                     }
                   </Text>
                 </View>
                 
-                {selectedEntry.payment_type === 'hourly' && (
+                {selectedEntry.paymentType === 'hourly' && (
                   <View style={styles.detailRow}>
                     <Text style={styles.detailLabel}>Hourly Rate:</Text>
-                    <Text style={styles.detailValue}>${(selectedEntry.hourly_rate || 15).toFixed(2)}/hr</Text>
+                    <Text style={styles.detailValue}>${(selectedEntry.hourlyRate || 15).toFixed(2)}/hr</Text>
                   </View>
                 )}
                 
@@ -559,8 +574,89 @@ const ScheduleModal = memo(({
               {modalType === 'add' ? 'Add New Shift' : 'Edit Shift'}
             </Text>
             <View style={styles.formContainer}>
-              {/* Building Selection */}
-              {modalType === 'add' && !selectedClientBuilding && (
+              {/* Client Selection - Only show for add mode when NOT adding from grid */}
+              {modalType === 'add' && !isAddingFromGrid && (
+                <>
+                  <Text style={styles.inputLabel}>Client *</Text>
+                  <TouchableOpacity
+                    style={styles.input}
+                    onPress={() => setShowClientSelectorDropdown(!showClientSelectorDropdown)}
+                  >
+                    <Text style={[styles.inputText, !selectedClientName && styles.placeholderText]}>
+                      {selectedClientName || 'Select client'}
+                    </Text>
+                    <Icon name="chevron-down" size={20} style={{ color: colors.textSecondary }} />
+                  </TouchableOpacity>
+                  
+                  {showClientSelectorDropdown && (
+                    <View style={styles.dropdownContainer}>
+                      <ScrollView style={styles.dropdown} nestedScrollEnabled>
+                        <TouchableOpacity
+                          style={[styles.dropdownItem, !selectedClientName && { backgroundColor: themeColor }]}
+                          onPress={() => {
+                            setSelectedClientName('');
+                            setSelectedClientBuilding(null);
+                            setShowClientSelectorDropdown(false);
+                          }}
+                        >
+                          <Text style={[styles.dropdownText, !selectedClientName && styles.dropdownTextSelected]}>
+                            All Clients
+                          </Text>
+                        </TouchableOpacity>
+                        {clients.filter(c => c.isActive).length === 0 ? (
+                          <View style={styles.noResultsContainer}>
+                            <Icon name="business-outline" size={24} style={styles.noResultsIcon} />
+                            <Text style={styles.noResultsText}>No clients available</Text>
+                          </View>
+                        ) : (
+                          clients.filter(c => c.isActive).map((client, index) => (
+                            <TouchableOpacity
+                              key={index}
+                              style={[
+                                styles.dropdownItem,
+                                selectedClientName === client.name && { backgroundColor: themeColor }
+                              ]}
+                              onPress={() => {
+                                setSelectedClientName(client.name);
+                                setSelectedClientBuilding(null);
+                                setShowClientSelectorDropdown(false);
+                              }}
+                            >
+                              <View style={styles.clientDropdownRow}>
+                                <Text style={[
+                                  styles.dropdownText,
+                                  selectedClientName === client.name && styles.dropdownTextSelected
+                                ]}>
+                                  {client.name}
+                                </Text>
+                                <View style={[
+                                  styles.securityIndicator,
+                                  { backgroundColor: getSecurityLevelColor(client.securityLevel) + '20' }
+                                ]}>
+                                  <Icon 
+                                    name={getSecurityLevelIcon(client.securityLevel)} 
+                                    size={12} 
+                                    style={{ color: getSecurityLevelColor(client.securityLevel) }} 
+                                  />
+                                </View>
+                              </View>
+                            </TouchableOpacity>
+                          ))
+                        )}
+                      </ScrollView>
+                      <TouchableOpacity
+                        style={[styles.closeDropdownButton, { backgroundColor: themeColor }]}
+                        onPress={() => setShowClientSelectorDropdown(false)}
+                      >
+                        <Text style={styles.closeDropdownText}>Close</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </>
+              )}
+
+              {/* Building Selection - Only show when NOT adding from grid */}
+              {modalType === 'add' && !isAddingFromGrid && !selectedClientBuilding && (
                 <>
                   <Text style={styles.inputLabel}>Building *</Text>
                   <TouchableOpacity
@@ -576,13 +672,18 @@ const ScheduleModal = memo(({
                   {showBuildingDropdown && (
                     <View style={styles.dropdownContainer}>
                       <ScrollView style={styles.dropdown} nestedScrollEnabled>
-                        {clientBuildings.length === 0 ? (
+                        {filteredBuildings.length === 0 ? (
                           <View style={styles.noResultsContainer}>
                             <Icon name="business-outline" size={24} style={styles.noResultsIcon} />
-                            <Text style={styles.noResultsText}>No buildings available</Text>
+                            <Text style={styles.noResultsText}>
+                              {selectedClientName 
+                                ? `No buildings available for ${selectedClientName}`
+                                : 'No buildings available'
+                              }
+                            </Text>
                           </View>
                         ) : (
-                          clientBuildings.map((building, index) => (
+                          filteredBuildings.map((building, index) => (
                             <TouchableOpacity
                               key={index}
                               style={styles.dropdownItem}
@@ -626,7 +727,7 @@ const ScheduleModal = memo(({
                 </>
               )}
 
-              {/* Show selected building info */}
+              {/* Show selected building info - Always show when building is selected */}
               {selectedClientBuilding && (
                 <View style={[styles.selectedBuildingInfo, { backgroundColor: themeColor + '10' }]}>
                   <Icon name="business" size={16} style={{ color: themeColor }} />
@@ -634,6 +735,12 @@ const ScheduleModal = memo(({
                     <Text style={styles.selectedBuildingName}>{selectedClientBuilding.buildingName}</Text>
                     <Text style={styles.selectedBuildingClient}>{selectedClientBuilding.clientName}</Text>
                   </View>
+                  {isAddingFromGrid && (
+                    <View style={[styles.autoFilledBadge, { backgroundColor: colors.success }]}>
+                      <Icon name="checkmark-circle" size={12} style={{ color: colors.background }} />
+                      <Text style={styles.autoFilledText}>Auto-filled</Text>
+                    </View>
+                  )}
                 </View>
               )}
 
@@ -821,49 +928,6 @@ const ScheduleModal = memo(({
                 value={startTime}
                 onChangeText={setStartTime}
               />
-
-              {/* NEW: Recurring Shift Section with Customize Button */}
-              <View style={styles.recurringSection}>
-                <View style={styles.switchRow}>
-                  <Text style={styles.inputLabel}>Recurring Shift</Text>
-                  <Switch
-                    value={isRecurring}
-                    onValueChange={setIsRecurring}
-                    trackColor={{ false: colors.border, true: themeColor }}
-                    thumbColor={colors.background}
-                  />
-                </View>
-                
-                {isRecurring && onOpenRecurringModal && (
-                  <TouchableOpacity
-                    style={[styles.customizeRecurringButton, { backgroundColor: themeColor + '10', borderColor: themeColor }]}
-                    onPress={() => {
-                      console.log('Opening recurring task customization modal');
-                      onOpenRecurringModal();
-                    }}
-                  >
-                    <Icon name="settings" size={20} style={{ color: themeColor, marginRight: spacing.sm }} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.customizeRecurringButtonText, { color: themeColor }]}>
-                        Customize Recurring Pattern
-                      </Text>
-                      <Text style={[styles.customizeRecurringButtonSubtext, { color: themeColor }]}>
-                        Set frequency, days, end date, and more
-                      </Text>
-                    </View>
-                    <Icon name="chevron-forward" size={20} style={{ color: themeColor }} />
-                  </TouchableOpacity>
-                )}
-                
-                {isRecurring && !onOpenRecurringModal && (
-                  <View style={[styles.recurringNote, { backgroundColor: colors.warning + '10' }]}>
-                    <Icon name="information-circle" size={16} style={{ color: colors.warning }} />
-                    <Text style={[styles.recurringNoteText, { color: colors.warning }]}>
-                      Recurring shift customization is available. Contact support for advanced options.
-                    </Text>
-                  </View>
-                )}
-              </View>
 
               {/* Payment Configuration Section */}
               <View style={styles.paymentSection}>
@@ -1869,51 +1933,25 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 2,
   },
-  switchRow: {
+  clientDropdownRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-    marginBottom: spacing.md,
+    width: '100%',
   },
-  recurringSection: {
-    backgroundColor: colors.backgroundAlt,
+  autoFilledBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
     borderRadius: 12,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
+    gap: 4,
   },
-  customizeRecurringButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    borderRadius: 8,
-    borderWidth: 1,
-    marginTop: spacing.sm,
-  },
-  customizeRecurringButtonText: {
-    ...typography.body,
-    fontWeight: '600',
-  },
-  customizeRecurringButtonSubtext: {
+  autoFilledText: {
     ...typography.small,
-    marginTop: 2,
-  },
-  recurringNote: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: 8,
-    marginTop: spacing.sm,
-    gap: spacing.sm,
-  },
-  recurringNoteText: {
-    ...typography.caption,
-    fontWeight: '500',
-    flex: 1,
+    color: colors.background,
+    fontWeight: '600',
+    fontSize: 10,
   },
 });
 

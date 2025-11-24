@@ -1,11 +1,11 @@
 
-import React, { memo, useState } from 'react';
+import React, { memo, useState, useMemo } from 'react';
 import { View, Text, Modal, ScrollView, TouchableOpacity, TextInput, StyleSheet, Switch, Platform } from 'react-native';
 import { colors, spacing, typography, commonStyles } from '../../styles/commonStyles';
 import Button from '../Button';
 import Icon from '../Icon';
 import DateInput from '../DateInput';
-import type { ClientBuilding, Cleaner } from '../../hooks/useClientData';
+import type { Client, ClientBuilding, Cleaner } from '../../hooks/useClientData';
 
 interface RecurringPattern {
   type: 'daily' | 'weekly' | 'monthly' | 'custom';
@@ -31,14 +31,16 @@ interface RecurringTaskData {
 interface RecurringTaskModalProps {
   visible: boolean;
   clientBuildings: ClientBuilding[];
+  clients: Client[];
   cleaners: Cleaner[];
   onClose: () => void;
-  onSave: (taskData: RecurringTaskData) => void;
+  onSave: (taskData: RecurringTaskData) => Promise<void>;
 }
 
 const RecurringTaskModal = memo(({
   visible,
   clientBuildings,
+  clients,
   cleaners,
   onClose,
   onSave,
@@ -46,12 +48,14 @@ const RecurringTaskModal = memo(({
   console.log('RecurringTaskModal rendered');
 
   // Form state
+  const [selectedClient, setSelectedClient] = useState<string | null>(null);
   const [selectedBuilding, setSelectedBuilding] = useState<ClientBuilding | null>(null);
   const [cleanerName, setCleanerName] = useState('');
   const [selectedCleaners, setSelectedCleaners] = useState<string[]>([]); // New state for multiple cleaners
   const [hours, setHours] = useState('');
   const [startTime, setStartTime] = useState('');
   const [notes, setNotes] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   // Pattern state
   const [patternType, setPatternType] = useState<'daily' | 'weekly' | 'monthly' | 'custom'>('weekly');
@@ -66,6 +70,7 @@ const RecurringTaskModal = memo(({
   const [maxOccurrences, setMaxOccurrences] = useState('');
 
   // Dropdown states
+  const [showClientDropdown, setShowClientDropdown] = useState(false);
   const [showBuildingDropdown, setShowBuildingDropdown] = useState(false);
   const [showCleanerDropdown, setShowCleanerDropdown] = useState(false);
 
@@ -79,7 +84,16 @@ const RecurringTaskModal = memo(({
     { name: 'Saturday', value: 6 },
   ];
 
+  // Filter buildings based on selected client
+  const filteredBuildings = useMemo(() => {
+    if (!selectedClient) {
+      return clientBuildings;
+    }
+    return clientBuildings.filter(building => building.clientName === selectedClient);
+  }, [selectedClient, clientBuildings]);
+
   const resetForm = () => {
+    setSelectedClient(null);
     setSelectedBuilding(null);
     setCleanerName('');
     setSelectedCleaners([]);
@@ -96,8 +110,10 @@ const RecurringTaskModal = memo(({
     setEndDate('');
     setHasMaxOccurrences(false);
     setMaxOccurrences('');
+    setShowClientDropdown(false);
     setShowBuildingDropdown(false);
     setShowCleanerDropdown(false);
+    setIsSaving(false);
   };
 
   const handleClose = () => {
@@ -105,36 +121,54 @@ const RecurringTaskModal = memo(({
     onClose();
   };
 
-  const handleSave = () => {
-    const cleanersToUse = selectedCleaners.length > 0 ? selectedCleaners : (cleanerName ? [cleanerName] : []);
-    
-    if (!selectedBuilding || cleanersToUse.length === 0 || !hours) {
+  const handleSave = async () => {
+    if (isSaving) {
+      console.log('Save already in progress, ignoring duplicate call');
       return;
     }
 
-    const pattern: RecurringPattern = {
-      type: patternType,
-      interval,
-      ...(patternType === 'weekly' && { daysOfWeek: selectedDays }),
-      ...(patternType === 'monthly' && { dayOfMonth }),
-      ...(patternType === 'custom' && { customDays }),
-      startDate,
-      ...(hasEndDate && endDate && { endDate }),
-      ...(hasMaxOccurrences && maxOccurrences && { maxOccurrences: parseInt(maxOccurrences) }),
-    };
+    const cleanersToUse = selectedCleaners.length > 0 ? selectedCleaners : (cleanerName ? [cleanerName] : []);
+    
+    if (!selectedBuilding || cleanersToUse.length === 0 || !hours) {
+      console.log('Validation failed:', { selectedBuilding, cleanersToUse, hours });
+      return;
+    }
 
-    const taskData: RecurringTaskData = {
-      clientBuilding: selectedBuilding,
-      cleanerName: cleanersToUse[0], // Keep backward compatibility
-      cleanerNames: cleanersToUse, // New field for multiple cleaners
-      hours: parseFloat(hours),
-      startTime,
-      pattern,
-      notes: notes || undefined,
-    };
+    try {
+      console.log('=== SAVING RECURRING TASK ===');
+      setIsSaving(true);
 
-    onSave(taskData);
-    handleClose();
+      const pattern: RecurringPattern = {
+        type: patternType,
+        interval,
+        ...(patternType === 'weekly' && { daysOfWeek: selectedDays }),
+        ...(patternType === 'monthly' && { dayOfMonth }),
+        ...(patternType === 'custom' && { customDays }),
+        startDate,
+        ...(hasEndDate && endDate && { endDate }),
+        ...(hasMaxOccurrences && maxOccurrences && { maxOccurrences: parseInt(maxOccurrences) }),
+      };
+
+      const taskData: RecurringTaskData = {
+        clientBuilding: selectedBuilding,
+        cleanerName: cleanersToUse[0], // Keep backward compatibility
+        cleanerNames: cleanersToUse, // New field for multiple cleaners
+        hours: parseFloat(hours),
+        startTime,
+        pattern,
+        notes: notes || undefined,
+      };
+
+      console.log('Calling onSave with task data:', taskData);
+      await onSave(taskData);
+      console.log('✅ Recurring task saved successfully');
+      
+      handleClose();
+    } catch (error) {
+      console.error('❌ Error saving recurring task:', error);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // Helper function for multiple cleaner selection
@@ -159,25 +193,65 @@ const RecurringTaskModal = memo(({
     );
   };
 
-  const renderDropdown = (items: any[], selectedValue: string, onSelect: (value: any) => void, placeholder: string, displayKey: string) => (
+  const renderClientDropdown = () => (
     <View style={styles.dropdownContainer}>
       <ScrollView style={styles.dropdown} nestedScrollEnabled>
         <TouchableOpacity
-          style={[styles.dropdownItem, selectedValue === '' && styles.dropdownItemSelected]}
-          onPress={() => onSelect(null)}
+          style={[styles.dropdownItem, selectedClient === null && styles.dropdownItemSelected]}
+          onPress={() => {
+            setSelectedClient(null);
+            setSelectedBuilding(null);
+            setShowClientDropdown(false);
+          }}
         >
-          <Text style={[styles.dropdownText, selectedValue === '' && styles.dropdownTextSelected]}>
-            {placeholder}
+          <Text style={[styles.dropdownText, selectedClient === null && styles.dropdownTextSelected]}>
+            All Clients
           </Text>
         </TouchableOpacity>
-        {items.map((item, index) => (
+        {clients.filter(c => c.isActive).map((client, index) => (
           <TouchableOpacity
             key={index}
-            style={[styles.dropdownItem, selectedValue === item[displayKey] && styles.dropdownItemSelected]}
-            onPress={() => onSelect(item)}
+            style={[styles.dropdownItem, selectedClient === client.name && styles.dropdownItemSelected]}
+            onPress={() => {
+              setSelectedClient(client.name);
+              setSelectedBuilding(null);
+              setShowClientDropdown(false);
+            }}
           >
-            <Text style={[styles.dropdownText, selectedValue === item[displayKey] && styles.dropdownTextSelected]}>
-              {item[displayKey]}
+            <Text style={[styles.dropdownText, selectedClient === client.name && styles.dropdownTextSelected]}>
+              {client.name}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </View>
+  );
+
+  const renderBuildingDropdown = () => (
+    <View style={styles.dropdownContainer}>
+      <ScrollView style={styles.dropdown} nestedScrollEnabled>
+        <TouchableOpacity
+          style={[styles.dropdownItem, selectedBuilding === null && styles.dropdownItemSelected]}
+          onPress={() => {
+            setSelectedBuilding(null);
+            setShowBuildingDropdown(false);
+          }}
+        >
+          <Text style={[styles.dropdownText, selectedBuilding === null && styles.dropdownTextSelected]}>
+            Select building
+          </Text>
+        </TouchableOpacity>
+        {filteredBuildings.map((building, index) => (
+          <TouchableOpacity
+            key={index}
+            style={[styles.dropdownItem, selectedBuilding?.id === building.id && styles.dropdownItemSelected]}
+            onPress={() => {
+              setSelectedBuilding(building);
+              setShowBuildingDropdown(false);
+            }}
+          >
+            <Text style={[styles.dropdownText, selectedBuilding?.id === building.id && styles.dropdownTextSelected]}>
+              {building.clientName} - {building.buildingName}
             </Text>
           </TouchableOpacity>
         ))}
@@ -253,6 +327,18 @@ const RecurringTaskModal = memo(({
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Task Details</Text>
                 
+                <Text style={styles.inputLabel}>Client *</Text>
+                <TouchableOpacity
+                  style={styles.input}
+                  onPress={() => setShowClientDropdown(!showClientDropdown)}
+                >
+                  <Text style={[styles.inputText, !selectedClient && styles.placeholderText]}>
+                    {selectedClient || 'All Clients'}
+                  </Text>
+                  <Icon name="chevron-down" size={20} style={{ color: colors.textSecondary }} />
+                </TouchableOpacity>
+                {showClientDropdown && renderClientDropdown()}
+
                 <Text style={styles.inputLabel}>Building *</Text>
                 <TouchableOpacity
                   style={styles.input}
@@ -263,15 +349,15 @@ const RecurringTaskModal = memo(({
                   </Text>
                   <Icon name="chevron-down" size={20} style={{ color: colors.textSecondary }} />
                 </TouchableOpacity>
-                {showBuildingDropdown && renderDropdown(
-                  clientBuildings,
-                  selectedBuilding?.buildingName || '',
-                  (building) => {
-                    setSelectedBuilding(building);
-                    setShowBuildingDropdown(false);
-                  },
-                  'Select building',
-                  'buildingName'
+                {showBuildingDropdown && renderBuildingDropdown()}
+
+                {filteredBuildings.length === 0 && selectedClient && (
+                  <View style={styles.infoCard}>
+                    <Icon name="information-circle" size={20} style={{ color: colors.warning }} />
+                    <Text style={[styles.infoText, { color: colors.warning }]}>
+                      No buildings available for {selectedClient}. Please select a different client or add buildings first.
+                    </Text>
+                  </View>
                 )}
 
                 <Text style={styles.inputLabel}>Cleaners * (Select one or more)</Text>
@@ -564,12 +650,14 @@ const RecurringTaskModal = memo(({
                   onPress={handleClose} 
                   variant="secondary"
                   style={styles.actionButton}
+                  disabled={isSaving}
                 />
                 <Button 
-                  text="Create Recurring Task" 
+                  text={isSaving ? "Creating..." : "Create Recurring Task"}
                   onPress={handleSave} 
                   variant="primary"
                   style={styles.actionButton}
+                  disabled={isSaving}
                 />
               </View>
             </View>
@@ -848,6 +936,20 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.background,
     fontWeight: '600',
+  },
+  infoCard: {
+    flexDirection: 'row',
+    backgroundColor: colors.warning + '10',
+    borderRadius: 12,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+    gap: spacing.sm,
+  },
+  infoText: {
+    ...typography.caption,
+    color: colors.warning,
+    flex: 1,
+    lineHeight: 18,
   },
 });
 

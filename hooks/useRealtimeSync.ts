@@ -43,7 +43,7 @@ export const useRealtimeSync = (options: RealtimeSyncOptions = {}) => {
       cleanerName: dbEntry.cleaner_name || '',
       cleanerNames: dbEntry.cleaner_names || (dbEntry.cleaner_name ? [dbEntry.cleaner_name] : []),
       cleanerIds: dbEntry.cleaner_ids || [],
-      hours: dbEntry.hours || 0,
+      hours: parseFloat(dbEntry.hours) || 0,
       day: dbEntry.day,
       date: dbEntry.date,
       startTime: dbEntry.start_time,
@@ -58,99 +58,18 @@ export const useRealtimeSync = (options: RealtimeSyncOptions = {}) => {
       actualDuration: dbEntry.actual_duration,
       tags: dbEntry.tags || [],
       paymentType: dbEntry.payment_type || 'hourly',
-      flatRateAmount: dbEntry.flat_rate_amount || 0,
-      hourlyRate: dbEntry.hourly_rate || 15,
+      flatRateAmount: parseFloat(dbEntry.flat_rate_amount) || 0,
+      hourlyRate: parseFloat(dbEntry.hourly_rate) || 15,
+      isProject: dbEntry.is_project || false,
+      projectId: dbEntry.project_id,
+      projectName: dbEntry.project_name,
     };
   }, []);
-
-  // Convert local ScheduleEntry to database format
-  const convertToDatabaseEntry = useCallback((entry: ScheduleEntry): any => {
-    return {
-      id: entry.id,
-      client_name: entry.clientName,
-      building_name: entry.buildingName,
-      cleaner_name: entry.cleanerName || (entry.cleanerNames && entry.cleanerNames[0]) || '',
-      cleaner_names: entry.cleanerNames || (entry.cleanerName ? [entry.cleanerName] : []),
-      cleaner_ids: entry.cleanerIds || [],
-      hours: entry.hours,
-      day: entry.day,
-      date: entry.date,
-      start_time: entry.startTime,
-      end_time: entry.endTime,
-      status: entry.status,
-      week_id: entry.weekId,
-      notes: entry.notes,
-      priority: entry.priority || 'medium',
-      is_recurring: entry.isRecurring || false,
-      recurring_id: entry.recurringId,
-      estimated_duration: entry.estimatedDuration,
-      actual_duration: entry.actualDuration,
-      tags: entry.tags || [],
-      payment_type: entry.paymentType || 'hourly',
-      flat_rate_amount: entry.flatRateAmount || 0,
-      hourly_rate: entry.hourlyRate || 15,
-      updated_at: new Date().toISOString(),
-    };
-  }, []);
-
-  // Sync local schedule to Supabase
-  const syncToSupabase = useCallback(async (entry: ScheduleEntry, operation: 'insert' | 'update' | 'delete') => {
-    if (syncInProgressRef.current) {
-      console.log('Sync already in progress, skipping...');
-      return;
-    }
-
-    try {
-      syncInProgressRef.current = true;
-      console.log(`Syncing ${operation} to Supabase:`, entry.id);
-
-      const dbEntry = convertToDatabaseEntry(entry);
-
-      switch (operation) {
-        case 'insert':
-          const { error: insertError } = await supabase
-            .from('schedule_entries')
-            .insert(dbEntry);
-          
-          if (insertError) throw insertError;
-          console.log('✅ Entry inserted to Supabase');
-          break;
-
-        case 'update':
-          const { error: updateError } = await supabase
-            .from('schedule_entries')
-            .update(dbEntry)
-            .eq('id', entry.id);
-          
-          if (updateError) throw updateError;
-          console.log('✅ Entry updated in Supabase');
-          break;
-
-        case 'delete':
-          const { error: deleteError } = await supabase
-            .from('schedule_entries')
-            .delete()
-            .eq('id', entry.id);
-          
-          if (deleteError) throw deleteError;
-          console.log('✅ Entry deleted from Supabase');
-          break;
-      }
-
-      setLastSyncTime(new Date());
-      onSyncComplete?.();
-    } catch (error) {
-      console.error('Error syncing to Supabase:', error);
-      onError?.(error as Error);
-    } finally {
-      syncInProgressRef.current = false;
-    }
-  }, [convertToDatabaseEntry, onSyncComplete, onError]);
 
   // Load initial data from Supabase
   const loadFromSupabase = useCallback(async () => {
     try {
-      console.log('Loading schedule from Supabase...');
+      console.log('🔄 Loading schedule from Supabase...');
       
       let query = supabase
         .from('schedule_entries')
@@ -164,10 +83,13 @@ export const useRealtimeSync = (options: RealtimeSyncOptions = {}) => {
 
       const { data, error } = await query;
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error loading from Supabase:', error);
+        throw error;
+      }
 
       if (data && data.length > 0) {
-        console.log(`Loaded ${data.length} entries from Supabase`);
+        console.log(`✅ Loaded ${data.length} entries from Supabase`);
         
         // Group entries by week
         const entriesByWeek: { [weekId: string]: ScheduleEntry[] } = {};
@@ -184,24 +106,30 @@ export const useRealtimeSync = (options: RealtimeSyncOptions = {}) => {
 
         // Update local storage for each week
         for (const [weekId, entries] of Object.entries(entriesByWeek)) {
+          console.log(`📦 Updating local storage for week ${weekId} with ${entries.length} entries`);
           await updateWeekSchedule(weekId, entries);
         }
 
-        console.log('✅ Schedule loaded from Supabase');
+        console.log('✅ Schedule loaded from Supabase and synced to local storage');
         setLastSyncTime(new Date());
+      } else {
+        console.log('ℹ️ No schedule entries found in Supabase');
       }
     } catch (error) {
-      console.error('Error loading from Supabase:', error);
+      console.error('❌ Error loading from Supabase:', error);
       onError?.(error as Error);
     }
   }, [cleanerName, convertToScheduleEntry, getWeekIdFromDate, updateWeekSchedule, onError]);
 
   // Handle real-time INSERT events
   const handleInsert = useCallback(async (payload: any) => {
-    if (syncInProgressRef.current) return;
+    if (syncInProgressRef.current) {
+      console.log('⏸️ Sync in progress, skipping real-time INSERT');
+      return;
+    }
 
     try {
-      console.log('Real-time INSERT received:', payload);
+      console.log('📨 Real-time INSERT received:', payload);
       const dbEntry = payload.new;
       const entry = convertToScheduleEntry(dbEntry);
 
@@ -209,7 +137,7 @@ export const useRealtimeSync = (options: RealtimeSyncOptions = {}) => {
       if (cleanerName) {
         const cleaners = entry.cleanerNames || [entry.cleanerName];
         if (!cleaners.includes(cleanerName)) {
-          console.log('Entry not relevant for this cleaner, skipping');
+          console.log('⏭️ Entry not relevant for this cleaner, skipping');
           return;
         }
       }
@@ -220,26 +148,32 @@ export const useRealtimeSync = (options: RealtimeSyncOptions = {}) => {
       // Check if entry already exists
       const existingEntry = currentSchedule.find(e => e.id === entry.id);
       if (existingEntry) {
-        console.log('Entry already exists locally, skipping');
+        console.log('⏭️ Entry already exists locally, skipping');
         return;
       }
 
-      // Add to local storage
-      await addScheduleEntry(weekId, entry);
+      // Add to local storage (without syncing back to Supabase)
+      console.log('📝 Adding real-time entry to local storage');
+      const updatedSchedule = [...currentSchedule, entry];
+      await updateWeekSchedule(weekId, updatedSchedule);
       console.log('✅ Real-time entry added locally');
       setLastSyncTime(new Date());
+      onSyncComplete?.();
     } catch (error) {
-      console.error('Error handling real-time INSERT:', error);
+      console.error('❌ Error handling real-time INSERT:', error);
       onError?.(error as Error);
     }
-  }, [cleanerName, convertToScheduleEntry, getWeekIdFromDate, getWeekSchedule, addScheduleEntry, onError]);
+  }, [cleanerName, convertToScheduleEntry, getWeekIdFromDate, getWeekSchedule, updateWeekSchedule, onSyncComplete, onError]);
 
   // Handle real-time UPDATE events
   const handleUpdate = useCallback(async (payload: any) => {
-    if (syncInProgressRef.current) return;
+    if (syncInProgressRef.current) {
+      console.log('⏸️ Sync in progress, skipping real-time UPDATE');
+      return;
+    }
 
     try {
-      console.log('Real-time UPDATE received:', payload);
+      console.log('📨 Real-time UPDATE received:', payload);
       const dbEntry = payload.new;
       const entry = convertToScheduleEntry(dbEntry);
 
@@ -247,56 +181,77 @@ export const useRealtimeSync = (options: RealtimeSyncOptions = {}) => {
       if (cleanerName) {
         const cleaners = entry.cleanerNames || [entry.cleanerName];
         if (!cleaners.includes(cleanerName)) {
-          console.log('Entry not relevant for this cleaner, skipping');
+          console.log('⏭️ Entry not relevant for this cleaner, skipping');
           return;
         }
       }
 
       const weekId = entry.weekId || getWeekIdFromDate(new Date(entry.date));
+      const currentSchedule = getWeekSchedule(weekId);
       
-      // Update local storage
-      await updateScheduleEntry(weekId, entry.id, entry);
+      // Find and update the entry
+      const entryIndex = currentSchedule.findIndex(e => e.id === entry.id);
+      if (entryIndex === -1) {
+        console.log('⏭️ Entry not found locally, adding it');
+        const updatedSchedule = [...currentSchedule, entry];
+        await updateWeekSchedule(weekId, updatedSchedule);
+      } else {
+        console.log('📝 Updating real-time entry in local storage');
+        const updatedSchedule = [...currentSchedule];
+        updatedSchedule[entryIndex] = entry;
+        await updateWeekSchedule(weekId, updatedSchedule);
+      }
+      
       console.log('✅ Real-time entry updated locally');
       setLastSyncTime(new Date());
+      onSyncComplete?.();
     } catch (error) {
-      console.error('Error handling real-time UPDATE:', error);
+      console.error('❌ Error handling real-time UPDATE:', error);
       onError?.(error as Error);
     }
-  }, [cleanerName, convertToScheduleEntry, getWeekIdFromDate, updateScheduleEntry, onError]);
+  }, [cleanerName, convertToScheduleEntry, getWeekIdFromDate, getWeekSchedule, updateWeekSchedule, onSyncComplete, onError]);
 
   // Handle real-time DELETE events
   const handleDelete = useCallback(async (payload: any) => {
-    if (syncInProgressRef.current) return;
+    if (syncInProgressRef.current) {
+      console.log('⏸️ Sync in progress, skipping real-time DELETE');
+      return;
+    }
 
     try {
-      console.log('Real-time DELETE received:', payload);
+      console.log('📨 Real-time DELETE received:', payload);
       const dbEntry = payload.old;
       const entryId = dbEntry.id;
       const weekId = dbEntry.week_id;
 
       if (!weekId || !entryId) {
-        console.error('Missing weekId or entryId in DELETE payload');
+        console.error('❌ Missing weekId or entryId in DELETE payload');
         return;
       }
 
-      // Delete from local storage
-      await deleteScheduleEntry(weekId, entryId);
+      const currentSchedule = getWeekSchedule(weekId);
+      
+      // Remove the entry
+      console.log('📝 Deleting real-time entry from local storage');
+      const updatedSchedule = currentSchedule.filter(e => e.id !== entryId);
+      await updateWeekSchedule(weekId, updatedSchedule);
       console.log('✅ Real-time entry deleted locally');
       setLastSyncTime(new Date());
+      onSyncComplete?.();
     } catch (error) {
-      console.error('Error handling real-time DELETE:', error);
+      console.error('❌ Error handling real-time DELETE:', error);
       onError?.(error as Error);
     }
-  }, [deleteScheduleEntry, onError]);
+  }, [getWeekSchedule, updateWeekSchedule, onSyncComplete, onError]);
 
   // Set up real-time subscription
   useEffect(() => {
     if (!enabled) {
-      console.log('Real-time sync disabled');
+      console.log('⏸️ Real-time sync disabled');
       return;
     }
 
-    console.log('Setting up real-time subscription...');
+    console.log('🔌 Setting up real-time subscription...');
 
     // Load initial data
     loadFromSupabase();
@@ -332,7 +287,7 @@ export const useRealtimeSync = (options: RealtimeSyncOptions = {}) => {
         handleDelete
       )
       .subscribe((status) => {
-        console.log('Real-time subscription status:', status);
+        console.log('📡 Real-time subscription status:', status);
         setIsConnected(status === 'SUBSCRIBED');
       });
 
@@ -340,7 +295,7 @@ export const useRealtimeSync = (options: RealtimeSyncOptions = {}) => {
 
     // Cleanup
     return () => {
-      console.log('Cleaning up real-time subscription...');
+      console.log('🔌 Cleaning up real-time subscription...');
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
         channelRef.current = null;
@@ -351,13 +306,13 @@ export const useRealtimeSync = (options: RealtimeSyncOptions = {}) => {
 
   // Manual sync function
   const manualSync = useCallback(async () => {
+    console.log('🔄 Manual sync triggered');
     await loadFromSupabase();
   }, [loadFromSupabase]);
 
   return {
     isConnected,
     lastSyncTime,
-    syncToSupabase,
     manualSync,
   };
 };

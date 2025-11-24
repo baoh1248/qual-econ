@@ -381,7 +381,9 @@ export default function PayrollScreen() {
 
   // Enhanced cleaner hours calculation with payment information
   const cleanerHoursData = useMemo(() => {
-    console.log('Calculating cleaner hours data with payment information');
+    console.log('=== CALCULATING CLEANER HOURS DATA ===');
+    console.log('Selected week start:', selectedWeekStart);
+    console.log('Date range:', filters.dateRange);
     
     const currentWeekId = getWeekIdFromDate(selectedWeekStart);
     const weekIds = [currentWeekId];
@@ -392,6 +394,8 @@ export default function PayrollScreen() {
       nextWeek.setDate(nextWeek.getDate() + 7);
       weekIds.push(getWeekIdFromDate(nextWeek));
     }
+    
+    console.log('Processing weeks:', weekIds);
     
     const cleanerHoursMap = new Map<string, CleanerHours>();
     
@@ -417,55 +421,108 @@ export default function PayrollScreen() {
       });
     });
     
-    // Process schedule entries for each week
+    // Collect all entries for the period
+    const allEntries: ScheduleEntry[] = [];
     weekIds.forEach(weekId => {
       const weekSchedule = getWeekSchedule(weekId);
+      allEntries.push(...weekSchedule);
+    });
+    
+    console.log('Total entries for period:', allEntries.length);
+    
+    // Group entries by week for proper overtime calculation
+    const entriesByWeek = new Map<string, ScheduleEntry[]>();
+    allEntries.forEach(entry => {
+      const weekId = entry.weekId || entry.date;
+      if (!entriesByWeek.has(weekId)) {
+        entriesByWeek.set(weekId, []);
+      }
+      entriesByWeek.get(weekId)!.push(entry);
+    });
+    
+    console.log('Entries grouped by week:', entriesByWeek.size);
+    
+    // Process each week separately for accurate overtime calculation
+    for (const [weekId, weekEntries] of entriesByWeek) {
+      console.log(`\n📅 Processing week ${weekId} with ${weekEntries.length} entries`);
       
-      weekSchedule.forEach(entry => {
-        // Handle multiple cleaners in an entry
+      // Group entries by cleaner for this week
+      const cleanerWeekHours = new Map<string, { hours: number; entries: ScheduleEntry[] }>();
+      
+      weekEntries.forEach(entry => {
         const entryCleaners = entry.cleanerNames && entry.cleanerNames.length > 0 
           ? entry.cleanerNames 
           : (entry.cleanerName ? [entry.cleanerName] : []);
         
         entryCleaners.forEach(cleanerName => {
-          // Find cleaner by name or ID
           const cleaner = cleaners.find(c => c.name === cleanerName || c.id === cleanerName);
           const cleanerId = cleaner?.id || cleanerName;
           
-          let cleanerData = cleanerHoursMap.get(cleanerId);
-          
-          if (!cleanerData) {
-            // Create entry for cleaner not in the cleaners list
-            cleanerData = {
-              cleanerId: cleanerId,
-              cleanerName: cleanerName,
-              totalHours: 0,
-              completedHours: 0,
-              scheduledHours: 0,
-              overtimeHours: 0,
-              regularHours: 0,
-              hourlyJobs: [],
-              flatRateJobs: [],
-              totalHourlyPay: 0,
-              totalFlatRatePay: 0,
-              totalPay: 0,
-              averageHourlyRate: 0,
-              dailyBreakdown: {},
-              weeklyTotal: 0,
-              biWeeklyTotal: 0,
-            };
-            cleanerHoursMap.set(cleanerId, cleanerData);
+          if (!cleanerWeekHours.has(cleanerId)) {
+            cleanerWeekHours.set(cleanerId, { hours: 0, entries: [] });
           }
           
           const hours = entry.hours || 0;
-          const entryDate = entry.date || weekId;
-          const paymentType = entry.paymentType || 'hourly';
-          
-          // Split hours among multiple cleaners if needed
           const splitHours = entryCleaners.length > 1 ? hours / entryCleaners.length : hours;
           
-          // Update totals
-          cleanerData.totalHours += splitHours;
+          const data = cleanerWeekHours.get(cleanerId)!;
+          data.hours += splitHours;
+          data.entries.push(entry);
+        });
+      });
+      
+      // Calculate overtime per cleaner per week
+      for (const [cleanerId, { hours: weekHours, entries: cleanerEntries }] of cleanerWeekHours) {
+        let cleanerData = cleanerHoursMap.get(cleanerId);
+        
+        if (!cleanerData) {
+          const cleanerName = cleaners.find(c => c.id === cleanerId)?.name || cleanerId;
+          cleanerData = {
+            cleanerId: cleanerId,
+            cleanerName: cleanerName,
+            totalHours: 0,
+            completedHours: 0,
+            scheduledHours: 0,
+            overtimeHours: 0,
+            regularHours: 0,
+            hourlyJobs: [],
+            flatRateJobs: [],
+            totalHourlyPay: 0,
+            totalFlatRatePay: 0,
+            totalPay: 0,
+            averageHourlyRate: 0,
+            dailyBreakdown: {},
+            weeklyTotal: 0,
+            biWeeklyTotal: 0,
+          };
+          cleanerHoursMap.set(cleanerId, cleanerData);
+        }
+        
+        console.log(`  👤 ${cleanerData.cleanerName}: ${weekHours}h this week`);
+        
+        // Calculate regular vs overtime for this week
+        const weekRegularHours = Math.min(weekHours, 40);
+        const weekOvertimeHours = Math.max(0, weekHours - 40);
+        
+        cleanerData.totalHours += weekHours;
+        cleanerData.regularHours += weekRegularHours;
+        cleanerData.overtimeHours += weekOvertimeHours;
+        
+        console.log(`    Regular: ${weekRegularHours}h, Overtime: ${weekOvertimeHours}h`);
+        
+        // Process each entry for this cleaner in this week
+        let weekRegularPay = 0;
+        let weekOvertimePay = 0;
+        
+        for (const entry of cleanerEntries) {
+          const entryCleaners = entry.cleanerNames && entry.cleanerNames.length > 0 
+            ? entry.cleanerNames 
+            : (entry.cleanerName ? [entry.cleanerName] : []);
+          
+          const hours = entry.hours || 0;
+          const splitHours = entryCleaners.length > 1 ? hours / entryCleaners.length : hours;
+          const paymentType = entry.paymentType || 'hourly';
+          const entryDate = entry.date || weekId;
           
           if (entry.status === 'completed') {
             cleanerData.completedHours += splitHours;
@@ -473,62 +530,32 @@ export default function PayrollScreen() {
             cleanerData.scheduledHours += splitHours;
           }
           
-          // Calculate regular vs overtime hours (over 40 hours per week)
-          const previousRegularHours = cleanerData.regularHours;
-          const newTotalHours = cleanerData.totalHours;
-          
-          if (newTotalHours <= 40) {
-            cleanerData.regularHours = newTotalHours;
-            cleanerData.overtimeHours = 0;
-          } else {
-            cleanerData.regularHours = 40;
-            cleanerData.overtimeHours = newTotalHours - 40;
-          }
-          
-          // Calculate payment based on type
           let entryPay = 0;
+          
           if (paymentType === 'flat_rate') {
-            // FIXED: Flat rate is NOT multiplied by hours
             const flatRateAmount = entry.flatRateAmount || 0;
-            // Split flat rate among multiple cleaners if needed
             entryPay = entryCleaners.length > 1 ? flatRateAmount / entryCleaners.length : flatRateAmount;
             cleanerData.totalFlatRatePay += entryPay;
             cleanerData.flatRateJobs.push(entry);
             
-            console.log('Flat rate payment calculated:', {
-              entryId: entry.id,
-              cleanerName,
-              flatRateAmount,
-              numberOfCleaners: entryCleaners.length,
-              entryPay,
-              hours: splitHours
-            });
+            console.log(`    💰 Flat rate: $${entryPay.toFixed(2)}`);
           } else {
-            // Hourly rate calculation
-            const hourlyRate = entry.hourlyRate || cleaner?.default_hourly_rate || 15;
-            const regularHoursForThisEntry = Math.min(splitHours, Math.max(0, 40 - previousRegularHours));
-            const overtimeHoursForThisEntry = Math.max(0, splitHours - regularHoursForThisEntry);
+            const hourlyRate = entry.hourlyRate || cleaners.find(c => c.id === cleanerId)?.default_hourly_rate || 15;
             
-            entryPay = (regularHoursForThisEntry * hourlyRate) + (overtimeHoursForThisEntry * hourlyRate * 1.5);
+            // Allocate hours to regular or overtime
+            const hoursToRegular = Math.min(splitHours, Math.max(0, 40 - (cleanerData.regularHours - weekRegularHours)));
+            const hoursToOvertime = splitHours - hoursToRegular;
+            
+            const regularPay = hoursToRegular * hourlyRate;
+            const overtimePay = hoursToOvertime * hourlyRate * 1.5;
+            entryPay = regularPay + overtimePay;
+            
+            weekRegularPay += regularPay;
+            weekOvertimePay += overtimePay;
             cleanerData.totalHourlyPay += entryPay;
             cleanerData.hourlyJobs.push(entry);
             
-            console.log('Hourly payment calculated:', {
-              entryId: entry.id,
-              cleanerName,
-              hourlyRate,
-              hours: splitHours,
-              regularHours: regularHoursForThisEntry,
-              overtimeHours: overtimeHoursForThisEntry,
-              entryPay
-            });
-          }
-          
-          cleanerData.totalPay = cleanerData.totalHourlyPay + cleanerData.totalFlatRatePay;
-          
-          // Calculate average hourly rate
-          if (cleanerData.totalHours > 0) {
-            cleanerData.averageHourlyRate = cleanerData.totalPay / cleanerData.totalHours;
+            console.log(`    ⏰ Hourly: ${hoursToRegular}h @ $${hourlyRate}/h + ${hoursToOvertime}h OT = $${entryPay.toFixed(2)}`);
           }
           
           // Daily breakdown
@@ -544,18 +571,29 @@ export default function PayrollScreen() {
           cleanerData.dailyBreakdown[entryDate].hours += splitHours;
           cleanerData.dailyBreakdown[entryDate].entries.push(entry);
           cleanerData.dailyBreakdown[entryDate].pay += entryPay;
-          
-          // Update weekly/biweekly totals
-          if (filters.dateRange === 'week') {
-            cleanerData.weeklyTotal = cleanerData.totalHours;
-          } else {
-            cleanerData.biWeeklyTotal = cleanerData.totalHours;
-          }
-        });
-      });
-    });
+        }
+        
+        cleanerData.totalPay = cleanerData.totalHourlyPay + cleanerData.totalFlatRatePay;
+        
+        // Calculate average hourly rate
+        if (cleanerData.totalHours > 0) {
+          cleanerData.averageHourlyRate = cleanerData.totalPay / cleanerData.totalHours;
+        }
+        
+        // Update weekly/biweekly totals
+        if (filters.dateRange === 'week') {
+          cleanerData.weeklyTotal = cleanerData.totalHours;
+        } else {
+          cleanerData.biWeeklyTotal = cleanerData.totalHours;
+        }
+      }
+    }
     
-    return Array.from(cleanerHoursMap.values()).filter(cleaner => cleaner.totalHours > 0);
+    const result = Array.from(cleanerHoursMap.values()).filter(cleaner => cleaner.totalHours > 0);
+    console.log(`✅ Calculated data for ${result.length} cleaners`);
+    console.log('=== CALCULATION COMPLETE ===\n');
+    
+    return result;
   }, [selectedWeekStart, filters.dateRange, cleaners, getWeekSchedule, getWeekIdFromDate]);
 
   // Enhanced filter and sort with payment type filter
