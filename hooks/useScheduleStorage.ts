@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../app/integrations/supabase/client';
@@ -36,6 +35,8 @@ export interface ScheduleEntry {
   deductions?: number;
   totalCalculatedPay?: number;
   address?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface WeeklySchedule {
@@ -114,10 +115,11 @@ const convertFromDatabaseEntry = (dbEntry: any): ScheduleEntry => {
     projectId: dbEntry.project_id,
     projectName: dbEntry.project_name,
     address: dbEntry.address,
+    created_at: dbEntry.created_at,
+    updated_at: dbEntry.updated_at,
   };
 };
 
-// Convert local ScheduleEntry to database format
 // Convert local ScheduleEntry to database format
 const convertToDatabaseEntry = (entry: ScheduleEntry): any => {
   // Ensure cleaner_name is not empty (required field)
@@ -325,7 +327,6 @@ export const useScheduleStorage = () => {
   const loadingRef = useRef(false);
   const saveQueueRef = useRef<Map<string, ScheduleEntry[]>>(new Map());
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const supabaseSyncedRef = useRef(false);
 
   const invalidateAllCaches = useCallback(() => {
     console.log('=== INVALIDATING ALL CACHES ===');
@@ -651,22 +652,23 @@ export const useScheduleStorage = () => {
   }, [getWeekIdFromDate, calculateEntryPay]);
 
   const loadData = useCallback(async () => {
-    if (loadingRef.current) return;
+    if (loadingRef.current) {
+      console.log('⏸️ Load already in progress, skipping...');
+      return;
+    }
     
     try {
       console.log('🔄 Loading schedule data...');
       loadingRef.current = true;
       setIsLoading(true);
       setError(null);
-  
-      // ALWAYS load from Supabase on explicit loadData() call
-      console.log('📥 Fetching from Supabase...');
+
+      // CRITICAL FIX: ALWAYS load from Supabase when loadData is called explicitly
+      console.log('📥 Fetching latest data from Supabase...');
       const supabaseSchedules = await loadFromSupabase();
       
-      // Then load from AsyncStorage
+      // Then load from AsyncStorage for any local-only data
       const schedulesData = await AsyncStorage.getItem(STORAGE_KEYS.WEEKLY_SCHEDULES);
-      
-      // ... rest of the code
 
       let finalSchedules: WeeklySchedule = {};
 
@@ -1312,7 +1314,6 @@ export const useScheduleStorage = () => {
       ]);
       setWeeklySchedules({});
       invalidateAllCaches();
-      supabaseSyncedRef.current = false;
     } catch (err) {
       console.error('Error resetting schedules:', err);
       setError('Failed to reset schedules');
