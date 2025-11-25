@@ -989,6 +989,19 @@ export default function ScheduleView() {
           showToast('Please enter valid hours', 'error');
           return;
         }
+        // NEW VALIDATION: Check if day is selected
+        if (!selectedDay || !selectedDay.trim()) {
+          showToast('Please select a day', 'error');
+          console.error('❌ selectedDay is empty:', selectedDay);
+          return;
+        }
+        // Validate day is one of the allowed values
+        const validDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+        if (!validDays.includes(selectedDay.toLowerCase())) {
+          showToast('Invalid day selected', 'error');
+          console.error('❌ Invalid day:', selectedDay);
+          return;
+        }
   
         const endTime = addHoursToTime(startTime, parseFloat(hours));
         
@@ -1029,21 +1042,21 @@ export default function ScheduleView() {
           building_name: newEntry.buildingName,
           cleaner_name: newEntry.cleanerName,
           cleaner_names: newEntry.cleanerNames,
-          day: newEntry.day,
+          day: (newEntry.day || 'monday').toLowerCase(),  // ← Ensure lowercase
           date: newEntry.date,
           hours: newEntry.hours,
           start_time: newEntry.startTime,
           end_time: newEntry.endTime,
-          status: newEntry.status,
+          status: newEntry.status || 'scheduled',
           week_id: newEntry.weekId,
-          payment_type: newEntry.paymentType,
-          hourly_rate: newEntry.hourlyRate,
+          payment_type: newEntry.paymentType || 'hourly',
+          hourly_rate: newEntry.hourlyRate || 15,
           created_at: newEntry.created_at,
           updated_at: newEntry.updated_at,
           priority: 'medium',
         };
         
-        console.log('📝 Database entry:', dbEntry);
+        console.log('📝 Database entry with validated day:', dbEntry);
         
         // Save to Supabase with correct column names
         const { error: supabaseError } = await supabase
