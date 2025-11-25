@@ -5,6 +5,7 @@
  */
 
 import type { ScheduleEntry } from '../hooks/useScheduleStorage';
+import uuid from 'react-native-uuid';
 
 export interface RecurringShiftPattern {
   id: string;
@@ -232,7 +233,7 @@ export function patternToScheduleEntries(
         : undefined;
 
       const entry: ScheduleEntry = {
-        id: `recurring-${pattern.id}-${occurrence.date}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        id: uuid.v4() as string, // Use UUID format for database compatibility
         clientName: pattern.client_name,
         buildingName: pattern.building_name,
         cleanerName: pattern.cleaner_names[0] || 'UNASSIGNED',

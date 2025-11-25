@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../app/integrations/supabase/client';
+import uuid from 'react-native-uuid';
 
 export interface ScheduleEntry {
   id: string;
@@ -118,26 +119,34 @@ const convertFromDatabaseEntry = (dbEntry: any): ScheduleEntry => {
 
 // Convert local ScheduleEntry to database format
 const convertToDatabaseEntry = (entry: ScheduleEntry): any => {
+  // Ensure cleaner_name is not empty (required field)
+  const cleanerName = entry.cleanerName || (entry.cleanerNames && entry.cleanerNames[0]) || 'UNASSIGNED';
+  
+  // Ensure cleaner_names array is not empty
+  const cleanerNames = entry.cleanerNames && entry.cleanerNames.length > 0 
+    ? entry.cleanerNames 
+    : (entry.cleanerName ? [entry.cleanerName] : ['UNASSIGNED']);
+
   return {
     id: entry.id,
-    client_name: entry.clientName,
-    building_name: entry.buildingName,
-    cleaner_name: entry.cleanerName || (entry.cleanerNames && entry.cleanerNames[0]) || '',
-    cleaner_names: entry.cleanerNames || (entry.cleanerName ? [entry.cleanerName] : []),
+    client_name: entry.clientName || '',
+    building_name: entry.buildingName || '',
+    cleaner_name: cleanerName,
+    cleaner_names: cleanerNames,
     cleaner_ids: entry.cleanerIds || [],
-    hours: entry.hours,
-    day: entry.day,
-    date: entry.date,
-    start_time: entry.startTime,
-    end_time: entry.endTime,
-    status: entry.status,
-    week_id: entry.weekId,
-    notes: entry.notes,
+    hours: entry.hours || 0,
+    day: entry.day || 'monday',
+    date: entry.date || '',
+    start_time: entry.startTime || null,
+    end_time: entry.endTime || null,
+    status: entry.status || 'scheduled',
+    week_id: entry.weekId || '',
+    notes: entry.notes || null,
     priority: entry.priority || 'medium',
     is_recurring: entry.isRecurring || false,
-    recurring_id: entry.recurringId,
-    estimated_duration: entry.estimatedDuration,
-    actual_duration: entry.actualDuration,
+    recurring_id: entry.recurringId || null,
+    estimated_duration: entry.estimatedDuration || null,
+    actual_duration: entry.actualDuration || null,
     tags: entry.tags || [],
     payment_type: entry.paymentType || 'hourly',
     flat_rate_amount: entry.flatRateAmount || 0,
@@ -146,9 +155,9 @@ const convertToDatabaseEntry = (entry: ScheduleEntry): any => {
     bonus_amount: entry.bonusAmount || 0,
     deductions: entry.deductions || 0,
     is_project: entry.isProject || false,
-    project_id: entry.projectId,
-    project_name: entry.projectName,
-    address: entry.address,
+    project_id: entry.projectId || null,
+    project_name: entry.projectName || null,
+    address: entry.address || null,
     updated_at: new Date().toISOString(),
   };
 };
@@ -159,20 +168,70 @@ const syncEntryToSupabase = async (
   operation: 'insert' | 'update' | 'delete',
   retries: number = 3
 ): Promise<boolean> => {
+  // Validate required fields before attempting sync
+  const requiredFields = ['id', 'clientName', 'buildingName', 'cleanerName', 'hours', 'day', 'date', 'weekId'];
+  const missingFields = requiredFields.filter(field => {
+    const value = (entry as any)[field];
+    return value === undefined || value === null || value === '';
+  });
+
+  if (missingFields.length > 0) {
+    const error = new Error(`Missing required fields: ${missingFields.join(', ')}`);
+    console.error('❌ Validation failed:', error);
+    throw error;
+  }
+
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       console.log(`🔄 Syncing ${operation} to Supabase (attempt ${attempt}/${retries}):`, entry.id);
 
       const dbEntry = convertToDatabaseEntry(entry);
+      
+      // Log the database entry being sent (for debugging)
+      console.log(`📤 Database entry for ${operation}:`, {
+        id: dbEntry.id,
+        client_name: dbEntry.client_name,
+        building_name: dbEntry.building_name,
+        cleaner_name: dbEntry.cleaner_name,
+        date: dbEntry.date,
+        week_id: dbEntry.week_id,
+      });
 
       switch (operation) {
         case 'insert':
+          // Check if entry already exists before inserting
+          const { data: existingData, error: checkError } = await supabase
+            .from('schedule_entries')
+            .select('id')
+            .eq('id', entry.id)
+            .single();
+
+          if (checkError && checkError.code !== 'PGRST116') {
+            // PGRST116 is "not found" which is expected for new entries
+            console.warn('⚠️ Error checking existing entry:', checkError);
+          }
+
+          if (existingData) {
+            console.log('⚠️ Entry already exists in Supabase, skipping insert:', entry.id);
+            return true;
+          }
+
           const { data: insertData, error: insertError } = await supabase
             .from('schedule_entries')
             .insert(dbEntry)
             .select();
           
-          if (insertError) throw insertError;
+          if (insertError) {
+            console.error('❌ Insert error details:', {
+              code: insertError.code,
+              message: insertError.message,
+              details: insertError.details,
+              hint: insertError.hint,
+              dbEntry,
+            });
+            throw insertError;
+          }
+          
           console.log('✅ Entry inserted to Supabase:', insertData);
           return true;
 
@@ -183,7 +242,17 @@ const syncEntryToSupabase = async (
             .eq('id', entry.id)
             .select();
           
-          if (updateError) throw updateError;
+          if (updateError) {
+            console.error('❌ Update error details:', {
+              code: updateError.code,
+              message: updateError.message,
+              details: updateError.details,
+              hint: updateError.hint,
+              dbEntry,
+            });
+            throw updateError;
+          }
+          
           console.log('✅ Entry updated in Supabase:', updateData);
           return true;
 
@@ -193,12 +262,40 @@ const syncEntryToSupabase = async (
             .delete()
             .eq('id', entry.id);
           
-          if (deleteError) throw deleteError;
+          if (deleteError) {
+            console.error('❌ Delete error details:', {
+              code: deleteError.code,
+              message: deleteError.message,
+              details: deleteError.details,
+              hint: deleteError.hint,
+            });
+            throw deleteError;
+          }
+          
           console.log('✅ Entry deleted from Supabase');
           return true;
       }
     } catch (error: any) {
-      console.error(`❌ Sync attempt ${attempt} failed:`, error);
+      // If it's a duplicate key error, consider it a success
+      if (error?.code === '23505') {
+        console.log('⚠️ Duplicate key error, entry already exists:', entry.id);
+        return true;
+      }
+
+      // If it's an invalid UUID format error, log it clearly
+      if (error?.code === '22P02' || error?.message?.includes('invalid input syntax for type uuid')) {
+        console.error('❌ Invalid UUID format for entry ID:', entry.id);
+        console.error('Entry ID must be a valid UUID format. Current ID:', entry.id);
+        throw new Error(`Invalid entry ID format. Expected UUID, got: ${entry.id}`);
+      }
+
+      console.error(`❌ Sync attempt ${attempt} failed:`, {
+        error,
+        errorMessage: error?.message,
+        errorCode: error?.code,
+        errorDetails: error?.details,
+        entryId: entry.id,
+      });
       
       // If it's the last attempt, throw the error
       if (attempt === retries) {
@@ -207,6 +304,7 @@ const syncEntryToSupabase = async (
       }
       
       // Wait before retrying (exponential backoff)
+      console.log(`⏳ Retrying in ${Math.pow(2, attempt)} seconds...`);
       await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
     }
   }
@@ -749,7 +847,7 @@ export const useScheduleStorage = () => {
             ...entry,
             weekId: calculatedWeekId, // Use calculated weekId to ensure alignment
             date: entry.date || calculatedWeekId,
-            id: entry.id || String(Date.now() + Math.random()),
+            id: entry.id || (uuid.v4() as string), // Use UUID format for database compatibility
             hours: typeof entry.hours === 'number' ? entry.hours : parseFloat(entry.hours as any) || 0,
             status: entry.status || 'scheduled',
             day: entry.day || 'monday',
@@ -862,7 +960,7 @@ export const useScheduleStorage = () => {
       const validatedEntry = {
         ...entry,
         weekId: calculatedWeekId, // Use calculated weekId to ensure alignment
-        id: entry.id || String(Date.now() + Math.random()),
+        id: entry.id || (uuid.v4() as string), // Use UUID format for database compatibility
         date: entry.date || calculatedWeekId,
         hours: typeof entry.hours === 'number' ? entry.hours : parseFloat(entry.hours as any) || 0,
         status: entry.status || 'scheduled',

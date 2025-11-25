@@ -8,6 +8,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../app/integrations/supabase/client';
 import type { ScheduleEntry, WeeklySchedule } from '../types/schedule';
+import uuid from 'react-native-uuid';
 
 const STORAGE_KEYS = {
   WEEKLY_SCHEDULES: 'weekly_schedules_v8',
@@ -195,6 +196,23 @@ export class ScheduleService {
 
     try {
       await syncPromise;
+    } catch (error) {
+      // Log detailed error information
+      console.error(`❌ Failed to sync ${operation} for entry ${entry.id}:`, {
+        error,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorCode: (error as any)?.code,
+        errorDetails: (error as any)?.details,
+        entry: {
+          id: entry.id,
+          clientName: entry.clientName,
+          buildingName: entry.buildingName,
+          cleanerName: entry.cleanerName,
+          date: entry.date,
+          weekId: entry.weekId,
+        },
+      });
+      throw error; // Re-throw to allow caller to handle
     } finally {
       this.pendingSyncs.delete(syncKey);
     }
@@ -205,9 +223,22 @@ export class ScheduleService {
     operation: 'insert' | 'update' | 'delete',
     retries: number
   ): Promise<void> {
+    // Validate required fields before attempting sync
+    this.validateEntry(entry);
+
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
         const dbEntry = this.toDatabaseEntry(entry);
+        
+        // Log the database entry being sent (for debugging)
+        console.log(`🔄 Attempting ${operation} (attempt ${attempt}/${retries}):`, {
+          entryId: entry.id,
+          clientName: dbEntry.client_name,
+          buildingName: dbEntry.building_name,
+          cleanerName: dbEntry.cleaner_name,
+          date: dbEntry.date,
+          weekId: dbEntry.week_id,
+        });
 
         switch (operation) {
           case 'insert':
@@ -218,23 +249,54 @@ export class ScheduleService {
               .eq('id', entry.id)
               .single();
 
+            if (checkError && checkError.code !== 'PGRST116') {
+              // PGRST116 is "not found" which is expected for new entries
+              console.warn('⚠️ Error checking existing entry:', checkError);
+            }
+
             if (existingData) {
               console.log('⚠️ Entry already exists in Supabase, skipping insert:', entry.id);
               return;
             }
 
-            const { error: insertError } = await supabase
+            const { data: insertData, error: insertError } = await supabase
               .from('schedule_entries')
-              .insert(dbEntry);
-            if (insertError) throw insertError;
+              .insert(dbEntry)
+              .select();
+
+            if (insertError) {
+              console.error('❌ Insert error details:', {
+                code: insertError.code,
+                message: insertError.message,
+                details: insertError.details,
+                hint: insertError.hint,
+                dbEntry,
+              });
+              throw insertError;
+            }
+            
+            console.log('✅ Entry inserted successfully:', insertData);
             break;
 
           case 'update':
-            const { error: updateError } = await supabase
+            const { data: updateData, error: updateError } = await supabase
               .from('schedule_entries')
               .update(dbEntry)
-              .eq('id', entry.id);
-            if (updateError) throw updateError;
+              .eq('id', entry.id)
+              .select();
+
+            if (updateError) {
+              console.error('❌ Update error details:', {
+                code: updateError.code,
+                message: updateError.message,
+                details: updateError.details,
+                hint: updateError.hint,
+                dbEntry,
+              });
+              throw updateError;
+            }
+            
+            console.log('✅ Entry updated successfully:', updateData);
             break;
 
           case 'delete':
@@ -242,7 +304,18 @@ export class ScheduleService {
               .from('schedule_entries')
               .delete()
               .eq('id', entry.id);
-            if (deleteError) throw deleteError;
+
+            if (deleteError) {
+              console.error('❌ Delete error details:', {
+                code: deleteError.code,
+                message: deleteError.message,
+                details: deleteError.details,
+                hint: deleteError.hint,
+              });
+              throw deleteError;
+            }
+            
+            console.log('✅ Entry deleted successfully');
             break;
         }
 
@@ -255,12 +328,58 @@ export class ScheduleService {
           return;
         }
 
+        // If it's an invalid UUID format error, log it clearly
+        if (error?.code === '22P02' || error?.message?.includes('invalid input syntax for type uuid')) {
+          console.error('❌ Invalid UUID format for entry ID:', entry.id);
+          console.error('Entry ID must be a valid UUID format. Current ID:', entry.id);
+          throw new Error(`Invalid entry ID format. Expected UUID, got: ${entry.id}`);
+        }
+
         if (attempt === retries) {
-          console.error(`Failed to sync after ${retries} attempts:`, error);
+          console.error(`❌ Failed to sync after ${retries} attempts:`, {
+            error,
+            errorMessage: error?.message,
+            errorCode: error?.code,
+            errorDetails: error?.details,
+            entryId: entry.id,
+          });
           throw error;
         }
+        
+        console.log(`⏳ Retrying in ${Math.pow(2, attempt)} seconds...`);
         await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
       }
+    }
+  }
+
+  /**
+   * Validate entry has all required fields
+   */
+  private validateEntry(entry: ScheduleEntry): void {
+    const requiredFields = [
+      { field: 'id', value: entry.id },
+      { field: 'clientName', value: entry.clientName },
+      { field: 'buildingName', value: entry.buildingName },
+      { field: 'cleanerName', value: entry.cleanerName },
+      { field: 'hours', value: entry.hours },
+      { field: 'day', value: entry.day },
+      { field: 'date', value: entry.date },
+      { field: 'weekId', value: entry.weekId },
+    ];
+
+    const missingFields = requiredFields
+      .filter(({ value }) => value === undefined || value === null || value === '')
+      .map(({ field }) => field);
+
+    if (missingFields.length > 0) {
+      throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
+    }
+
+    // Validate UUID format for ID
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(entry.id)) {
+      console.warn('⚠️ Entry ID is not in UUID format:', entry.id);
+      // Don't throw here, but log a warning - we'll let the database handle it
     }
   }
 
@@ -268,30 +387,38 @@ export class ScheduleService {
    * Convert ScheduleEntry to database format
    */
   private toDatabaseEntry(entry: ScheduleEntry): any {
+    // Ensure cleaner_name is not empty (required field)
+    const cleanerName = entry.cleanerName || entry.cleanerNames?.[0] || 'UNASSIGNED';
+    
+    // Ensure cleaner_names array is not empty
+    const cleanerNames = entry.cleanerNames && entry.cleanerNames.length > 0 
+      ? entry.cleanerNames 
+      : (entry.cleanerName ? [entry.cleanerName] : ['UNASSIGNED']);
+
     return {
       id: entry.id,
-      client_name: entry.clientName,
-      building_name: entry.buildingName,
-      cleaner_name: entry.cleanerName || entry.cleanerNames?.[0] || '',
-      cleaner_names: entry.cleanerNames || [entry.cleanerName],
+      client_name: entry.clientName || '',
+      building_name: entry.buildingName || '',
+      cleaner_name: cleanerName,
+      cleaner_names: cleanerNames,
       cleaner_ids: entry.cleanerIds || [],
-      hours: entry.hours,
-      day: entry.day,
-      date: entry.date,
-      start_time: entry.startTime,
-      end_time: entry.endTime,
-      status: entry.status,
-      week_id: entry.weekId,
-      notes: entry.notes,
+      hours: entry.hours || 0,
+      day: entry.day || 'monday',
+      date: entry.date || '',
+      start_time: entry.startTime || null,
+      end_time: entry.endTime || null,
+      status: entry.status || 'scheduled',
+      week_id: entry.weekId || '',
+      notes: entry.notes || null,
       priority: entry.priority || 'medium',
       is_recurring: entry.isRecurring || false,
-      recurring_id: entry.recurringId,
+      recurring_id: entry.recurringId || null,
       payment_type: entry.paymentType || 'hourly',
       flat_rate_amount: entry.flatRateAmount || 0,
       hourly_rate: entry.hourlyRate || 15,
       is_project: entry.isProject || false,
-      project_id: entry.projectId,
-      project_name: entry.projectName,
+      project_id: entry.projectId || null,
+      project_name: entry.projectName || null,
       updated_at: new Date().toISOString(),
     };
   }

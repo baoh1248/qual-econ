@@ -18,6 +18,7 @@ import BuildingGroupScheduleModal from '../../components/schedule/BuildingGroupS
 import ScheduleActionButton from '../../components/schedule/ScheduleActionButton';
 import Toast from '../../components/Toast';
 import ErrorBoundary from '../../components/ErrorBoundary';
+import uuid from 'react-native-uuid';
 import { Calendar } from 'react-native-calendars';
 import Icon from '../../components/Icon';
 import DragDropScheduleGrid from '../../components/schedule/DragDropScheduleGrid';
@@ -188,7 +189,7 @@ export default function ScheduleView() {
           if (scheduleEntry) {
             const entryWithId = {
               ...scheduleEntry,
-              id: `project-schedule-${project.id}-${Date.now()}`,
+              id: uuid.v4() as string, // Use UUID format for database compatibility
             };
             
             console.log('Adding schedule entry for project:', project.project_name);
@@ -986,7 +987,7 @@ export default function ScheduleView() {
         entryDate.setDate(weekStart.getDate() + dayIndex);
         
         const newEntry: ScheduleEntry = {
-          id: `schedule-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          id: uuid.v4() as string, // Use UUID format for database compatibility
           clientName: selectedClientBuilding.clientName,
           buildingName: selectedClientBuilding.buildingName,
           cleanerName: selectedCleaners[0],
