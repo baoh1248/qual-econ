@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, StyleSheet, Platform, TextInput, ActivityIndicator } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
@@ -38,6 +37,13 @@ import {
   formatPatternDescription,
   validateRecurringPattern
 } from '../../utils/recurringShiftGenerator';
+
+// Add TypeScript declaration for debug window object
+declare global {
+  interface Window {
+    DEBUG_LAST_SAVE?: any;
+  }
+}
 
 type ModalType = 'add' | 'edit' | 'addClient' | 'addBuilding' | 'addCleaner' | 'editClient' | 'editBuilding' | 'details' | null;
 type ViewType = 'daily' | 'weekly' | 'monthly';
@@ -106,6 +112,7 @@ export default function ScheduleView() {
   const [selectedDay, setSelectedDay] = useState<string>('');
   const [buildingGroups, setBuildingGroups] = useState<BuildingGroup[]>([]);
   const [cleanerGroups, setCleanerGroups] = useState<CleanerGroup[]>([]);
+  const [scheduleKey, setScheduleKey] = useState(0);
   
   const [showFiltersModal, setShowFiltersModal] = useState(false);
   const [filters, setFilters] = useState<ScheduleFilters>({
@@ -154,7 +161,8 @@ export default function ScheduleView() {
           await loadData();
           const weekId = getWeekIdFromDate(currentDate);
           const schedule = getWeekSchedule(weekId, true);
-          setCurrentWeekSchedule(schedule);
+          setCurrentWeekSchedule([...schedule]);
+          setScheduleKey(prev => prev + 1);
           console.log('✅ UI refreshed with', schedule.length, 'entries after realtime sync');
         } catch (error) {
           console.error('❌ Error refreshing UI after sync:', error);
@@ -203,7 +211,7 @@ export default function ScheduleView() {
           if (scheduleEntry) {
             const entryWithId = {
               ...scheduleEntry,
-              id: uuid.v4() as string, // Use UUID format for database compatibility
+              id: uuid.v4() as string,
             };
             
             console.log('Adding schedule entry for project:', project.project_name);
@@ -290,7 +298,6 @@ export default function ScheduleView() {
         );
       }
       
-      // CRITICAL FIX: Batch insert to Supabase
       if (entriesToInsert.length > 0) {
         console.log(`📝 Inserting ${entriesToInsert.length} entries to Supabase...`);
         
@@ -305,7 +312,6 @@ export default function ScheduleView() {
         
         console.log('✅ Batch inserted to Supabase successfully');
         
-        // Now add to local storage
         for (const entry of entriesToInsert) {
           await addScheduleEntry(entry.weekId, entry);
         }
@@ -318,12 +324,12 @@ export default function ScheduleView() {
       if (totalGenerated > 0) {
         showToast(`Generated ${totalGenerated} recurring shift${totalGenerated > 1 ? 's' : ''}`, 'success');
         
-        // CRITICAL FIX: Force UI refresh after generation
         clearCaches();
         await loadData();
         const weekId = getWeekIdFromDate(currentDate);
         const schedule = getWeekSchedule(weekId, true);
-        setCurrentWeekSchedule(schedule);
+        setCurrentWeekSchedule([...schedule]);
+        setScheduleKey(prev => prev + 1);
       }
       
       console.log('=== RECURRING SHIFT GENERATION COMPLETED ===\n');
@@ -337,7 +343,6 @@ export default function ScheduleView() {
   }, [executeQuery, getWeekSchedule, getWeekIdFromDate, addScheduleEntry, showToast, clearCaches, loadData, currentDate]);
   
   const loadCurrentWeekSchedule = useCallback(async () => {
-    // Prevent multiple simultaneous loads
     if (loadingInProgressRef.current) {
       console.log('⏸️ Load already in progress, skipping...');
       return;
@@ -349,15 +354,13 @@ export default function ScheduleView() {
       
       const weekId = getWeekIdFromDate(currentDate);
       
-      // Only sync projects and generate recurring shifts on initial load
       if (!initialLoadCompleteRef.current) {
         await syncProjectsToSchedule();
         await generateRecurringShifts();
       }
       
-      // Get the updated schedule (force refresh)
       const schedule = getWeekSchedule(weekId, true);
-      setCurrentWeekSchedule(schedule);
+      setCurrentWeekSchedule([...schedule]);
       console.log('✅ Loaded schedule for week', weekId, ':', schedule.length, 'entries');
       
       if (!initialLoadCompleteRef.current) {
@@ -523,7 +526,6 @@ export default function ScheduleView() {
     return Array.from(names).sort();
   }, [currentWeekSchedule]);
 
-  // Filter schedule entries based on applied filters
   const filteredSchedule = useMemo(() => {
     console.log('🔍 Filtering schedule with filters:', filters);
     
@@ -624,7 +626,6 @@ export default function ScheduleView() {
     return filtered;
   }, [currentWeekSchedule, filters, buildingGroups, clientBuildings, cleanerGroups, cleaners]);
 
-  // Filter buildings to only show those with matching schedule entries
   const filteredClientBuildings = useMemo(() => {
     console.log('🔍 Filtering client buildings based on schedule entries');
     
@@ -639,14 +640,12 @@ export default function ScheduleView() {
       return clientBuildings;
     }
 
-    // Get unique building names from filtered schedule
     const buildingNamesWithSchedule = new Set(
       filteredSchedule.map(entry => entry.buildingName)
     );
 
     console.log(`🔍 Buildings with matching schedule entries: ${buildingNamesWithSchedule.size}`);
 
-    // Filter buildings to only include those with schedule entries
     const filtered = clientBuildings.filter(building => 
       buildingNamesWithSchedule.has(building.buildingName)
     );
@@ -655,7 +654,6 @@ export default function ScheduleView() {
     return filtered;
   }, [clientBuildings, filteredSchedule, filters]);
 
-  // Filter clients to only show those with matching buildings
   const filteredClients = useMemo(() => {
     console.log('🔍 Filtering clients based on filtered buildings');
     
@@ -670,14 +668,12 @@ export default function ScheduleView() {
       return clients;
     }
 
-    // Get unique client names from filtered buildings
     const clientNamesWithBuildings = new Set(
       filteredClientBuildings.map(building => building.clientName)
     );
 
     console.log(`🔍 Clients with matching buildings: ${clientNamesWithBuildings.size}`);
 
-    // Filter clients to only include those with buildings
     const filtered = clients.filter(client => 
       clientNamesWithBuildings.has(client.name)
     );
@@ -767,7 +763,6 @@ export default function ScheduleView() {
     }).length;
   }, [cleanerGroups, cleaners, currentWeekSchedule]);
 
-  // Initial data load - only runs once
   useEffect(() => {
     const loadData = async () => {
       setIsLoading(true);
@@ -778,7 +773,6 @@ export default function ScheduleView() {
           loadCleanerGroups()
         ]);
         console.log('✅ Initial data load completed, now loading schedule...');
-        // Load schedule after groups are loaded
         await loadCurrentWeekSchedule();
       } catch (error) {
         console.error('❌ Error loading initial data:', error);
@@ -791,7 +785,6 @@ export default function ScheduleView() {
     loadData();
   }, []);
 
-  // Reload schedule when date changes (but not on initial mount)
   useEffect(() => {
     if (!isLoading && initialLoadCompleteRef.current) {
       console.log('🔄 Date changed, reloading schedule for new week');
@@ -799,12 +792,10 @@ export default function ScheduleView() {
     }
   }, [currentDate, isLoading]);
 
-  // Add focus effect to refresh schedule when screen comes into focus
   useFocusEffect(
     useCallback(() => {
       console.log('📱 Schedule screen focused - refreshing data');
       
-      // Only refresh if initial load is complete
       if (initialLoadCompleteRef.current && !isLoading) {
         console.log('🔄 Refreshing schedule on focus...');
         loadCurrentWeekSchedule();
@@ -989,13 +980,12 @@ export default function ScheduleView() {
           showToast('Please enter valid hours', 'error');
           return;
         }
-        // NEW VALIDATION: Check if day is selected
         if (!selectedDay || !selectedDay.trim()) {
           showToast('Please select a day', 'error');
           console.error('❌ selectedDay is empty:', selectedDay);
           return;
         }
-        // Validate day is one of the allowed values
+        
         const validDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
         if (!validDays.includes(selectedDay.toLowerCase())) {
           showToast('Invalid day selected', 'error');
@@ -1020,7 +1010,7 @@ export default function ScheduleView() {
           buildingName: selectedClientBuilding.buildingName,
           cleanerName: selectedCleaners[0],
           cleanerNames: selectedCleaners,
-          day: selectedDay as any,
+          day: selectedDay.toLowerCase() as any,
           date: entryDate.toISOString().split('T')[0],
           hours: parseFloat(hours),
           startTime,
@@ -1032,17 +1022,26 @@ export default function ScheduleView() {
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         };
-        
+
+        window.DEBUG_LAST_SAVE = {
+          timestamp: new Date().toISOString(),
+          entryId: newEntry.id,
+          weekId: currentWeekId,
+          buildingName: newEntry.buildingName,
+          day: newEntry.day,
+          savedToSupabase: false,
+        };
+  
         console.log('📝 Adding new schedule entry:', newEntry);
+        console.log('=== DEBUG: Entry prepared ===', window.DEBUG_LAST_SAVE);
         
-        // CRITICAL FIX: Convert to database format with snake_case columns
         const dbEntry = {
           id: newEntry.id,
           client_name: newEntry.clientName,
           building_name: newEntry.buildingName,
           cleaner_name: newEntry.cleanerName,
           cleaner_names: newEntry.cleanerNames,
-          day: (newEntry.day || 'monday').toLowerCase(),  // ← Ensure lowercase
+          day: (newEntry.day || 'monday').toLowerCase(),
           date: newEntry.date,
           hours: newEntry.hours,
           start_time: newEntry.startTime,
@@ -1055,10 +1054,9 @@ export default function ScheduleView() {
           updated_at: newEntry.updated_at,
           priority: 'medium',
         };
-        
-        console.log('📝 Database entry with validated day:', dbEntry);
-        
-        // Save to Supabase with correct column names
+
+        console.log('📝 Database entry:', dbEntry);
+
         const { error: supabaseError } = await supabase
           .from('schedule_entries')
           .insert(dbEntry);
@@ -1067,39 +1065,55 @@ export default function ScheduleView() {
           console.error('❌ Supabase insert error:', supabaseError);
           throw supabaseError;
         }
-  
-        console.log('✅ Entry saved to Supabase successfully');
 
+        window.DEBUG_LAST_SAVE.savedToSupabase = true;
+        console.log('✅ Entry saved to Supabase successfully');
+        console.log('=== DEBUG: Saved to Supabase ===', window.DEBUG_LAST_SAVE);
+        
+        await addScheduleEntry(currentWeekId, newEntry);
+        
         showToast('Shift added successfully', 'success');
         
-        // CRITICAL FIX: Aggressive refresh strategy
-        console.log('🔄 Starting aggressive UI refresh...');
-        
+        console.log('🔄 Starting AGGRESSIVE UI refresh...');
+
         try {
-          // Step 1: Clear ALL caches
           clearCaches();
           console.log('✅ Step 1: Caches cleared');
           
-          // Step 2: Reload ALL data from Supabase (not just local storage)
           await loadData();
           console.log('✅ Step 2: Data reloaded from Supabase');
           
-          // Step 3: Wait a tiny bit for state to update
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise(resolve => setTimeout(resolve, 200));
           
-          // Step 4: Force get fresh schedule with forceRefresh=true
           const weekId = getWeekIdFromDate(currentDate);
           const freshSchedule = getWeekSchedule(weekId, true);
           console.log('✅ Step 3: Got fresh schedule:', freshSchedule.length, 'entries');
           
-          // Step 5: Update UI state
-          setCurrentWeekSchedule(freshSchedule);
-          console.log('✅ Step 4: UI state updated');
+          window.DEBUG_LAST_SAVE.freshScheduleCount = freshSchedule.length;
+          window.DEBUG_LAST_SAVE.entryInSchedule = freshSchedule.some(e => e.id === newEntry.id);
+          console.log('=== DEBUG: After refresh ===', window.DEBUG_LAST_SAVE);
           
-          console.log('✅ Complete refresh finished - UI should show', freshSchedule.length, 'entries');
+          const newScheduleArray = [...freshSchedule];
+          console.log('✅ Step 4: Created new array reference');
+          
+          setCurrentWeekSchedule(newScheduleArray);
+          console.log('✅ Step 5: UI state updated with new reference');
+          
+          setScheduleKey(prev => prev + 1);
+          console.log('✅ Step 6: Forced component re-render with new key');
+          
+          setTimeout(() => {
+            const doubleCheckSchedule = getWeekSchedule(weekId, true);
+            if (doubleCheckSchedule.length !== newScheduleArray.length) {
+              console.log('⚠️ Schedule mismatch detected, forcing another update');
+              setCurrentWeekSchedule([...doubleCheckSchedule]);
+              setScheduleKey(prev => prev + 1);
+            }
+          }, 500);
+          
+          console.log('✅ Complete refresh finished');
         } catch (refreshError) {
           console.error('❌ Error during refresh:', refreshError);
-          // Still show the entry even if refresh fails
           showToast('Shift saved but UI may need manual refresh', 'warning');
         }
         
@@ -1132,8 +1146,6 @@ export default function ScheduleView() {
   
         console.log('📝 Updating schedule entry:', selectedEntry.id, updates);
         
-        // CRITICAL FIX: Update Supabase first
-        // Convert updates to database format
         const dbUpdates = {
           cleaner_name: updates.cleanerName,
           cleaner_names: updates.cleanerNames,
@@ -1143,7 +1155,6 @@ export default function ScheduleView() {
           updated_at: updates.updated_at,
         };
 
-// CRITICAL FIX: Update Supabase first with correct column names
         const { error: supabaseError } = await supabase
           .from('schedule_entries')
           .update(dbUpdates)
@@ -1156,16 +1167,15 @@ export default function ScheduleView() {
   
         console.log('✅ Entry updated in Supabase successfully');
         
-        // Then update local storage
         await updateScheduleEntry(selectedEntry.weekId, selectedEntry.id, updates);
         
         showToast('Shift updated successfully', 'success');
         
-        // CRITICAL FIX: Force complete refresh
         clearCaches();
         await loadData();
         const freshSchedule = getWeekSchedule(currentWeekId, true);
-        setCurrentWeekSchedule(freshSchedule);
+        setCurrentWeekSchedule([...freshSchedule]);
+        setScheduleKey(prev => prev + 1);
         
         handleModalClose();
       }
@@ -1173,7 +1183,7 @@ export default function ScheduleView() {
       console.error('❌ Error saving schedule entry:', error);
       showToast('Failed to save shift', 'error');
     }
-  }, [modalType, selectedClientBuilding, selectedCleaners, hours, startTime, selectedDay, currentDate, currentWeekId, selectedEntry, addScheduleEntry, updateScheduleEntry, getWeekSchedule, handleModalClose, showToast, addHoursToTime, loadData, clearCaches]);
+  }, [modalType, selectedClientBuilding, selectedCleaners, hours, startTime, selectedDay, currentDate, currentWeekId, selectedEntry, addScheduleEntry, updateScheduleEntry, getWeekSchedule, handleModalClose, showToast, addHoursToTime, loadData, clearCaches, getWeekIdFromDate]);
 
   const handleModalDelete = useCallback(async () => {
     console.log('=== SCHEDULE MODAL DELETE HANDLER ===');
@@ -1200,15 +1210,12 @@ export default function ScheduleView() {
               
               showToast('Shift deleted successfully', 'success');
               
-              // Refresh the schedule display
-              console.log('🔄 Refreshing schedule display...');
-              // Reload from database to ensure we have the latest data
               console.log('🔄 Reloading schedule from database...');
               await loadData();
               
-              // Refresh the schedule display with fresh data
               const schedule = getWeekSchedule(currentWeekId, true);
-              setCurrentWeekSchedule(schedule);
+              setCurrentWeekSchedule([...schedule]);
+              setScheduleKey(prev => prev + 1);
               console.log('✅ Schedule display refreshed with', schedule.length, 'entries');
               
               handleModalClose();
@@ -1404,18 +1411,16 @@ export default function ScheduleView() {
       
       showToast('Recurring shift created successfully!', 'success');
       
-      // Generate shifts from the pattern
       console.log('🔄 Generating shifts from new pattern...');
       await generateRecurringShifts();
       
-      // Reload from database to ensure we have all the newly generated shifts
       console.log('🔄 Reloading schedule from database after generating recurring shifts...');
       await loadData();
       
-      // Refresh the schedule display with fresh data
       console.log('🔄 Refreshing schedule display...');
       const schedule = getWeekSchedule(currentWeekId, true);
-      setCurrentWeekSchedule(schedule);
+      setCurrentWeekSchedule([...schedule]);
+      setScheduleKey(prev => prev + 1);
       console.log('✅ Schedule display refreshed with', schedule.length, 'entries');
       
       setRecurringModalVisible(false);
@@ -1494,6 +1499,7 @@ export default function ScheduleView() {
       <ErrorBoundary>
         <GestureHandlerRootView style={{ flex: 1 }}>
           <DragDropScheduleGrid
+            key={scheduleKey}
             clientBuildings={filteredClientBuildings}
             clients={filteredClients}
             cleaners={cleaners}
@@ -1807,14 +1813,12 @@ export default function ScheduleView() {
             themeColor={themeColor}
             onAssignShift={(notification) => {
               console.log('Assign shift from notification:', notification);
-              // Navigate to the shift date and open assignment modal
               if (notification.shift_date) {
                 setCurrentDate(new Date(notification.shift_date));
               }
             }}
             onRemoveShift={(notification) => {
               console.log('Remove shift from notification:', notification);
-              // Handle shift removal
             }}
           />
           
@@ -2038,9 +2042,9 @@ export default function ScheduleView() {
         cleaners={cleaners}
         clients={clients}
         onScheduleCreated={() => {
-          // Refresh the schedule display
           const schedule = getWeekSchedule(currentWeekId, true);
-          setCurrentWeekSchedule(schedule);
+          setCurrentWeekSchedule([...schedule]);
+          setScheduleKey(prev => prev + 1);
         }}
         weekId={currentWeekId}
         day={selectedDay || 'monday'}
