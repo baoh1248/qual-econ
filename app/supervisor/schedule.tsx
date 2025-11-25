@@ -133,6 +133,7 @@ export default function ScheduleView() {
     getCurrentWeekId,
     getWeekIdFromDate,
     isSyncing,
+    loadData,
   } = useScheduleStorage();
 
   const currentWeekId = useMemo(() => {
@@ -1009,7 +1010,11 @@ export default function ScheduleView() {
         
         showToast('Shift added successfully', 'success');
         
-        // Refresh the schedule display
+        // Reload from database to ensure we have the latest data
+        console.log('🔄 Reloading schedule from database...');
+        await loadData();
+        
+        // Refresh the schedule display with fresh data
         console.log('🔄 Refreshing schedule display...');
         const schedule = getWeekSchedule(currentWeekId, true);
         setCurrentWeekSchedule(schedule);
@@ -1046,7 +1051,11 @@ export default function ScheduleView() {
         
         showToast('Shift updated successfully', 'success');
         
-        // Refresh the schedule display
+        // Reload from database to ensure we have the latest data
+        console.log('🔄 Reloading schedule from database...');
+        await loadData();
+        
+        // Refresh the schedule display with fresh data
         console.log('🔄 Refreshing schedule display...');
         const schedule = getWeekSchedule(currentWeekId, true);
         setCurrentWeekSchedule(schedule);
@@ -1058,7 +1067,7 @@ export default function ScheduleView() {
       console.error('❌ Error saving schedule entry:', error);
       showToast('Failed to save shift', 'error');
     }
-  }, [modalType, selectedClientBuilding, selectedCleaners, hours, startTime, selectedDay, currentDate, currentWeekId, selectedEntry, addScheduleEntry, updateScheduleEntry, getWeekSchedule, handleModalClose, showToast, addHoursToTime]);
+  }, [modalType, selectedClientBuilding, selectedCleaners, hours, startTime, selectedDay, currentDate, currentWeekId, selectedEntry, addScheduleEntry, updateScheduleEntry, getWeekSchedule, handleModalClose, showToast, addHoursToTime, loadData]);
 
   const handleModalDelete = useCallback(async () => {
     console.log('=== SCHEDULE MODAL DELETE HANDLER ===');
@@ -1087,6 +1096,11 @@ export default function ScheduleView() {
               
               // Refresh the schedule display
               console.log('🔄 Refreshing schedule display...');
+              // Reload from database to ensure we have the latest data
+              console.log('🔄 Reloading schedule from database...');
+              await loadData();
+              
+              // Refresh the schedule display with fresh data
               const schedule = getWeekSchedule(currentWeekId, true);
               setCurrentWeekSchedule(schedule);
               console.log('✅ Schedule display refreshed with', schedule.length, 'entries');
@@ -1100,7 +1114,7 @@ export default function ScheduleView() {
         },
       ]
     );
-  }, [selectedEntry, deleteScheduleEntry, getWeekSchedule, currentWeekId, handleModalClose, showToast]);
+  }, [selectedEntry, deleteScheduleEntry, getWeekSchedule, currentWeekId, handleModalClose, showToast, loadData]);
 
   const handleAddClient = useCallback(async () => {
     console.log('Adding client:', newClientName);
@@ -1288,7 +1302,11 @@ export default function ScheduleView() {
       console.log('🔄 Generating shifts from new pattern...');
       await generateRecurringShifts();
       
-      // Refresh the schedule display
+      // Reload from database to ensure we have all the newly generated shifts
+      console.log('🔄 Reloading schedule from database after generating recurring shifts...');
+      await loadData();
+      
+      // Refresh the schedule display with fresh data
       console.log('🔄 Refreshing schedule display...');
       const schedule = getWeekSchedule(currentWeekId, true);
       setCurrentWeekSchedule(schedule);
@@ -1299,7 +1317,7 @@ export default function ScheduleView() {
       console.error('❌ Error creating recurring task:', error);
       showToast('Failed to create recurring shift', 'error');
     }
-  }, [executeQuery, generateRecurringShifts, getWeekSchedule, currentWeekId, showToast]);
+  }, [executeQuery, generateRecurringShifts, getWeekSchedule, currentWeekId, showToast, loadData]);
 
   const renderDailyView = () => {
     const daySchedule = filteredSchedule.filter(entry => {
