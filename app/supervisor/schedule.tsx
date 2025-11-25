@@ -1019,13 +1019,36 @@ export default function ScheduleView() {
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         };
-  
+        
         console.log('📝 Adding new schedule entry:', newEntry);
         
-        // CRITICAL FIX: Save directly to Supabase first
+        // CRITICAL FIX: Convert to database format with snake_case columns
+        const dbEntry = {
+          id: newEntry.id,
+          client_name: newEntry.clientName,
+          building_name: newEntry.buildingName,
+          cleaner_name: newEntry.cleanerName,
+          cleaner_names: newEntry.cleanerNames,
+          day: newEntry.day,
+          date: newEntry.date,
+          hours: newEntry.hours,
+          start_time: newEntry.startTime,
+          end_time: newEntry.endTime,
+          status: newEntry.status,
+          week_id: newEntry.weekId,
+          payment_type: newEntry.paymentType,
+          hourly_rate: newEntry.hourlyRate,
+          created_at: newEntry.created_at,
+          updated_at: newEntry.updated_at,
+          priority: 'medium',
+        };
+        
+        console.log('📝 Database entry:', dbEntry);
+        
+        // Save to Supabase with correct column names
         const { error: supabaseError } = await supabase
           .from('schedule_entries')
-          .insert(newEntry);
+          .insert(dbEntry);
   
         if (supabaseError) {
           console.error('❌ Supabase insert error:', supabaseError);
@@ -1084,9 +1107,20 @@ export default function ScheduleView() {
         console.log('📝 Updating schedule entry:', selectedEntry.id, updates);
         
         // CRITICAL FIX: Update Supabase first
+        // Convert updates to database format
+        const dbUpdates = {
+          cleaner_name: updates.cleanerName,
+          cleaner_names: updates.cleanerNames,
+          hours: updates.hours,
+          start_time: updates.startTime,
+          end_time: updates.endTime,
+          updated_at: updates.updated_at,
+        };
+
+// CRITICAL FIX: Update Supabase first with correct column names
         const { error: supabaseError } = await supabase
           .from('schedule_entries')
-          .update(updates)
+          .update(dbUpdates)
           .eq('id', selectedEntry.id);
   
         if (supabaseError) {
