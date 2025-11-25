@@ -143,7 +143,7 @@ export default function ScheduleView() {
 
   // Realtime sync with proper error handling and UI refresh
   const { isConnected, lastSyncTime } = useRealtimeSync({
-    enabled: true,``
+    enabled: true,
     onSyncComplete: useCallback(() => {
       console.log('✅ Realtime sync completed - forcing UI refresh');
       
