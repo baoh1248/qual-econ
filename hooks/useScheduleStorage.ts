@@ -118,6 +118,7 @@ const convertFromDatabaseEntry = (dbEntry: any): ScheduleEntry => {
 };
 
 // Convert local ScheduleEntry to database format
+// Convert local ScheduleEntry to database format
 const convertToDatabaseEntry = (entry: ScheduleEntry): any => {
   // Ensure cleaner_name is not empty (required field)
   const cleanerName = entry.cleanerName || (entry.cleanerNames && entry.cleanerNames[0]) || 'UNASSIGNED';
@@ -127,40 +128,42 @@ const convertToDatabaseEntry = (entry: ScheduleEntry): any => {
     ? entry.cleanerNames 
     : (entry.cleanerName ? [entry.cleanerName] : ['UNASSIGNED']);
 
-    return {
-      id: entry.id,
-      client_name: entry.clientName || '',
-      building_name: entry.buildingName || '',
-      cleaner_name: cleanerName,
-      cleaner_names: cleanerNames,
-      cleaner_ids: entry.cleanerIds || [],
-      hours: entry.hours || 0,
-      day: entry.day || 'monday',
-      date: entry.date || '',
-      start_time: entry.startTime || null,
-      end_time: entry.endTime || null,
-      status: entry.status || 'scheduled',
-      week_id: entry.weekId || '',
-      notes: entry.notes || null,
-      priority: entry.priority || 'medium',
-      is_recurring: entry.isRecurring || false,
-      recurring_id: entry.recurringId || null,
-      estimated_duration: entry.estimatedDuration || null,
-      actual_duration: entry.actualDuration || null,
-      tags: entry.tags || [],
-      payment_type: entry.paymentType || 'hourly',
-      flat_rate_amount: entry.flatRateAmount || 0,
-      hourly_rate: entry.hourlyRate || 15,
-      is_project: entry.isProject || false,
-      project_id: entry.projectId || null,
-      project_name: entry.projectName || null,
-      updated_at: new Date().toISOString(),
-      // Temporarily skip these until PostgREST schema refreshes:
-      // overtime_rate: entry.overtimeRate || 1.5,
-      // bonus_amount: entry.bonusAmount || 0,
-      // deductions: entry.deductions || 0,
-      // address: entry.address || null,
-    };
+  // ONLY SEND COLUMNS THAT EXIST IN DATABASE
+  const dbEntry: any = {
+    id: entry.id,
+    client_name: entry.clientName || '',
+    building_name: entry.buildingName || '',
+    cleaner_name: cleanerName,
+    cleaner_names: cleanerNames,
+    cleaner_ids: entry.cleanerIds || [],
+    hours: entry.hours || 0,
+    day: entry.day || 'monday',
+    date: entry.date || '',
+    start_time: entry.startTime || null,
+    end_time: entry.endTime || null,
+    status: entry.status || 'scheduled',
+    week_id: entry.weekId || '',
+    notes: entry.notes || null,
+    priority: entry.priority || 'medium',
+    is_recurring: entry.isRecurring || false,
+    recurring_id: entry.recurringId || null,
+    estimated_duration: entry.estimatedDuration || null,
+    actual_duration: entry.actualDuration || null,
+    tags: entry.tags || [],
+    payment_type: entry.paymentType || 'hourly',
+    flat_rate_amount: entry.flatRateAmount || 0,
+    hourly_rate: entry.hourlyRate || 15,
+    created_at: entry.created_at || new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    is_project: entry.isProject || false,
+    project_id: entry.projectId || null,
+    project_name: entry.projectName || null,
+  };
+
+  // Don't send these columns - they're causing the schema cache error
+  // overtime_rate, bonus_amount, deductions, address
+
+  return dbEntry;
 };
 
 // Sync entry to Supabase with retry logic
