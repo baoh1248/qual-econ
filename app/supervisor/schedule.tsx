@@ -1069,26 +1069,39 @@ export default function ScheduleView() {
         }
   
         console.log('✅ Entry saved to Supabase successfully');
-        
-        // Then update local storage
-        await addScheduleEntry(currentWeekId, newEntry);
-        
+
         showToast('Shift added successfully', 'success');
         
-        // CRITICAL FIX: Force complete refresh from database
-        console.log('🔄 Forcing complete refresh from database...');
+        // CRITICAL FIX: Aggressive refresh strategy
+        console.log('🔄 Starting aggressive UI refresh...');
         
-        // Clear all caches
-        clearCaches();
-        
-        // Reload from Supabase
-        await loadData();
-        
-        // Force refresh the current week with fresh data
-        const freshSchedule = getWeekSchedule(currentWeekId, true);
-        setCurrentWeekSchedule(freshSchedule);
-        
-        console.log('✅ UI refreshed with', freshSchedule.length, 'entries');
+        try {
+          // Step 1: Clear ALL caches
+          clearCaches();
+          console.log('✅ Step 1: Caches cleared');
+          
+          // Step 2: Reload ALL data from Supabase (not just local storage)
+          await loadData();
+          console.log('✅ Step 2: Data reloaded from Supabase');
+          
+          // Step 3: Wait a tiny bit for state to update
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          // Step 4: Force get fresh schedule with forceRefresh=true
+          const weekId = getWeekIdFromDate(currentDate);
+          const freshSchedule = getWeekSchedule(weekId, true);
+          console.log('✅ Step 3: Got fresh schedule:', freshSchedule.length, 'entries');
+          
+          // Step 5: Update UI state
+          setCurrentWeekSchedule(freshSchedule);
+          console.log('✅ Step 4: UI state updated');
+          
+          console.log('✅ Complete refresh finished - UI should show', freshSchedule.length, 'entries');
+        } catch (refreshError) {
+          console.error('❌ Error during refresh:', refreshError);
+          // Still show the entry even if refresh fails
+          showToast('Shift saved but UI may need manual refresh', 'warning');
+        }
         
         handleModalClose();
         

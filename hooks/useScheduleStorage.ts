@@ -658,18 +658,15 @@ export const useScheduleStorage = () => {
       loadingRef.current = true;
       setIsLoading(true);
       setError(null);
-
-      // First, try to load from Supabase
-      let supabaseSchedules: WeeklySchedule = {};
+  
+      // ALWAYS load from Supabase on explicit loadData() call
+      console.log('📥 Fetching from Supabase...');
+      const supabaseSchedules = await loadFromSupabase();
       
-      if (!supabaseSyncedRef.current) {
-        console.log('📥 First load - fetching from Supabase...');
-        supabaseSchedules = await loadFromSupabase();
-        supabaseSyncedRef.current = true;
-      }
-
       // Then load from AsyncStorage
       const schedulesData = await AsyncStorage.getItem(STORAGE_KEYS.WEEKLY_SCHEDULES);
+      
+      // ... rest of the code
 
       let finalSchedules: WeeklySchedule = {};
 
