@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { View, Text, ScrollView, TouchableOpacity, Alert, StyleSheet, Platform, TextInput, ActivityIndicator } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useTheme } from '../../hooks/useTheme';
-import { useScheduleStorage, type ScheduleEntry } from '../../hooks/useScheduleStorage';
+import { useScheduleData, type ScheduleEntry, getWeekIdFromDate as getWeekIdFromDateUtil } from '../../hooks/useScheduleData';
 import { useClientData, type Client, type ClientBuilding, type Cleaner } from '../../hooks/useClientData';
 import { useToast } from '../../hooks/useToast';
 import { useDatabase } from '../../hooks/useDatabase';
@@ -132,17 +132,22 @@ export default function ScheduleView() {
   const { showToast } = useToast();
   const { executeQuery } = useDatabase();
   const { clients, clientBuildings, cleaners, refreshData, addClient, addClientBuilding, addCleaner, updateClient, updateClientBuilding } = useClientData();
+
+  // NEW SIMPLIFIED SCHEDULE HOOK - Supabase is the single source of truth
   const {
-    getWeekSchedule,
-    addScheduleEntry,
-    updateScheduleEntry,
-    deleteScheduleEntry,
+    entries: scheduleEntries,
+    isLoading: isScheduleLoading,
+    isSaving: isSyncing,
+    error: scheduleError,
+    version: scheduleVersion,
+    fetchWeekSchedule,
+    addEntry: addScheduleEntry,
+    updateEntry: updateScheduleEntry,
+    deleteEntry: deleteScheduleEntry,
+    refresh: refreshSchedule,
     getCurrentWeekId,
     getWeekIdFromDate,
-    isSyncing,
-    loadData,
-    clearCaches,
-  } = useScheduleStorage();
+  } = useScheduleData();
 
   const currentWeekId = useMemo(() => {
     return getWeekIdFromDate(currentDate);
@@ -151,26 +156,20 @@ export default function ScheduleView() {
   // Realtime sync with proper error handling and UI refresh
   const { isConnected, lastSyncTime } = useRealtimeSync({
     enabled: true,
-    onSyncComplete: useCallback(() => {
-      console.log('✅ Realtime sync completed - forcing UI refresh');
-      
-      // Force complete refresh
-      const refreshUI = async () => {
-        try {
-          clearCaches();
-          await loadData();
-          const weekId = getWeekIdFromDate(currentDate);
-          const schedule = getWeekSchedule(weekId, true);
-          setCurrentWeekSchedule([...schedule]);
-          setScheduleKey(prev => prev + 1);
-          console.log('✅ UI refreshed with', schedule.length, 'entries after realtime sync');
-        } catch (error) {
-          console.error('❌ Error refreshing UI after sync:', error);
-        }
-      };
-      
-      refreshUI();
-    }, [currentDate, getWeekIdFromDate, getWeekSchedule, clearCaches, loadData]),
+    onSyncComplete: useCallback(async () => {
+      console.log('✅ Realtime sync completed - refreshing from Supabase');
+
+      try {
+        // Simply refetch from Supabase - it's our single source of truth
+        const weekId = getWeekIdFromDate(currentDate);
+        const freshEntries = await fetchWeekSchedule(weekId);
+        setCurrentWeekSchedule(freshEntries);
+        setScheduleKey(prev => prev + 1);
+        console.log('✅ UI refreshed with', freshEntries.length, 'entries after realtime sync');
+      } catch (error) {
+        console.error('❌ Error refreshing UI after sync:', error);
+      }
+    }, [currentDate, getWeekIdFromDate, fetchWeekSchedule]),
     onError: useCallback((error) => {
       console.error('❌ Realtime sync error:', error);
       showToast('Sync error - changes may not be reflected on other devices', 'error');
@@ -180,7 +179,7 @@ export default function ScheduleView() {
   const syncProjectsToSchedule = useCallback(async () => {
     try {
       console.log('=== AUTO-SYNCING PROJECTS TO SCHEDULE ===');
-      
+
       const projects = await executeQuery<{
         id: string;
         client_name: string;
@@ -190,104 +189,106 @@ export default function ScheduleView() {
         next_scheduled_date?: string;
         status: string;
       }>('select', 'client_projects');
-      
+
       console.log('Loaded projects:', projects.length);
-      
-      const scheduledProjects = projects.filter(p => 
-        p.next_scheduled_date && 
+
+      const scheduledProjects = projects.filter(p =>
+        p.next_scheduled_date &&
         p.status === 'active'
       );
-      
+
       console.log('Projects with scheduled dates:', scheduledProjects.length);
-      
-      const currentSchedule = getWeekSchedule(currentWeekId);
-      
+
+      // Use currentWeekSchedule which holds current entries
+      const currentSchedule = currentWeekSchedule;
+
       let addedCount = 0;
-      
+
       for (const project of scheduledProjects) {
         if (!scheduleEntryExistsForProject(currentSchedule, project as any)) {
           const scheduleEntry = projectToScheduleEntry(project as any);
-          
+
           if (scheduleEntry) {
             const entryWithId = {
               ...scheduleEntry,
               id: uuid.v4() as string,
+              weekId: currentWeekId,
             };
-            
+
             console.log('Adding schedule entry for project:', project.project_name);
-            await addScheduleEntry(currentWeekId, entryWithId as ScheduleEntry);
-            
+            await addScheduleEntry(entryWithId as ScheduleEntry);
+
             addedCount++;
           }
         }
       }
-      
+
       console.log('✓ Auto-synced', addedCount, 'projects to schedule');
-      
+
       if (addedCount > 0) {
         showToast(`Auto-added ${addedCount} scheduled project${addedCount > 1 ? 's' : ''}`, 'success');
       }
-      
+
       return addedCount;
     } catch (error) {
       console.error('Error syncing projects to schedule:', error);
       return 0;
     }
-  }, [executeQuery, getWeekSchedule, currentWeekId, addScheduleEntry, showToast]);
+  }, [executeQuery, currentWeekSchedule, currentWeekId, addScheduleEntry, showToast]);
 
   const generateRecurringShifts = useCallback(async () => {
     try {
       console.log('=== GENERATING RECURRING SHIFTS ===');
-      
+
       const patterns = await executeQuery<RecurringShiftPattern>('select', 'recurring_shifts');
       console.log('Loaded recurring patterns:', patterns.length);
-      
+
       const activePatterns = patterns.filter(p => isPatternActive(p));
       console.log('Active patterns:', activePatterns.length);
-      
+
       const today = new Date();
       const futureDate = new Date(today);
       futureDate.setDate(today.getDate() + 28);
       const futureDateStr = futureDate.toISOString().split('T')[0];
-      
+
       let totalGenerated = 0;
       const updatePromises: Promise<any>[] = [];
-      const entriesToInsert: ScheduleEntry[] = [];
-      
+
       for (const pattern of activePatterns) {
         const validation = validateRecurringPattern(pattern);
         if (!validation.valid) {
           console.warn(`⚠️ Invalid pattern ${pattern.id}:`, validation.errors);
           continue;
         }
-        
+
         if (!needsGeneration(pattern, 4)) {
           console.log('Pattern does not need generation:', pattern.id);
           continue;
         }
-        
+
         const startDate = pattern.last_generated_date || pattern.start_date;
         const occurrences = generateOccurrences(pattern, startDate, futureDateStr, 50);
         const entries = patternToScheduleEntries(pattern, occurrences, getWeekIdFromDate);
-        
+
         for (const entry of entries) {
           try {
-            const weekSchedule = getWeekSchedule(entry.weekId);
-            const exists = weekSchedule.some(e => 
-              e.recurringId === pattern.id && 
+            // Check if entry already exists in current schedule
+            const exists = currentWeekSchedule.some(e =>
+              e.recurringId === pattern.id &&
               e.date === entry.date &&
               e.buildingName === entry.buildingName
             );
-            
+
             if (!exists) {
-              entriesToInsert.push(entry);
+              // Use the new simplified addScheduleEntry - it handles everything
+              await addScheduleEntry(entry);
               totalGenerated++;
             }
           } catch (entryError) {
-            console.error(`❌ Error checking entry for ${entry.date}:`, entryError);
+            console.error(`❌ Error adding entry for ${entry.date}:`, entryError);
           }
         }
-        
+
         updatePromises.push(
           executeQuery('update', 'recurring_shifts', {
             id: pattern.id,
@@ -297,50 +298,30 @@ export default function ScheduleView() {
           })
         );
       }
-      
-      if (entriesToInsert.length > 0) {
-        console.log(`📝 Inserting ${entriesToInsert.length} entries to Supabase...`);
-        
-        const { error: insertError } = await supabase
-          .from('schedule_entries')
-          .insert(entriesToInsert);
-        
-        if (insertError) {
-          console.error('❌ Batch insert error:', insertError);
-          throw insertError;
-        }
-        
-        console.log('✅ Batch inserted to Supabase successfully');
-        
-        for (const entry of entriesToInsert) {
-          await addScheduleEntry(entry.weekId, entry);
-        }
-      }
-      
+
       await Promise.all(updatePromises);
-      
+
       console.log('✅ Generated', totalGenerated, 'recurring shift entries');
-      
+
       if (totalGenerated > 0) {
         showToast(`Generated ${totalGenerated} recurring shift${totalGenerated > 1 ? 's' : ''}`, 'success');
-        
-        clearCaches();
-        await loadData();
+
+        // Refresh from Supabase to get updated data
         const weekId = getWeekIdFromDate(currentDate);
-        const schedule = getWeekSchedule(weekId, true);
-        setCurrentWeekSchedule([...schedule]);
+        const freshEntries = await fetchWeekSchedule(weekId);
+        setCurrentWeekSchedule(freshEntries);
         setScheduleKey(prev => prev + 1);
       }
-      
+
       console.log('=== RECURRING SHIFT GENERATION COMPLETED ===\n');
-      
+
       return totalGenerated;
     } catch (error) {
       console.error('❌ Error generating recurring shifts:', error);
       showToast('Failed to generate recurring shifts', 'error');
       return 0;
     }
-  }, [executeQuery, getWeekSchedule, getWeekIdFromDate, addScheduleEntry, showToast, clearCaches, loadData, currentDate]);
+  }, [executeQuery, currentWeekSchedule, getWeekIdFromDate, addScheduleEntry, showToast, fetchWeekSchedule, currentDate]);
   
   const loadCurrentWeekSchedule = useCallback(async () => {
     if (loadingInProgressRef.current) {
@@ -351,19 +332,18 @@ export default function ScheduleView() {
     try {
       loadingInProgressRef.current = true;
       console.log('🔄 Loading current week schedule...');
-      
+
       const weekId = getWeekIdFromDate(currentDate);
-      
+
+      // Fetch directly from Supabase - it's our single source of truth
+      const schedule = await fetchWeekSchedule(weekId);
+      setCurrentWeekSchedule(schedule);
+      console.log('✅ Loaded schedule for week', weekId, ':', schedule.length, 'entries');
+
       if (!initialLoadCompleteRef.current) {
+        // Run initial sync tasks after loading schedule
         await syncProjectsToSchedule();
         await generateRecurringShifts();
-      }
-      
-      const schedule = getWeekSchedule(weekId, true);
-      setCurrentWeekSchedule([...schedule]);
-      console.log('✅ Loaded schedule for week', weekId, ':', schedule.length, 'entries');
-      
-      if (!initialLoadCompleteRef.current) {
         initialLoadCompleteRef.current = true;
       }
     } catch (error) {
@@ -372,7 +352,7 @@ export default function ScheduleView() {
     } finally {
       loadingInProgressRef.current = false;
     }
-  }, [currentDate, getWeekSchedule, getWeekIdFromDate, showToast, syncProjectsToSchedule, generateRecurringShifts]);
+  }, [currentDate, fetchWeekSchedule, getWeekIdFromDate, showToast, syncProjectsToSchedule, generateRecurringShifts]);
 
   const loadBuildingGroups = useCallback(async () => {
     try {
@@ -964,10 +944,11 @@ export default function ScheduleView() {
   }, []);
 
   const handleModalSave = useCallback(async () => {
-    console.log('=== SCHEDULE MODAL SAVE HANDLER ===');
-    
+    console.log('=== SCHEDULE MODAL SAVE HANDLER (SIMPLIFIED) ===');
+
     try {
       if (modalType === 'add') {
+        // Validation
         if (!selectedClientBuilding) {
           showToast('Please select a building', 'error');
           return;
@@ -982,28 +963,27 @@ export default function ScheduleView() {
         }
         if (!selectedDay || !selectedDay.trim()) {
           showToast('Please select a day', 'error');
-          console.error('❌ selectedDay is empty:', selectedDay);
           return;
         }
-        
+
         const validDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
         if (!validDays.includes(selectedDay.toLowerCase())) {
           showToast('Invalid day selected', 'error');
-          console.error('❌ Invalid day:', selectedDay);
           return;
         }
-  
+
+        // Calculate entry date
         const endTime = addHoursToTime(startTime, parseFloat(hours));
-        
         const weekStart = new Date(currentDate);
         const dayOfWeek = weekStart.getDay();
         const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
         weekStart.setDate(weekStart.getDate() + diff);
-        
-        const dayIndex = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].indexOf(selectedDay);
+
+        const dayIndex = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].indexOf(selectedDay.toLowerCase());
         const entryDate = new Date(weekStart);
         entryDate.setDate(weekStart.getDate() + dayIndex);
-        
+
+        // Create the new entry
         const newEntry: ScheduleEntry = {
           id: uuid.v4() as string,
           clientName: selectedClientBuilding.clientName,
@@ -1019,106 +999,31 @@ export default function ScheduleView() {
           weekId: currentWeekId,
           paymentType: 'hourly',
           hourlyRate: 15,
+          priority: 'medium',
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         };
 
-        window.DEBUG_LAST_SAVE = {
-          timestamp: new Date().toISOString(),
-          entryId: newEntry.id,
-          weekId: currentWeekId,
-          buildingName: newEntry.buildingName,
-          day: newEntry.day,
-          savedToSupabase: false,
-        };
-  
-        console.log('📝 Adding new schedule entry:', newEntry);
-        console.log('=== DEBUG: Entry prepared ===', window.DEBUG_LAST_SAVE);
-        
-        const dbEntry = {
-          id: newEntry.id,
-          client_name: newEntry.clientName,
-          building_name: newEntry.buildingName,
-          cleaner_name: newEntry.cleanerName,
-          cleaner_names: newEntry.cleanerNames,
-          day: (newEntry.day || 'monday').toLowerCase(),
-          date: newEntry.date,
-          hours: newEntry.hours,
-          start_time: newEntry.startTime,
-          end_time: newEntry.endTime,
-          status: newEntry.status || 'scheduled',
-          week_id: newEntry.weekId,
-          payment_type: newEntry.paymentType || 'hourly',
-          hourly_rate: newEntry.hourlyRate || 15,
-          created_at: newEntry.created_at,
-          updated_at: newEntry.updated_at,
-          priority: 'medium',
-        };
+        console.log('📝 Adding new schedule entry:', newEntry.buildingName, newEntry.day);
 
-        console.log('📝 Database entry:', dbEntry);
+        // Use the simplified hook - it handles Supabase save + refetch
+        const savedEntry = await addScheduleEntry(newEntry);
 
-        const { error: supabaseError } = await supabase
-          .from('schedule_entries')
-          .insert(dbEntry);
-  
-        if (supabaseError) {
-          console.error('❌ Supabase insert error:', supabaseError);
-          throw supabaseError;
-        }
+        if (savedEntry) {
+          console.log('✅ Entry saved successfully');
+          showToast('Shift added successfully', 'success');
 
-        window.DEBUG_LAST_SAVE.savedToSupabase = true;
-        console.log('✅ Entry saved to Supabase successfully');
-        console.log('=== DEBUG: Saved to Supabase ===', window.DEBUG_LAST_SAVE);
-        
-        await addScheduleEntry(currentWeekId, newEntry);
-        
-        showToast('Shift added successfully', 'success');
-        
-        console.log('🔄 Starting AGGRESSIVE UI refresh...');
-
-        try {
-          clearCaches();
-          console.log('✅ Step 1: Caches cleared');
-          
-          await loadData();
-          console.log('✅ Step 2: Data reloaded from Supabase');
-          
-          await new Promise(resolve => setTimeout(resolve, 200));
-          
-          const weekId = getWeekIdFromDate(currentDate);
-          const freshSchedule = getWeekSchedule(weekId, true);
-          console.log('✅ Step 3: Got fresh schedule:', freshSchedule.length, 'entries');
-          
-          window.DEBUG_LAST_SAVE.freshScheduleCount = freshSchedule.length;
-          window.DEBUG_LAST_SAVE.entryInSchedule = freshSchedule.some(e => e.id === newEntry.id);
-          console.log('=== DEBUG: After refresh ===', window.DEBUG_LAST_SAVE);
-          
-          const newScheduleArray = [...freshSchedule];
-          console.log('✅ Step 4: Created new array reference');
-          
-          setCurrentWeekSchedule(newScheduleArray);
-          console.log('✅ Step 5: UI state updated with new reference');
-          
+          // Explicitly fetch fresh data to update UI
+          const freshEntries = await fetchWeekSchedule(currentWeekId);
+          setCurrentWeekSchedule(freshEntries);
           setScheduleKey(prev => prev + 1);
-          console.log('✅ Step 6: Forced component re-render with new key');
-          
-          setTimeout(() => {
-            const doubleCheckSchedule = getWeekSchedule(weekId, true);
-            if (doubleCheckSchedule.length !== newScheduleArray.length) {
-              console.log('⚠️ Schedule mismatch detected, forcing another update');
-              setCurrentWeekSchedule([...doubleCheckSchedule]);
-              setScheduleKey(prev => prev + 1);
-            }
-          }, 500);
-          
-          console.log('✅ Complete refresh finished');
-        } catch (refreshError) {
-          console.error('❌ Error during refresh:', refreshError);
-          showToast('Shift saved but UI may need manual refresh', 'warning');
+          console.log('✅ UI updated with', freshEntries.length, 'entries');
+        } else {
+          throw new Error('Failed to save entry');
         }
-        
+
         handleModalClose();
-        
+
       } else if (modalType === 'edit') {
         if (!selectedEntry) {
           showToast('No entry selected', 'error');
@@ -1132,62 +1037,45 @@ export default function ScheduleView() {
           showToast('Please enter valid hours', 'error');
           return;
         }
-  
+
         const endTime = addHoursToTime(startTime, parseFloat(hours));
-        
+
         const updates: Partial<ScheduleEntry> = {
           cleanerName: selectedCleaners[0],
           cleanerNames: selectedCleaners,
           hours: parseFloat(hours),
           startTime,
           endTime,
-          updated_at: new Date().toISOString(),
-        };
-  
-        console.log('📝 Updating schedule entry:', selectedEntry.id, updates);
-        
-        const dbUpdates = {
-          cleaner_name: updates.cleanerName,
-          cleaner_names: updates.cleanerNames,
-          hours: updates.hours,
-          start_time: updates.startTime,
-          end_time: updates.endTime,
-          updated_at: updates.updated_at,
         };
 
-        const { error: supabaseError } = await supabase
-          .from('schedule_entries')
-          .update(dbUpdates)
-          .eq('id', selectedEntry.id);
-  
-        if (supabaseError) {
-          console.error('❌ Supabase update error:', supabaseError);
-          throw supabaseError;
+        console.log('📝 Updating schedule entry:', selectedEntry.id);
+
+        // Use the simplified hook - it handles Supabase update + refetch
+        const updatedEntry = await updateScheduleEntry(selectedEntry.id, updates);
+
+        if (updatedEntry) {
+          console.log('✅ Entry updated successfully');
+          showToast('Shift updated successfully', 'success');
+
+          // Explicitly fetch fresh data to update UI
+          const freshEntries = await fetchWeekSchedule(currentWeekId);
+          setCurrentWeekSchedule(freshEntries);
+          setScheduleKey(prev => prev + 1);
+          console.log('✅ UI updated with', freshEntries.length, 'entries');
+        } else {
+          throw new Error('Failed to update entry');
         }
-  
-        console.log('✅ Entry updated in Supabase successfully');
-        
-        await updateScheduleEntry(selectedEntry.weekId, selectedEntry.id, updates);
-        
-        showToast('Shift updated successfully', 'success');
-        
-        clearCaches();
-        await loadData();
-        const freshSchedule = getWeekSchedule(currentWeekId, true);
-        setCurrentWeekSchedule([...freshSchedule]);
-        setScheduleKey(prev => prev + 1);
-        
+
         handleModalClose();
       }
     } catch (error) {
       console.error('❌ Error saving schedule entry:', error);
       showToast('Failed to save shift', 'error');
     }
-  }, [modalType, selectedClientBuilding, selectedCleaners, hours, startTime, selectedDay, currentDate, currentWeekId, selectedEntry, addScheduleEntry, updateScheduleEntry, getWeekSchedule, handleModalClose, showToast, addHoursToTime, loadData, clearCaches, getWeekIdFromDate]);
+  }, [modalType, selectedClientBuilding, selectedCleaners, hours, startTime, selectedDay, currentDate, currentWeekId, selectedEntry, addScheduleEntry, updateScheduleEntry, fetchWeekSchedule, handleModalClose, showToast, addHoursToTime]);
 
   const handleModalDelete = useCallback(async () => {
-    console.log('=== SCHEDULE MODAL DELETE HANDLER ===');
-    console.log('Selected entry:', selectedEntry);
+    console.log('=== SCHEDULE MODAL DELETE HANDLER (SIMPLIFIED) ===');
 
     if (!selectedEntry) {
       showToast('No entry selected', 'error');
@@ -1205,20 +1093,24 @@ export default function ScheduleView() {
           onPress: async () => {
             try {
               console.log('📝 Deleting schedule entry:', selectedEntry.id);
-              await deleteScheduleEntry(selectedEntry.weekId, selectedEntry.id);
-              console.log('✅ Entry deleted successfully');
-              
-              showToast('Shift deleted successfully', 'success');
-              
-              console.log('🔄 Reloading schedule from database...');
-              await loadData();
-              
-              const schedule = getWeekSchedule(currentWeekId, true);
-              setCurrentWeekSchedule([...schedule]);
-              setScheduleKey(prev => prev + 1);
-              console.log('✅ Schedule display refreshed with', schedule.length, 'entries');
-              
-              handleModalClose();
+
+              // Use the simplified hook - it handles Supabase delete + refetch
+              const success = await deleteScheduleEntry(selectedEntry.id);
+
+              if (success) {
+                console.log('✅ Entry deleted successfully');
+                showToast('Shift deleted successfully', 'success');
+
+                // Explicitly fetch fresh data to update UI
+                const freshEntries = await fetchWeekSchedule(currentWeekId);
+                setCurrentWeekSchedule(freshEntries);
+                setScheduleKey(prev => prev + 1);
+                console.log('✅ UI updated with', freshEntries.length, 'entries');
+
+                handleModalClose();
+              } else {
+                throw new Error('Failed to delete entry');
+              }
             } catch (error) {
               console.error('❌ Error deleting schedule entry:', error);
               showToast('Failed to delete shift', 'error');
@@ -1227,7 +1119,7 @@ export default function ScheduleView() {
         },
       ]
     );
-  }, [selectedEntry, deleteScheduleEntry, getWeekSchedule, currentWeekId, handleModalClose, showToast, loadData]);
+  }, [selectedEntry, deleteScheduleEntry, fetchWeekSchedule, currentWeekId, handleModalClose, showToast]);
 
   const handleAddClient = useCallback(async () => {
     console.log('Adding client:', newClientName);
@@ -1408,27 +1300,25 @@ export default function ScheduleView() {
       console.log('📝 Inserting recurring pattern to database:', recurringPattern);
       await executeQuery('insert', 'recurring_shifts', recurringPattern);
       console.log('✅ Recurring pattern saved to database');
-      
+
       showToast('Recurring shift created successfully!', 'success');
-      
+
       console.log('🔄 Generating shifts from new pattern...');
       await generateRecurringShifts();
-      
-      console.log('🔄 Reloading schedule from database after generating recurring shifts...');
-      await loadData();
-      
+
+      // generateRecurringShifts already handles the refresh, but let's ensure UI is updated
       console.log('🔄 Refreshing schedule display...');
-      const schedule = getWeekSchedule(currentWeekId, true);
-      setCurrentWeekSchedule([...schedule]);
+      const freshEntries = await fetchWeekSchedule(currentWeekId);
+      setCurrentWeekSchedule(freshEntries);
       setScheduleKey(prev => prev + 1);
-      console.log('✅ Schedule display refreshed with', schedule.length, 'entries');
-      
+      console.log('✅ Schedule display refreshed with', freshEntries.length, 'entries');
+
       setRecurringModalVisible(false);
     } catch (error) {
       console.error('❌ Error creating recurring task:', error);
       showToast('Failed to create recurring shift', 'error');
     }
-  }, [executeQuery, generateRecurringShifts, getWeekSchedule, currentWeekId, showToast, loadData]);
+  }, [executeQuery, generateRecurringShifts, fetchWeekSchedule, currentWeekId, showToast]);
 
   const renderDailyView = () => {
     const daySchedule = filteredSchedule.filter(entry => {
@@ -2041,9 +1931,10 @@ export default function ScheduleView() {
         onClose={() => setBuildingGroupModalVisible(false)}
         cleaners={cleaners}
         clients={clients}
-        onScheduleCreated={() => {
-          const schedule = getWeekSchedule(currentWeekId, true);
-          setCurrentWeekSchedule([...schedule]);
+        onScheduleCreated={async () => {
+          // Refresh from Supabase after schedule created
+          const freshEntries = await fetchWeekSchedule(currentWeekId);
+          setCurrentWeekSchedule(freshEntries);
           setScheduleKey(prev => prev + 1);
         }}
         weekId={currentWeekId}
