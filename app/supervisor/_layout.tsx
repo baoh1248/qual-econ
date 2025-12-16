@@ -30,6 +30,10 @@ export default function SupervisorLayout() {
         <Stack.Screen name="buildings" />
         <Stack.Screen name="building-detail" />
         <Stack.Screen name="contract-details" />
+        <Stack.Screen name="invoices" />
+        <Stack.Screen name="invoice-create" />
+        <Stack.Screen name="invoice-detail" />
+        <Stack.Screen name="invoice-statements" />
       </Stack>
       <BottomNavigation role="supervisor" />
     </View>

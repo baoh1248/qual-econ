@@ -815,6 +815,14 @@ export default function SupervisorInventoryScreen() {
       <View style={styles.actionButtonsContainer}>
         <TouchableOpacity 
           style={styles.actionButton}
+          onPress={() => router.push('/supervisor/invoices')}
+        >
+          <Icon name="document-text" size={20} color={colors.background} />
+          <Text style={styles.actionButtonText}>Invoices</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={styles.actionButton}
           onPress={() => setShowSendItemsModal(true)}
         >
           <Icon name="send" size={20} color={colors.background} />
@@ -826,7 +834,7 @@ export default function SupervisorInventoryScreen() {
           onPress={() => setShowTransferHistoryModal(true)}
         >
           <Icon name="time" size={20} color={colors.background} />
-          <Text style={styles.actionButtonText}>Transfer History</Text>
+          <Text style={styles.actionButtonText}>History</Text>
         </TouchableOpacity>
       </View>
 

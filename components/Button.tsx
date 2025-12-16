@@ -1,220 +1,138 @@
+import React from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextStyle,
+  useColorScheme,
+  ViewStyle,
+} from "react-native";
+import { colors } from "../styles/commonStyles";
 
-import React from 'react';
-import { TouchableOpacity, Text, StyleSheet, ViewStyle, TextStyle, ActivityIndicator } from 'react-native';
-import { colors, spacing, typography, borderRadius, shadows } from '../styles/commonStyles';
-import { useTheme } from '../hooks/useTheme';
-import Icon from './Icon';
+const appleBlue = colors.primary;
+const zincColors = {
+  50: '#fafafa',
+  300: '#d4d4d8',
+  400: '#a1a1aa',
+  500: '#71717a',
+  700: '#3f3f46',
+  900: '#18181b',
+};
+
+type ButtonVariant = "filled" | "outline" | "ghost";
+type ButtonSize = "sm" | "md" | "lg";
 
 interface ButtonProps {
-  text?: string;
-  title?: string;
-  onPress: () => void;
-  style?: ViewStyle;
-  textStyle?: TextStyle;
+  onPress?: () => void;
+  variant?: ButtonVariant;
+  size?: ButtonSize;
   disabled?: boolean;
   loading?: boolean;
-  variant?: 'primary' | 'secondary' | 'danger' | 'success' | 'warning' | 'outline' | 'ghost';
-  size?: 'small' | 'medium' | 'large';
-  icon?: string;
-  iconSize?: number;
-  iconPosition?: 'left' | 'right';
-  fullWidth?: boolean;
+  children: React.ReactNode;
+  style?: ViewStyle;
+  textStyle?: TextStyle;
 }
 
-export default function Button({
-  text,
-  title,
+export const Button: React.FC<ButtonProps> = ({
   onPress,
-  style,
-  textStyle,
+  variant = "filled",
+  size = "md",
   disabled = false,
   loading = false,
-  variant = 'primary',
-  size = 'medium',
-  icon,
-  iconSize,
-  iconPosition = 'left',
-  fullWidth = false,
-}: ButtonProps) {
-  const { themeColor } = useTheme();
-  const buttonText = text || title || '';
+  children,
+  style,
+  textStyle,
+}) => {
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === "dark";
 
-  const getVariantStyles = () => {
-    switch (variant) {
-      case 'secondary':
-        return {
-          backgroundColor: colors.backgroundAlt,
-          borderWidth: 1,
-          borderColor: colors.border,
-        };
-      case 'danger':
-        return {
-          backgroundColor: colors.danger,
-          ...shadows.sm,
-        };
-      case 'success':
-        return {
-          backgroundColor: colors.success,
-          ...shadows.sm,
-        };
-      case 'warning':
-        return {
-          backgroundColor: colors.warning,
-          ...shadows.sm,
-        };
-      case 'outline':
-        return {
-          backgroundColor: 'transparent',
-          borderWidth: 2,
-          borderColor: themeColor,
-        };
-      case 'ghost':
-        return {
-          backgroundColor: 'transparent',
-        };
-      default:
-        return {
-          backgroundColor: themeColor,
-          ...shadows.sm,
-        };
-    }
+  const sizeStyles: Record<
+    ButtonSize,
+    { height: number; fontSize: number; padding: number }
+  > = {
+    sm: { height: 36, fontSize: 14, padding: 12 },
+    md: { height: 44, fontSize: 16, padding: 16 },
+    lg: { height: 55, fontSize: 18, padding: 20 },
   };
 
-  const getSizeStyles = () => {
-    switch (size) {
-      case 'small':
+  const getVariantStyle = () => {
+    const baseStyle: ViewStyle = {
+      borderRadius: 12,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+    };
+
+    switch (variant) {
+      case "filled":
         return {
-          paddingVertical: spacing.sm,
-          paddingHorizontal: spacing.lg,
-          minHeight: 36,
+          ...baseStyle,
+          backgroundColor: isDark ? zincColors[50] : zincColors[900],
         };
-      case 'large':
+      case "outline":
         return {
-          paddingVertical: spacing.lg,
-          paddingHorizontal: spacing.xxl,
-          minHeight: 52,
+          ...baseStyle,
+          backgroundColor: "transparent",
+          borderWidth: 1,
+          borderColor: isDark ? zincColors[700] : zincColors[300],
         };
-      default:
+      case "ghost":
         return {
-          paddingVertical: spacing.md,
-          paddingHorizontal: spacing.xl,
-          minHeight: 44,
+          ...baseStyle,
+          backgroundColor: "transparent",
         };
     }
   };
 
   const getTextColor = () => {
-    if (variant === 'secondary' || variant === 'ghost') {
-      return colors.text;
-    }
-    if (variant === 'outline') {
-      return themeColor;
-    }
-    return colors.textInverse;
-  };
-
-  const getIconSize = () => {
-    if (iconSize) return iconSize;
-    switch (size) {
-      case 'small':
-        return 16;
-      case 'large':
-        return 24;
-      default:
-        return 20;
-    }
-  };
-
-  const renderContent = () => {
-    if (loading) {
-      return (
-        <ActivityIndicator 
-          size="small" 
-          color={getTextColor()} 
-        />
-      );
+    if (disabled) {
+      return isDark ? zincColors[500] : zincColors[400];
     }
 
-    return (
-      <>
-        {icon && iconPosition === 'left' && (
-          <Icon 
-            name={icon as any} 
-            size={getIconSize()} 
-            style={{ 
-              color: getTextColor(), 
-              marginRight: spacing.sm 
-            }} 
-          />
-        )}
-        <Text
-          style={[
-            styles.text,
-            { color: getTextColor() },
-            size === 'small' && styles.smallText,
-            size === 'large' && styles.largeText,
-            textStyle,
-          ]}
-        >
-          {buttonText}
-        </Text>
-        {icon && iconPosition === 'right' && (
-          <Icon 
-            name={icon as any} 
-            size={getIconSize()} 
-            style={{ 
-              color: getTextColor(), 
-              marginLeft: spacing.sm 
-            }} 
-          />
-        )}
-      </>
-    );
+    switch (variant) {
+      case "filled":
+        return isDark ? zincColors[900] : zincColors[50];
+      case "outline":
+      case "ghost":
+        return appleBlue;
+    }
   };
 
   return (
-    <TouchableOpacity
-      style={[
-        styles.button,
-        getVariantStyles(),
-        getSizeStyles(),
-        fullWidth && styles.fullWidth,
-        disabled && styles.disabled,
-        style,
-      ]}
+    <Pressable
       onPress={onPress}
       disabled={disabled || loading}
-      activeOpacity={0.7}
+      style={[
+        getVariantStyle(),
+        {
+          height: sizeStyles[size].height,
+          paddingHorizontal: sizeStyles[size].padding,
+          opacity: disabled ? 0.5 : 1,
+        },
+        style,
+      ]}
     >
-      {renderContent()}
-    </TouchableOpacity>
+      {loading ? (
+        <ActivityIndicator color={getTextColor()} />
+      ) : (
+        <Text
+          style={StyleSheet.flatten([
+            {
+              fontSize: sizeStyles[size].fontSize,
+              color: getTextColor(),
+              textAlign: "center",
+              marginBottom: 0,
+              fontWeight: "700",
+            },
+            textStyle,
+          ])}
+        >
+          {children}
+        </Text>
+      )}
+    </Pressable>
   );
-}
+};
 
-const styles = StyleSheet.create({
-  button: {
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-  },
-  fullWidth: {
-    width: '100%',
-  },
-  text: {
-    ...typography.bodyMedium,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  smallText: {
-    ...typography.captionMedium,
-    fontWeight: '600',
-  },
-  largeText: {
-    ...typography.h4,
-    fontWeight: '600',
-  },
-  disabled: {
-    opacity: 0.5,
-  },
-});
+export default Button;
