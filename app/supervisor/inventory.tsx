@@ -836,6 +836,14 @@ export default function SupervisorInventoryScreen() {
           <Icon name="time" size={20} color={colors.background} />
           <Text style={styles.actionButtonText}>History</Text>
         </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={styles.actionButton}
+          onPress={() => router.push('/supervisor/inventory-transfer-statements')}
+        >
+          <Icon name="stats-chart" size={20} color={colors.background} />
+          <Text style={styles.actionButtonText}>Statements</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.searchContainer}>

@@ -6,7 +6,7 @@ import Icon from '../Icon';
 import Button from '../Button';
 import IconButton from '../IconButton';
 import FilterDropdown from '../FilterDropdown';
-import { getInventoryTransferLogs, deleteInventoryTransferLog, formatTransferSummary, type InventoryTransfer } from '../../utils/inventoryTracking';
+import { getInventoryTransferLogs, deleteInventoryTransferLog, formatTransferSummary, formatCurrency, type InventoryTransfer } from '../../utils/inventoryTracking';
 import PropTypes from 'prop-types';
 
 interface TransferHistoryModalProps {
@@ -177,6 +177,11 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
 
   const groupedTransfers = groupTransfersByDate(filteredTransfers);
 
+  // Calculate total value of all transfers
+  const totalTransferValue = useMemo(() => {
+    return transfers.reduce((sum, transfer) => sum + (transfer.totalValue || 0), 0);
+  }, [transfers]);
+
   return (
     <>
       <Modal
@@ -270,11 +275,11 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
                 
                 <View style={styles.statItem}>
                   <View style={[styles.statIconContainer, { backgroundColor: colors.info + '20' }]}>
-                    <Icon name="business" size={24} color={colors.info} />
+                    <Icon name="cash" size={24} color={colors.info} />
                   </View>
                   <View style={styles.statContent}>
-                    <Text style={styles.statValue}>{uniqueBuildings.length}</Text>
-                    <Text style={styles.statLabel}>Buildings</Text>
+                    <Text style={styles.statValue}>{formatCurrency(totalTransferValue)}</Text>
+                    <Text style={styles.statLabel}>Total Value</Text>
                   </View>
                 </View>
               </View>
@@ -413,14 +418,37 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
                             {transfer.items.map((item, itemIndex) => (
                               <View key={itemIndex} style={styles.transferItem}>
                                 <View style={[styles.itemBullet, { backgroundColor: colors.primary }]} />
-                                <Text style={styles.transferItemText}>
-                                  <Text style={styles.transferItemQuantity}>{item.quantity} {item.unit}</Text>
-                                  {' of '}
-                                  <Text style={styles.transferItemName}>{item.name}</Text>
-                                </Text>
+                                <View style={{ flex: 1 }}>
+                                  <View style={[commonStyles.row, commonStyles.spaceBetween]}>
+                                    <Text style={styles.transferItemText}>
+                                      <Text style={styles.transferItemQuantity}>{item.quantity} {item.unit}</Text>
+                                      {' of '}
+                                      <Text style={styles.transferItemName}>{item.name}</Text>
+                                    </Text>
+                                    {item.totalCost !== undefined && (
+                                      <Text style={[styles.transferItemCost, { color: colors.primary }]}>
+                                        {formatCurrency(item.totalCost)}
+                                      </Text>
+                                    )}
+                                  </View>
+                                  {item.unitCost !== undefined && (
+                                    <Text style={[styles.transferItemUnitCost, { color: colors.textSecondary }]}>
+                                      {formatCurrency(item.unitCost)} per {item.unit}
+                                    </Text>
+                                  )}
+                                </View>
                               </View>
                             ))}
                           </View>
+
+                          {transfer.totalValue !== undefined && transfer.totalValue > 0 && (
+                            <View style={[styles.transferTotalValue, { backgroundColor: colors.success + '10', borderLeftColor: colors.success }]}>
+                              <Icon name="cash" size={16} color={colors.success} />
+                              <Text style={[styles.transferTotalValueText, { color: colors.success }]}>
+                                Total Value: {formatCurrency(transfer.totalValue)}
+                              </Text>
+                            </View>
+                          )}
 
                           {transfer.notes && (
                             <View style={styles.transferNotes}>
@@ -750,6 +778,29 @@ const styles = StyleSheet.create({
   },
   transferItemName: {
     fontWeight: '600',
+  },
+  transferItemCost: {
+    ...typography.body,
+    fontWeight: '700',
+    marginLeft: spacing.sm,
+  },
+  transferItemUnitCost: {
+    ...typography.caption,
+    marginTop: spacing.xs,
+  },
+  transferTotalValue: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    marginBottom: spacing.sm,
+  },
+  transferTotalValueText: {
+    ...typography.bodyMedium,
+    flex: 1,
+    fontWeight: '700',
   },
   transferNotes: {
     flexDirection: 'row',

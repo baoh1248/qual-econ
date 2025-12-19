@@ -5,6 +5,8 @@ export interface InventoryTransferItem {
   name: string;
   quantity: number;
   unit: string;
+  unitCost?: number;
+  totalCost?: number;
 }
 
 export interface InventoryTransfer {
@@ -14,6 +16,7 @@ export interface InventoryTransfer {
   timestamp: string; // ISO 8601 format
   transferredBy: string;
   notes?: string;
+  totalValue?: number;
 }
 
 const STORAGE_KEY = 'inventory_transfer_logs';
@@ -22,10 +25,16 @@ export async function logInventoryTransfer(transfer: Omit<InventoryTransfer, 'id
   try {
     console.log('Logging inventory transfer:', transfer);
     
+    // Calculate total value if not provided
+    const totalValue = transfer.totalValue || transfer.items.reduce((sum, item) => {
+      return sum + (item.totalCost || 0);
+    }, 0);
+    
     // Generate unique ID
     const transferWithId: InventoryTransfer = {
       ...transfer,
       id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+      totalValue,
     };
 
     // Fetch existing transfer logs
@@ -37,7 +46,7 @@ export async function logInventoryTransfer(transfer: Omit<InventoryTransfer, 'id
     // Save the updated logs
     await saveInventoryTransferLogs(updatedLogs);
     
-    console.log('Inventory transfer logged successfully');
+    console.log('Inventory transfer logged successfully with total value:', totalValue);
   } catch (error) {
     console.error('Failed to log inventory transfer:', error);
     throw error;
@@ -92,4 +101,8 @@ export function formatTransferSummary(transfer: InventoryTransfer): string {
   const dateString = date.toLocaleDateString([], { month: '2-digit', day: '2-digit' });
   
   return `${itemSummaries.join(' and ')} were sent to ${transfer.destination} at ${timeString} on ${dateString}`;
+}
+
+export function formatCurrency(amount: number): string {
+  return `$${amount.toFixed(2)}`;
 }

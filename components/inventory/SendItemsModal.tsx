@@ -16,6 +16,7 @@ interface InventoryItem {
   current_stock: number;
   unit: string;
   category: string;
+  cost?: number;
 }
 
 interface BuildingGroup {
@@ -178,12 +179,15 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
   );
 
   const addItem = (item: InventoryItem) => {
+    const unitCost = item.cost || 0;
     const newItem: SelectedItem = {
       id: item.id,
       name: item.name,
       quantity: 1,
       unit: item.unit,
       maxQuantity: item.current_stock,
+      unitCost: unitCost,
+      totalCost: unitCost * 1,
     };
     setSelectedItems(prev => [...prev, newItem]);
     setSearchQuery('');
@@ -194,11 +198,17 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
   };
 
   const updateItemQuantity = (itemId: string, quantity: number) => {
-    setSelectedItems(prev => prev.map(item => 
-      item.id === itemId 
-        ? { ...item, quantity: Math.max(1, Math.min(quantity, item.maxQuantity)) }
-        : item
-    ));
+    setSelectedItems(prev => prev.map(item => {
+      if (item.id === itemId) {
+        const newQuantity = Math.max(1, Math.min(quantity, item.maxQuantity));
+        return {
+          ...item,
+          quantity: newQuantity,
+          totalCost: (item.unitCost || 0) * newQuantity,
+        };
+      }
+      return item;
+    }));
   };
 
   const getDestinationName = () => {
@@ -233,16 +243,22 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
       console.log('Destination:', destinationName);
       console.log('Selected items:', selectedItems);
       
+      // Calculate total value
+      const totalValue = selectedItems.reduce((sum, item) => sum + (item.totalCost || 0), 0);
+      
       await logInventoryTransfer({
         items: selectedItems.map(item => ({
           name: item.name,
           quantity: item.quantity,
           unit: item.unit,
+          unitCost: item.unitCost,
+          totalCost: item.totalCost,
         })),
         destination: destinationName,
         timestamp: new Date().toISOString(),
         transferredBy: 'Supervisor',
         notes: notes.trim() || undefined,
+        totalValue: totalValue,
       });
 
       const itemIds = selectedItems.map(item => item.id);
@@ -274,6 +290,7 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
   };
 
   const totalItems = selectedItems.reduce((sum, item) => sum + item.quantity, 0);
+  const totalValue = selectedItems.reduce((sum, item) => sum + (item.totalCost || 0), 0);
 
   // Group buildings by client
   const buildingsByClient = buildings.reduce((acc, building) => {
@@ -725,22 +742,37 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
 
             {selectedItems.length > 0 && (
               <View style={{ marginBottom: spacing.lg }}>
-                <Text style={[typography.body, { color: colors.text, fontWeight: '600', marginBottom: spacing.sm }]}>
-                  Selected Items ({totalItems} total)
-                </Text>
+                <View style={[commonStyles.row, commonStyles.spaceBetween, { marginBottom: spacing.sm }]}>
+                  <Text style={[typography.body, { color: colors.text, fontWeight: '600' }]}>
+                    Selected Items ({totalItems} total)
+                  </Text>
+                  <Text style={[typography.body, { color: colors.primary, fontWeight: '700' }]}>
+                    ${totalValue.toFixed(2)}
+                  </Text>
+                </View>
                 {selectedItems.map(item => (
                   <View key={item.id} style={[commonStyles.card, { marginBottom: spacing.sm }]}>
                     <View style={[commonStyles.row, commonStyles.spaceBetween, { marginBottom: spacing.sm }]}>
-                      <Text style={[typography.body, { color: colors.text, fontWeight: '600', flex: 1 }]}>
-                        {item.name}
-                      </Text>
-                      <IconButton
-                        icon="close"
-                        onPress={() => removeItem(item.id)}
-                        variant="secondary"
-                        size="small"
-                        style={{ backgroundColor: colors.danger }}
-                      />
+                      <View style={{ flex: 1 }}>
+                        <Text style={[typography.body, { color: colors.text, fontWeight: '600' }]}>
+                          {item.name}
+                        </Text>
+                        <Text style={[typography.caption, { color: colors.textSecondary }]}>
+                          ${(item.unitCost || 0).toFixed(2)} per {item.unit}
+                        </Text>
+                      </View>
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={[typography.body, { color: colors.primary, fontWeight: '700' }]}>
+                          ${(item.totalCost || 0).toFixed(2)}
+                        </Text>
+                        <IconButton
+                          icon="close"
+                          onPress={() => removeItem(item.id)}
+                          variant="secondary"
+                          size="small"
+                          style={{ backgroundColor: colors.danger, marginTop: spacing.xs }}
+                        />
+                      </View>
                     </View>
                     
                     <View style={[commonStyles.row, commonStyles.spaceBetween]}>
@@ -820,7 +852,7 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
                             {item.name}
                           </Text>
                           <Text style={[typography.caption, { color: colors.textSecondary }]}>
-                            Available: {item.current_stock} {item.unit}
+                            Available: {item.current_stock} {item.unit} • ${(item.cost || 0).toFixed(2)} per {item.unit}
                           </Text>
                         </View>
                         <IconButton
@@ -857,7 +889,7 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
             </View>
 
             <Button
-              text={sending ? 'Sending...' : `Send ${totalItems} Item${totalItems !== 1 ? 's' : ''}`}
+              text={sending ? 'Sending...' : `Send ${totalItems} Item${totalItems !== 1 ? 's' : ''} ($${totalValue.toFixed(2)})`}
               onPress={handleSendItems}
               disabled={sending || !getDestinationName().trim() || selectedItems.length === 0}
               variant="primary"
@@ -879,6 +911,7 @@ SendItemsModal.propTypes = {
     current_stock: PropTypes.number.isRequired,
     unit: PropTypes.string.isRequired,
     category: PropTypes.string.isRequired,
+    cost: PropTypes.number,
   }).isRequired).isRequired,
   onSend: PropTypes.func.isRequired,
   onSuccess: PropTypes.func,
