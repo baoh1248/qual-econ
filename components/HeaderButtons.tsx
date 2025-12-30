@@ -31,6 +31,12 @@ export function HeaderLeftButton() {
 
 const styles = StyleSheet.create({
   headerButtonContainer: {
-    padding: 6,
+    padding: 8,
+    backgroundColor: '#F4F5F7', // Light background to make button visible
+    borderRadius: 8,
+    minWidth: 40,
+    minHeight: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
