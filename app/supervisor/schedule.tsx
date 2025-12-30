@@ -1535,6 +1535,7 @@ export default function ScheduleView() {
       paddingHorizontal: spacing.lg,
       paddingVertical: spacing.sm,
       borderRadius: 8,
+      backgroundColor: colors.primary,
     },
     viewButtonText: {
       ...typography.bodyMedium,
@@ -1595,6 +1596,7 @@ export default function ScheduleView() {
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.xs,
       borderRadius: 6,
+      backgroundColor: colors.primary,
     },
     modeButtonText: {
       ...typography.small,
