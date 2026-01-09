@@ -775,17 +775,44 @@ export default function ScheduleView() {
   useFocusEffect(
     useCallback(() => {
       console.log('📱 Schedule screen focused - refreshing data');
-      
+
       if (initialLoadCompleteRef.current && !isLoading) {
         console.log('🔄 Refreshing schedule on focus...');
         loadCurrentWeekSchedule();
       }
-      
+
       return () => {
         console.log('📱 Schedule screen unfocused');
       };
     }, [loadCurrentWeekSchedule, isLoading])
   );
+
+  // Keyboard shortcut handler for Shift+Delete
+  useEffect(() => {
+    if (Platform.OS !== 'web') {
+      return; // Only enable keyboard shortcuts on web
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Check for Shift+Delete or just Delete key
+      if ((event.key === 'Delete' || event.key === 'Backspace') && event.shiftKey && selectedEntry && modalVisible && modalType === 'details') {
+        console.log('🔑 Shift+Delete detected for entry:', selectedEntry.id);
+        event.preventDefault();
+        event.stopPropagation();
+
+        // Trigger the delete confirmation
+        handleModalDelete();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    console.log('⌨️ Keyboard shortcut listener registered (Shift+Delete)');
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      console.log('⌨️ Keyboard shortcut listener removed');
+    };
+  }, [selectedEntry, modalVisible, modalType, handleModalDelete]);
 
   const changeDate = (amount: number) => {
     const newDate = new Date(currentDate);
