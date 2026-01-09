@@ -787,33 +787,6 @@ export default function ScheduleView() {
     }, [loadCurrentWeekSchedule, isLoading])
   );
 
-  // Keyboard shortcut handler for Shift+Delete
-  useEffect(() => {
-    if (Platform.OS !== 'web' || typeof window === 'undefined') {
-      return; // Only enable keyboard shortcuts on web
-    }
-
-    const handleKeyDown = (event: any) => {
-      // Check for Shift+Delete or just Delete key
-      if ((event.key === 'Delete' || event.key === 'Backspace') && event.shiftKey && selectedEntry && modalVisible && modalType === 'details') {
-        console.log('🔑 Shift+Delete detected for entry:', selectedEntry.id);
-        event.preventDefault();
-        event.stopPropagation();
-
-        // Trigger the delete confirmation
-        handleModalDelete();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    console.log('⌨️ Keyboard shortcut listener registered (Shift+Delete)');
-
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      console.log('⌨️ Keyboard shortcut listener removed');
-    };
-  }, [selectedEntry, modalVisible, modalType, handleModalDelete]);
-
   const changeDate = (amount: number) => {
     const newDate = new Date(currentDate);
     if (viewType === 'daily') {

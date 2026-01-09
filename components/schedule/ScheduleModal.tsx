@@ -178,6 +178,27 @@ const ScheduleModal = memo(({
     }
   }, [visible, modalType, isAddingFromGrid]);
 
+  // Keyboard shortcut handler for Shift+Delete (Web only)
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !visible || modalType !== 'details') {
+      return;
+    }
+
+    const handleKeyDown = (event: any) => {
+      if ((event.key === 'Delete' || event.key === 'Backspace') && event.shiftKey) {
+        console.log('🔑 Shift+Delete pressed in modal');
+        event.preventDefault();
+        event.stopPropagation();
+        onDelete();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [visible, modalType, onDelete]);
+
   // Filter buildings based on selected client
   const filteredBuildings = useMemo(() => {
     if (!selectedClientName) {
