@@ -1464,214 +1464,392 @@ export default function ScheduleView() {
   const styles = StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: colors.background,
+      backgroundColor: '#F8FAFC',
     },
     header: {
-      paddingVertical: spacing.lg,
-      paddingHorizontal: spacing.xl,
+      paddingTop: Platform.OS === 'web' ? spacing.xl : spacing.lg,
+      paddingBottom: spacing.xl,
+      paddingHorizontal: spacing.xl * 1.5,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
+      ...Platform.select({
+        ios: {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.12,
+          shadowRadius: 12,
+        },
+        android: {
+          elevation: 8,
+        },
+        web: {
+          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)',
+        },
+      }),
     },
     headerLeft: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.md,
+      gap: spacing.lg,
     },
     headerTitle: {
       ...typography.h2,
       color: colors.textInverse,
-      fontWeight: '600',
+      fontWeight: '700',
+      fontSize: 28,
+      letterSpacing: -0.5,
     },
     headerRight: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.sm,
+      gap: spacing.md,
     },
     filterButton: {
       position: 'relative',
     },
     filterBadge: {
       position: 'absolute',
-      top: -4,
-      right: -4,
-      backgroundColor: colors.danger,
-      borderRadius: 10,
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-      minWidth: 20,
+      top: -6,
+      right: -6,
+      backgroundColor: '#EF4444',
+      borderRadius: 12,
+      paddingHorizontal: 7,
+      paddingVertical: 3,
+      minWidth: 22,
+      minHeight: 22,
       alignItems: 'center',
       justifyContent: 'center',
+      borderWidth: 2,
+      borderColor: '#FFFFFF',
+      ...Platform.select({
+        ios: {
+          shadowColor: '#EF4444',
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.4,
+          shadowRadius: 4,
+        },
+        android: {
+          elevation: 4,
+        },
+      }),
     },
     filterBadgeText: {
       ...typography.small,
-      color: colors.textInverse,
-      fontWeight: '700',
-      fontSize: 10,
+      color: '#FFFFFF',
+      fontWeight: '800',
+      fontSize: 11,
     },
     controls: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      paddingHorizontal: spacing.xl,
-      paddingVertical: spacing.md,
-      backgroundColor: colors.card,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
+      paddingHorizontal: spacing.xl * 1.5,
+      paddingVertical: spacing.lg,
+      backgroundColor: '#FFFFFF',
+      borderBottomWidth: 0,
+      ...Platform.select({
+        ios: {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.04,
+          shadowRadius: 8,
+        },
+        android: {
+          elevation: 2,
+        },
+        web: {
+          boxShadow: '0 2px 12px rgba(0, 0, 0, 0.04)',
+        },
+      }),
     },
     viewToggle: {
       flexDirection: 'row',
-      gap: spacing.xs,
+      gap: 4,
+      backgroundColor: '#F1F5F9',
+      borderRadius: 12,
+      padding: 4,
     },
     viewButton: {
-      paddingHorizontal: spacing.lg,
-      paddingVertical: spacing.sm,
-      borderRadius: 8,
-      backgroundColor: colors.backgroundAlt,
+      paddingHorizontal: spacing.lg + 4,
+      paddingVertical: spacing.sm + 2,
+      borderRadius: 10,
+      backgroundColor: 'transparent',
     },
     viewButtonActive: {
-      paddingHorizontal: spacing.lg,
-      paddingVertical: spacing.sm,
-      borderRadius: 8,
+      paddingHorizontal: spacing.lg + 4,
+      paddingVertical: spacing.sm + 2,
+      borderRadius: 10,
+      ...Platform.select({
+        ios: {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.1,
+          shadowRadius: 4,
+        },
+        android: {
+          elevation: 3,
+        },
+        web: {
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+        },
+      }),
     },
     viewButtonText: {
       ...typography.bodyMedium,
-      color: colors.text,
+      color: '#64748B',
+      fontWeight: '600',
+      fontSize: 14,
     },
     viewButtonTextActive: {
       ...typography.bodyMedium,
       color: colors.textInverse,
+      fontWeight: '700',
+      fontSize: 14,
     },
     dateNavigation: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.md,
+      gap: spacing.sm,
+      backgroundColor: '#F8FAFC',
+      borderRadius: 10,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
     },
     dateText: {
       ...typography.bodyMedium,
-      color: colors.text,
-      minWidth: 120,
+      color: '#1E293B',
+      minWidth: 180,
       textAlign: 'center',
+      fontWeight: '600',
+      fontSize: 15,
     },
     content: {
       flex: 1,
+      backgroundColor: '#F8FAFC',
     },
     loadingContainer: {
       flex: 1,
       justifyContent: 'center',
       alignItems: 'center',
-      padding: spacing.xl,
+      padding: spacing.xl * 2,
+      backgroundColor: '#F8FAFC',
     },
     loadingText: {
       ...typography.body,
-      color: colors.textSecondary,
-      marginTop: spacing.md,
+      color: '#64748B',
+      marginTop: spacing.lg,
+      fontSize: 15,
+      fontWeight: '500',
     },
     emptyState: {
       flex: 1,
       justifyContent: 'center',
       alignItems: 'center',
-      padding: spacing.xl,
+      padding: spacing.xl * 2,
+      backgroundColor: '#F8FAFC',
     },
     emptyStateText: {
       ...typography.body,
-      color: colors.textSecondary,
+      color: '#64748B',
       textAlign: 'center',
-      marginTop: spacing.md,
+      marginTop: spacing.lg,
+      fontSize: 16,
+      lineHeight: 24,
     },
     modeToggle: {
       flexDirection: 'row',
-      gap: spacing.xs,
+      gap: 4,
+      backgroundColor: '#F1F5F9',
+      borderRadius: 10,
+      padding: 3,
     },
     modeButton: {
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.xs,
-      borderRadius: 6,
-      backgroundColor: colors.backgroundAlt,
+      paddingHorizontal: spacing.md + 2,
+      paddingVertical: spacing.xs + 2,
+      borderRadius: 8,
+      backgroundColor: 'transparent',
     },
     modeButtonActive: {
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.xs,
-      borderRadius: 6,
+      paddingHorizontal: spacing.md + 2,
+      paddingVertical: spacing.xs + 2,
+      borderRadius: 8,
+      ...Platform.select({
+        ios: {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 1 },
+          shadowOpacity: 0.08,
+          shadowRadius: 3,
+        },
+        android: {
+          elevation: 2,
+        },
+        web: {
+          boxShadow: '0 1px 6px rgba(0, 0, 0, 0.06)',
+        },
+      }),
     },
     modeButtonText: {
       ...typography.small,
-      color: colors.text,
+      color: '#64748B',
+      fontWeight: '600',
+      fontSize: 13,
     },
     modeButtonTextActive: {
       ...typography.small,
       color: colors.textInverse,
+      fontWeight: '700',
+      fontSize: 13,
     },
     dayEntry: {
-      backgroundColor: colors.backgroundAlt,
-      padding: spacing.md,
-      marginHorizontal: spacing.lg,
-      marginVertical: spacing.xs,
-      borderRadius: 8,
-      borderLeftWidth: 4,
+      backgroundColor: '#FFFFFF',
+      padding: spacing.lg + 2,
+      marginHorizontal: spacing.xl * 1.5,
+      marginVertical: spacing.sm,
+      borderRadius: 16,
+      borderLeftWidth: 5,
       borderLeftColor: themeColor,
+      ...Platform.select({
+        ios: {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.06,
+          shadowRadius: 8,
+        },
+        android: {
+          elevation: 3,
+        },
+        web: {
+          boxShadow: '0 2px 12px rgba(0, 0, 0, 0.05)',
+        },
+      }),
     },
     dayEntryTitle: {
       ...typography.h3,
-      color: colors.text,
-      fontWeight: '600',
+      color: '#0F172A',
+      fontWeight: '700',
+      fontSize: 18,
       marginBottom: spacing.xs,
+      letterSpacing: -0.3,
     },
     dayEntrySubtitle: {
       ...typography.body,
-      color: colors.textSecondary,
-      marginBottom: spacing.xs,
+      color: '#64748B',
+      marginBottom: spacing.sm,
+      fontSize: 15,
+      fontWeight: '500',
     },
     dayEntryTime: {
       ...typography.small,
       color: themeColor,
-      fontWeight: '500',
+      fontWeight: '700',
+      fontSize: 14,
+      letterSpacing: 0.2,
     },
     clearFiltersButton: {
-      paddingVertical: spacing.sm,
-      paddingHorizontal: spacing.lg,
-      borderRadius: 8,
-      backgroundColor: colors.danger,
-      marginTop: spacing.md,
+      paddingVertical: spacing.md,
+      paddingHorizontal: spacing.xl,
+      borderRadius: 12,
+      backgroundColor: '#EF4444',
+      marginTop: spacing.lg,
+      ...Platform.select({
+        ios: {
+          shadowColor: '#EF4444',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.3,
+          shadowRadius: 8,
+        },
+        android: {
+          elevation: 4,
+        },
+        web: {
+          boxShadow: '0 4px 12px rgba(239, 68, 68, 0.25)',
+        },
+      }),
     },
     clearFiltersButtonText: {
       ...typography.bodyMedium,
-      color: colors.textInverse,
-      fontWeight: '600',
+      color: '#FFFFFF',
+      fontWeight: '700',
+      fontSize: 15,
+      textAlign: 'center',
     },
     syncIndicator: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.xs,
-      paddingHorizontal: spacing.sm,
-      paddingVertical: spacing.xs,
-      borderRadius: 12,
-      backgroundColor: isConnected ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+      gap: spacing.xs + 2,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.xs + 2,
+      borderRadius: 20,
+      backgroundColor: isConnected ? 'rgba(34, 197, 94, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+      borderWidth: 1.5,
+      borderColor: isConnected ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)',
     },
     syncIndicatorDot: {
-      width: 8,
-      height: 8,
+      width: 7,
+      height: 7,
       borderRadius: 4,
       backgroundColor: isConnected ? '#22C55E' : '#EF4444',
+      ...Platform.select({
+        ios: {
+          shadowColor: isConnected ? '#22C55E' : '#EF4444',
+          shadowOffset: { width: 0, height: 0 },
+          shadowOpacity: 0.6,
+          shadowRadius: 3,
+        },
+        android: {
+          elevation: 2,
+        },
+      }),
     },
     syncIndicatorText: {
       ...typography.small,
-      color: isConnected ? '#22C55E' : '#EF4444',
-      fontSize: 10,
+      color: isConnected ? '#16A34A' : '#DC2626',
+      fontSize: 11,
+      fontWeight: '700',
+      letterSpacing: 0.5,
     },
     recurringBadge: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.xs,
-      marginBottom: spacing.xs,
+      marginBottom: spacing.sm,
+      backgroundColor: 'rgba(251, 191, 36, 0.12)',
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 3,
+      borderRadius: 6,
+      alignSelf: 'flex-start',
+      borderWidth: 1,
+      borderColor: 'rgba(251, 191, 36, 0.3)',
     },
     recurringBadgeText: {
       ...typography.small,
-      color: colors.warning,
-      fontWeight: '600',
-      fontSize: 10,
+      color: '#D97706',
+      fontWeight: '700',
+      fontSize: 11,
+      letterSpacing: 0.3,
+    },
+    headerButton: {
+      width: 44,
+      height: 44,
+      borderRadius: 12,
+      backgroundColor: 'rgba(255, 255, 255, 0.18)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      ...Platform.select({
+        ios: {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.15,
+          shadowRadius: 4,
+        },
+        android: {
+          elevation: 3,
+        },
+        web: {
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+        },
+      }),
     },
   });
 
@@ -1681,9 +1859,9 @@ export default function ScheduleView() {
         <View style={styles.headerLeft}>
           <TouchableOpacity
             onPress={() => router.back()}
-            style={[buttonStyles.backButton, { backgroundColor: 'rgba(255,255,255,0.2)' }]}
+            style={styles.headerButton}
           >
-            <Icon name="arrow-left" size={24} color="#FFFFFF" />
+            <Icon name="arrow-left" size={22} color="#FFFFFF" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Schedule</Text>
         </View>
@@ -1694,11 +1872,11 @@ export default function ScheduleView() {
               {isConnected ? 'LIVE' : 'OFFLINE'}
             </Text>
           </View>
-          
+
           {isSyncing && (
             <ActivityIndicator size="small" color="#FFFFFF" />
           )}
-          
+
           <UnassignedShiftNotifications
             themeColor={themeColor}
             onAssignShift={(notification) => {
@@ -1711,19 +1889,19 @@ export default function ScheduleView() {
               console.log('Remove shift from notification:', notification);
             }}
           />
-          
+
           <TouchableOpacity
             onPress={() => setShowFiltersModal(true)}
-            style={[buttonStyles.backButton, { backgroundColor: 'rgba(255,255,255,0.2)', position: 'relative' }]}
+            style={[styles.headerButton, { position: 'relative' }]}
           >
-            <Icon name="filter" size={24} color="#FFFFFF" />
+            <Icon name="filter" size={22} color="#FFFFFF" />
             {activeFilterCount > 0 && (
               <View style={styles.filterBadge}>
                 <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
               </View>
             )}
           </TouchableOpacity>
-          <CompanyLogo size={40} />
+          <CompanyLogo size={44} />
         </View>
       </View>
 
