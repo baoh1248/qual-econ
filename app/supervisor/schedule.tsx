@@ -789,11 +789,11 @@ export default function ScheduleView() {
 
   // Keyboard shortcut handler for Shift+Delete
   useEffect(() => {
-    if (Platform.OS !== 'web') {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') {
       return; // Only enable keyboard shortcuts on web
     }
 
-    const handleKeyDown = (event: KeyboardEvent) => {
+    const handleKeyDown = (event: any) => {
       // Check for Shift+Delete or just Delete key
       if ((event.key === 'Delete' || event.key === 'Backspace') && event.shiftKey && selectedEntry && modalVisible && modalType === 'details') {
         console.log('🔑 Shift+Delete detected for entry:', selectedEntry.id);
