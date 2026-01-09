@@ -1,53 +1,59 @@
 
-import { StyleSheet, ViewStyle, TextStyle } from 'react-native';
+import { StyleSheet, ViewStyle, TextStyle, Platform } from 'react-native';
 
-// Professional color palette inspired by enterprise tools
+// Premium color palette inspired by modern SaaS applications
 export const colors = {
   // Primary Blues - Professional and trustworthy
-  primary: '#0066FF',          // Vibrant Blue
-  primaryDark: '#0052CC',      // Darker Blue for hover/active states
-  primaryLight: '#4D94FF',     // Lighter Blue for backgrounds
-  primaryPale: '#E6F0FF',      // Very light blue for subtle backgrounds
-  
+  primary: '#2563EB',          // Modern Blue (Tailwind Blue-600)
+  primaryDark: '#1E40AF',      // Darker Blue (Tailwind Blue-700)
+  primaryLight: '#60A5FA',     // Lighter Blue (Tailwind Blue-400)
+  primaryPale: '#DBEAFE',      // Very light blue (Tailwind Blue-100)
+
   // Secondary Colors
-  secondary: '#5243AA',        // Purple accent
-  accent: '#00B8D9',           // Cyan for highlights
-  
+  secondary: '#7C3AED',        // Purple accent (Tailwind Violet-600)
+  accent: '#06B6D4',           // Cyan for highlights (Tailwind Cyan-500)
+
   // Status Colors
-  success: '#00875A',          // Professional Green
-  successLight: '#E3FCEF',     // Light green background
-  warning: '#FF991F',          // Warm Orange
-  warningLight: '#FFF4E6',     // Light orange background
-  danger: '#DE350B',           // Strong Red
-  dangerLight: '#FFEBE6',      // Light red background
-  info: '#0065FF',             // Info Blue
-  infoLight: '#DEEBFF',        // Light blue background
-  error: '#DE350B',            // Error Red (alias for danger)
-  
-  // Neutral Colors
-  background: '#FAFBFC',       // Off-white background
-  backgroundAlt: '#F4F5F7',    // Slightly darker background
+  success: '#10B981',          // Modern Green (Tailwind Emerald-500)
+  successLight: '#D1FAE5',     // Light green background (Tailwind Emerald-100)
+  successDark: '#059669',      // Dark green (Tailwind Emerald-600)
+  warning: '#F59E0B',          // Warm Amber (Tailwind Amber-500)
+  warningLight: '#FEF3C7',     // Light amber background (Tailwind Amber-100)
+  warningDark: '#D97706',      // Dark amber (Tailwind Amber-600)
+  danger: '#EF4444',           // Modern Red (Tailwind Red-500)
+  dangerLight: '#FEE2E2',      // Light red background (Tailwind Red-100)
+  dangerDark: '#DC2626',       // Dark red (Tailwind Red-600)
+  info: '#3B82F6',             // Info Blue (Tailwind Blue-500)
+  infoLight: '#DBEAFE',        // Light blue background (Tailwind Blue-100)
+  error: '#EF4444',            // Error Red (alias for danger)
+
+  // Neutral Colors - Premium Slate palette
+  background: '#F8FAFC',       // Slate 50 - Off-white background
+  backgroundAlt: '#F1F5F9',    // Slate 100 - Slightly darker background
   card: '#FFFFFF',             // Pure white for cards
   surface: '#FFFFFF',          // Surface color
-  
-  // Text Colors
-  text: '#172B4D',             // Dark blue-gray for primary text
-  textSecondary: '#5E6C84',    // Medium gray for secondary text
-  textTertiary: '#8993A4',     // Light gray for tertiary text
+  surfaceHover: '#F8FAFC',     // Subtle hover state
+
+  // Text Colors - Slate palette for readability
+  text: '#0F172A',             // Slate 900 - Primary text
+  textSecondary: '#475569',    // Slate 600 - Secondary text
+  textTertiary: '#94A3B8',     // Slate 400 - Tertiary text
   textInverse: '#FFFFFF',      // White text for dark backgrounds
-  
+  textMuted: '#CBD5E1',        // Slate 300 - Very light text
+
   // Border Colors
-  border: '#DFE1E6',           // Light border
-  borderLight: '#EBECF0',      // Very light border
-  borderDark: '#C1C7D0',       // Darker border for emphasis
-  
+  border: '#E2E8F0',           // Slate 200 - Light border
+  borderLight: '#F1F5F9',      // Slate 100 - Very light border
+  borderDark: '#CBD5E1',       // Slate 300 - Darker border for emphasis
+
   // Shadow Colors
-  shadow: 'rgba(9, 30, 66, 0.25)',
-  shadowLight: 'rgba(9, 30, 66, 0.08)',
-  shadowDark: 'rgba(9, 30, 66, 0.31)',
-  
+  shadow: 'rgba(15, 23, 42, 0.1)',      // Slate 900 at 10%
+  shadowLight: 'rgba(15, 23, 42, 0.05)', // Slate 900 at 5%
+  shadowDark: 'rgba(15, 23, 42, 0.2)',   // Slate 900 at 20%
+
   // Overlay
-  overlay: 'rgba(9, 30, 66, 0.54)',
+  overlay: 'rgba(15, 23, 42, 0.6)',     // Slate 900 at 60%
+  overlayLight: 'rgba(15, 23, 42, 0.3)', // Slate 900 at 30%
 };
 
 export const spacing = {
@@ -182,245 +188,363 @@ export const getContrastColor = (backgroundColor: string): string => {
   return isLightColor(backgroundColor) ? colors.text : colors.textInverse;
 };
 
+// Premium shadow system with platform-specific optimizations
 export const shadows = {
-  sm: {
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
+  none: {
+    shadowColor: 'transparent',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
-  md: {
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  lg: {
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  xl: {
-    shadowColor: colors.shadowDark,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 1,
-    shadowRadius: 16,
-    elevation: 8,
-  },
+  xs: Platform.select({
+    ios: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.05,
+      shadowRadius: 2,
+    },
+    android: {
+      elevation: 1,
+    },
+    web: {
+      boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+    },
+    default: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.05,
+      shadowRadius: 2,
+      elevation: 1,
+    },
+  }),
+  sm: Platform.select({
+    ios: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.06,
+      shadowRadius: 4,
+    },
+    android: {
+      elevation: 2,
+    },
+    web: {
+      boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
+    },
+    default: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.06,
+      shadowRadius: 4,
+      elevation: 2,
+    },
+  }),
+  md: Platform.select({
+    ios: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.08,
+      shadowRadius: 8,
+    },
+    android: {
+      elevation: 4,
+    },
+    web: {
+      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+    },
+    default: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.08,
+      shadowRadius: 8,
+      elevation: 4,
+    },
+  }),
+  lg: Platform.select({
+    ios: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.1,
+      shadowRadius: 12,
+    },
+    android: {
+      elevation: 6,
+    },
+    web: {
+      boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+    },
+    default: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.1,
+      shadowRadius: 12,
+      elevation: 6,
+    },
+  }),
+  xl: Platform.select({
+    ios: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 12 },
+      shadowOpacity: 0.12,
+      shadowRadius: 16,
+    },
+    android: {
+      elevation: 8,
+    },
+    web: {
+      boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+    },
+    default: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 12 },
+      shadowOpacity: 0.12,
+      shadowRadius: 16,
+      elevation: 8,
+    },
+  }),
+  '2xl': Platform.select({
+    ios: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 16 },
+      shadowOpacity: 0.15,
+      shadowRadius: 24,
+    },
+    android: {
+      elevation: 12,
+    },
+    web: {
+      boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+    },
+    default: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 16 },
+      shadowOpacity: 0.15,
+      shadowRadius: 24,
+      elevation: 12,
+    },
+  }),
 };
 
 export const buttonStyles = StyleSheet.create({
   primary: {
     backgroundColor: colors.primary,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.md + 2,
     paddingHorizontal: spacing.xl,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 44,
-    ...shadows.sm,
+    minHeight: 48,
+    ...(shadows.md as any),
   },
   secondary: {
-    backgroundColor: colors.backgroundAlt,
-    paddingVertical: spacing.md,
+    backgroundColor: colors.card,
+    paddingVertical: spacing.md + 2,
     paddingHorizontal: spacing.xl,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 44,
-    borderWidth: 1,
+    minHeight: 48,
+    borderWidth: 1.5,
     borderColor: colors.border,
+    ...(shadows.xs as any),
   },
   success: {
     backgroundColor: colors.success,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.md + 2,
     paddingHorizontal: spacing.xl,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 44,
-    ...shadows.sm,
+    minHeight: 48,
+    ...(shadows.md as any),
   },
   danger: {
     backgroundColor: colors.danger,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.md + 2,
     paddingHorizontal: spacing.xl,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 44,
-    ...shadows.sm,
+    minHeight: 48,
+    ...(shadows.md as any),
   },
   warning: {
     backgroundColor: colors.warning,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.md + 2,
     paddingHorizontal: spacing.xl,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 44,
-    ...shadows.sm,
+    minHeight: 48,
+    ...(shadows.md as any),
   },
   outline: {
     backgroundColor: 'transparent',
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.md + 2,
     paddingHorizontal: spacing.xl,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 44,
+    minHeight: 48,
     borderWidth: 2,
     borderColor: colors.primary,
   },
   ghost: {
     backgroundColor: 'transparent',
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.md + 2,
     paddingHorizontal: spacing.xl,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 44,
+    minHeight: 48,
   },
   floating: {
     position: 'absolute',
     bottom: spacing.xl,
     right: spacing.xl,
-    width: 56,
-    height: 56,
+    width: 60,
+    height: 60,
     borderRadius: borderRadius.round,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    ...shadows.lg,
+    ...(shadows.xl as any),
   },
   iconButton: {
     padding: spacing.md,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.backgroundAlt,
+    borderRadius: borderRadius.lg,
+    backgroundColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 44,
-    minHeight: 44,
+    minWidth: 48,
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...(shadows.xs as any),
   },
   iconButtonPrimary: {
     padding: spacing.md,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.lg,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 44,
-    minHeight: 44,
-    ...shadows.sm,
+    minWidth: 48,
+    minHeight: 48,
+    ...(shadows.md as any),
   },
   iconButtonDanger: {
     padding: spacing.md,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.lg,
     backgroundColor: colors.danger,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 44,
-    minHeight: 44,
-    ...shadows.sm,
+    minWidth: 48,
+    minHeight: 48,
+    ...(shadows.md as any),
   },
   iconButtonSuccess: {
     padding: spacing.md,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.lg,
     backgroundColor: colors.success,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 44,
-    minHeight: 44,
-    ...shadows.sm,
+    minWidth: 48,
+    minHeight: 48,
+    ...(shadows.md as any),
   },
   iconButtonWarning: {
     padding: spacing.md,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.lg,
     backgroundColor: colors.warning,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 44,
-    minHeight: 44,
-    ...shadows.sm,
+    minWidth: 48,
+    minHeight: 48,
+    ...(shadows.md as any),
   },
   backButton: {
     padding: spacing.md,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.backgroundAlt,
+    borderRadius: borderRadius.lg,
+    backgroundColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 44,
-    minHeight: 44,
+    minWidth: 48,
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...(shadows.xs as any),
   },
   smallActionButton: {
-    padding: spacing.sm,
-    borderRadius: borderRadius.sm,
+    padding: spacing.sm + 2,
+    borderRadius: borderRadius.md,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 36,
-    minHeight: 36,
+    minWidth: 40,
+    minHeight: 40,
+    ...(shadows.sm as any),
   },
   smallActionButtonDanger: {
-    padding: spacing.sm,
-    borderRadius: borderRadius.sm,
+    padding: spacing.sm + 2,
+    borderRadius: borderRadius.md,
     backgroundColor: colors.danger,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 36,
-    minHeight: 36,
+    minWidth: 40,
+    minHeight: 40,
+    ...(shadows.sm as any),
   },
   smallActionButtonSuccess: {
-    padding: spacing.sm,
-    borderRadius: borderRadius.sm,
+    padding: spacing.sm + 2,
+    borderRadius: borderRadius.md,
     backgroundColor: colors.success,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 36,
-    minHeight: 36,
+    minWidth: 40,
+    minHeight: 40,
+    ...(shadows.sm as any),
   },
   filterButton: {
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.sm + 2,
     borderRadius: borderRadius.round,
-    backgroundColor: colors.background,
+    backgroundColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: colors.border,
+    ...(shadows.xs as any),
   },
   filterButtonActive: {
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.sm + 2,
     borderRadius: borderRadius.round,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 0,
-    ...shadows.sm,
+    ...(shadows.md as any),
   },
   quickSelectButton: {
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    backgroundColor: colors.background,
+    paddingVertical: spacing.sm + 2,
+    backgroundColor: colors.card,
     borderRadius: borderRadius.round,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: colors.border,
+    ...(shadows.xs as any),
   },
   quickSelectButtonActive: {
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.sm + 2,
     backgroundColor: colors.primary,
     borderRadius: borderRadius.round,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 0,
-    ...shadows.sm,
+    ...(shadows.md as any),
   },
 });
 
@@ -444,61 +568,63 @@ export const commonStyles = StyleSheet.create({
     display: 'flex',
     justifyContent: 'center',
     alignItems: 'center',
+    backdropFilter: 'blur(4px)',
   },
   webModalContainer: {
     zIndex: 10000,
     position: 'relative' as any,
     backgroundColor: colors.card,
-    borderRadius: borderRadius.xl,
-    maxHeight: '90vh',
-    maxWidth: '90vw',
+    borderRadius: borderRadius.xxl,
+    maxHeight: '92vh',
+    maxWidth: '92vw',
     overflow: 'hidden',
-    ...shadows.xl,
+    ...(shadows['2xl'] as any),
   },
   content: {
     flex: 1,
-    padding: spacing.lg,
+    padding: spacing.xl,
   },
   contentPadded: {
     flex: 1,
-    padding: spacing.xl,
+    padding: spacing.xl + spacing.sm,
   },
   centerContent: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: spacing.lg,
+    padding: spacing.xl,
   },
   header: {
     backgroundColor: colors.card,
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.xl,
+    paddingHorizontal: spacing.xl + spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomColor: colors.borderLight,
   },
   headerTitle: {
     ...typography.h2,
     color: colors.text,
-    fontWeight: '600',
+    fontWeight: '700',
+    letterSpacing: -0.5,
   },
   card: {
     backgroundColor: colors.card,
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-    marginVertical: spacing.sm,
+    borderRadius: borderRadius.xl,
+    padding: spacing.xl,
+    marginVertical: spacing.md,
     borderWidth: 1,
     borderColor: colors.borderLight,
-    ...shadows.sm,
+    ...(shadows.sm as any),
   },
   cardElevated: {
     backgroundColor: colors.card,
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-    marginVertical: spacing.sm,
-    ...shadows.md,
+    borderRadius: borderRadius.xl,
+    padding: spacing.xl,
+    marginVertical: spacing.md,
+    ...(shadows.lg as any),
   },
   row: {
     flexDirection: 'row',
@@ -508,82 +634,88 @@ export const commonStyles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   textInput: {
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: colors.border,
-    borderRadius: borderRadius.md,
-    paddingVertical: spacing.md,
+    borderRadius: borderRadius.lg,
+    paddingVertical: spacing.md + 2,
     paddingHorizontal: spacing.lg,
     fontSize: 16,
     backgroundColor: colors.card,
     color: colors.text,
-    minHeight: 44,
+    minHeight: 48,
+    ...(shadows.xs as any),
   },
   textInputFocused: {
     borderColor: colors.primary,
+    borderWidth: 2,
+    ...(shadows.sm as any),
   },
   badge: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.md + 2,
+    paddingVertical: spacing.xs + 2,
     borderRadius: borderRadius.round,
     alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: colors.borderLight,
   },
   statusBadge: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm + 2,
     borderRadius: borderRadius.round,
-    minWidth: 80,
+    minWidth: 90,
     alignItems: 'center',
+    borderWidth: 1.5,
   },
   divider: {
     height: 1,
-    backgroundColor: colors.border,
-    marginVertical: spacing.lg,
+    backgroundColor: colors.borderLight,
+    marginVertical: spacing.xl,
   },
   dividerLight: {
     height: 1,
     backgroundColor: colors.borderLight,
-    marginVertical: spacing.md,
+    marginVertical: spacing.lg,
   },
-  shadow: shadows.md,
-  shadowSm: shadows.sm,
-  shadowLg: shadows.lg,
-  shadowXl: shadows.xl,
+  shadow: shadows.md as any,
+  shadowSm: shadows.sm as any,
+  shadowLg: shadows.lg as any,
+  shadowXl: shadows.xl as any,
 });
 
 export const statusColors = {
-  pending: { 
-    bg: colors.warningLight, 
-    text: '#974F0C', 
-    border: colors.warning 
+  pending: {
+    bg: colors.warningLight,
+    text: colors.warningDark,
+    border: colors.warning
   },
-  'in-progress': { 
-    bg: colors.infoLight, 
-    text: '#0747A6', 
-    border: colors.info 
+  'in-progress': {
+    bg: colors.infoLight,
+    text: colors.primaryDark,
+    border: colors.info
   },
-  completed: { 
-    bg: colors.successLight, 
-    text: '#006644', 
-    border: colors.success 
+  completed: {
+    bg: colors.successLight,
+    text: colors.successDark,
+    border: colors.success
   },
-  overdue: { 
-    bg: colors.dangerLight, 
-    text: '#BF2600', 
-    border: colors.danger 
+  overdue: {
+    bg: colors.dangerLight,
+    text: colors.dangerDark,
+    border: colors.danger
   },
-  emergency: { 
-    bg: colors.dangerLight, 
-    text: '#BF2600', 
-    border: colors.danger 
+  emergency: {
+    bg: colors.dangerLight,
+    text: colors.dangerDark,
+    border: colors.danger
   },
-  scheduled: { 
-    bg: colors.primaryPale, 
-    text: '#0052CC', 
-    border: colors.primary 
+  scheduled: {
+    bg: colors.primaryPale,
+    text: colors.primaryDark,
+    border: colors.primary
   },
-  cancelled: { 
-    bg: colors.backgroundAlt, 
-    text: colors.textSecondary, 
-    border: colors.border 
+  cancelled: {
+    bg: colors.backgroundAlt,
+    text: colors.textSecondary,
+    border: colors.borderDark
   },
 };
