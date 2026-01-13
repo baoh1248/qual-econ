@@ -26,6 +26,75 @@ export interface ScheduleChangeLog {
 }
 
 /**
+ * Test if we can insert and read from the schedule_change_logs table
+ */
+export async function testChangeLogsTable() {
+  console.log('🧪 Testing schedule_change_logs table...');
+
+  try {
+    // Test 1: Try to insert a test record
+    const testLog = {
+      id: uuid.v4() as string,
+      change_type: 'shift_created',
+      description: 'TEST RECORD - This is a test entry to verify database setup',
+      changed_by: 'System Test',
+      created_at: new Date().toISOString(),
+    };
+
+    console.log('Test 1: Attempting to insert test record...');
+    const { data: insertData, error: insertError } = await supabase
+      .from('schedule_change_logs')
+      .insert([testLog])
+      .select();
+
+    if (insertError) {
+      console.error('❌ Insert test FAILED:', insertError);
+      return { success: false, error: insertError.message, step: 'insert' };
+    }
+
+    console.log('✅ Insert test PASSED. Inserted:', insertData);
+
+    // Test 2: Try to fetch records
+    console.log('Test 2: Attempting to fetch records...');
+    const { data: fetchData, error: fetchError } = await supabase
+      .from('schedule_change_logs')
+      .select('*')
+      .limit(5);
+
+    if (fetchError) {
+      console.error('❌ Fetch test FAILED:', fetchError);
+      return { success: false, error: fetchError.message, step: 'fetch' };
+    }
+
+    console.log('✅ Fetch test PASSED. Found', fetchData?.length, 'records');
+    console.log('Sample records:', fetchData);
+
+    // Test 3: Delete the test record
+    console.log('Test 3: Cleaning up test record...');
+    const { error: deleteError } = await supabase
+      .from('schedule_change_logs')
+      .delete()
+      .eq('id', testLog.id);
+
+    if (deleteError) {
+      console.warn('⚠️ Cleanup warning:', deleteError.message);
+    } else {
+      console.log('✅ Cleanup complete');
+    }
+
+    return {
+      success: true,
+      message: 'All tests passed! Database is working correctly.',
+      recordCount: fetchData?.length || 0
+    };
+
+  } catch (error: any) {
+    console.error('❌ Test exception:', error);
+    return { success: false, error: error.message, step: 'exception' };
+  }
+}
+
+/**
  * Initialize the schedule_change_logs table if it doesn't exist
  */
 export async function initializeChangeLogsTable() {

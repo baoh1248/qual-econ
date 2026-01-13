@@ -6,6 +6,7 @@ import {
   fetchRecentChanges,
   fetchChangesByDateRange,
   initializeChangeLogsTable,
+  testChangeLogsTable,
   type ScheduleChangeLog,
   type ChangeType,
 } from '../../utils/scheduleChangeLogger';
@@ -28,6 +29,7 @@ const ScheduleChangeNotifications: React.FC<ScheduleChangeNotificationsProps> = 
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<any>(null);
 
   const loadChanges = useCallback(async () => {
     try {
@@ -73,13 +75,26 @@ const ScheduleChangeNotifications: React.FC<ScheduleChangeNotificationsProps> = 
     setIsRefreshing(false);
   }, [loadChanges]);
 
+  const runDatabaseTest = useCallback(async () => {
+    console.log('Running database test...');
+    const result = await testChangeLogsTable();
+    setTestResult(result);
+    console.log('Test result:', result);
+
+    // After test, reload changes
+    if (result.success) {
+      await loadChanges();
+    }
+  }, [loadChanges]);
+
   useEffect(() => {
     if (visible) {
       // Initialize table on first load
       initializeChangeLogsTable();
-      loadChanges();
+      // Run test automatically
+      runDatabaseTest();
     }
-  }, [visible, loadChanges]);
+  }, [visible, runDatabaseTest]);
 
   const getChangeIcon = (changeType: ChangeType): string => {
     switch (changeType) {
@@ -207,6 +222,31 @@ const ScheduleChangeNotifications: React.FC<ScheduleChangeNotificationsProps> = 
               <Icon name="close" size={24} style={{ color: colors.text }} />
             </TouchableOpacity>
           </View>
+
+          {/* Database Test Result */}
+          {testResult && (
+            <View style={[styles.testResult, {
+              backgroundColor: testResult.success ? colors.success + '20' : colors.danger + '20',
+              borderColor: testResult.success ? colors.success : colors.danger
+            }]}>
+              <Icon
+                name={testResult.success ? 'checkmark-circle' : 'alert-circle'}
+                size={20}
+                style={{ color: testResult.success ? colors.success : colors.danger }}
+              />
+              <Text style={[styles.testResultText, {
+                color: testResult.success ? colors.success : colors.danger
+              }]}>
+                {testResult.success
+                  ? `✅ Database OK - ${testResult.recordCount} records found`
+                  : `❌ ${testResult.error} (${testResult.step})`
+                }
+              </Text>
+              <TouchableOpacity onPress={runDatabaseTest} style={styles.testButton}>
+                <Text style={styles.testButtonText}>Test Again</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
           {/* Changes List */}
           <ScrollView
@@ -336,6 +376,31 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.textSecondary,
     textAlign: 'center',
+  },
+  testResult: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    margin: spacing.md,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: spacing.sm,
+  },
+  testResultText: {
+    ...typography.small,
+    flex: 1,
+    fontWeight: '600',
+  },
+  testButton: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    backgroundColor: colors.primary,
+    borderRadius: 6,
+  },
+  testButtonText: {
+    ...typography.small,
+    color: colors.textInverse,
+    fontWeight: '600',
   },
 });
 
