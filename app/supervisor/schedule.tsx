@@ -1081,81 +1081,69 @@ export default function ScheduleView() {
       return;
     }
 
-    Alert.alert(
-      'Delete Shift',
-      `Delete shift for ${selectedEntry.cleanerName} at ${selectedEntry.buildingName}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              // Store values before deletion
-              const entryId = selectedEntry.id;
-              const entryWeekId = selectedEntry.weekId;
+    // For web and mobile compatibility - just proceed with delete
+    // The ScheduleModal already has its own confirmation dialog
+    try {
+      // Store values before deletion
+      const entryId = selectedEntry.id;
+      const entryWeekId = selectedEntry.weekId;
 
-              // Direct Supabase delete - simple and straightforward
-              const { error: deleteError } = await supabase
-                .from('schedule_entries')
-                .delete()
-                .eq('id', entryId);
+      // Direct Supabase delete
+      const { error: deleteError } = await supabase
+        .from('schedule_entries')
+        .delete()
+        .eq('id', entryId);
 
-              if (deleteError) {
-                throw deleteError;
-              }
+      if (deleteError) {
+        throw deleteError;
+      }
 
-              // Success! Show toast
-              showToast('Shift deleted', 'success');
+      // Success! Show toast
+      showToast('Shift deleted', 'success');
 
-              // Refresh the schedule data directly from Supabase
-              const { data: freshData, error: fetchError } = await supabase
-                .from('schedule_entries')
-                .select('*')
-                .eq('week_id', entryWeekId)
-                .order('date', { ascending: true })
-                .order('start_time', { ascending: true });
+      // Refresh the schedule data
+      const { data: freshData, error: fetchError } = await supabase
+        .from('schedule_entries')
+        .select('*')
+        .eq('week_id', entryWeekId)
+        .order('date', { ascending: true })
+        .order('start_time', { ascending: true });
 
-              if (!fetchError && freshData) {
-                // Convert database format to app format
-                const freshEntries = freshData.map((row: any) => ({
-                  id: row.id,
-                  clientName: row.client_name || '',
-                  buildingName: row.building_name || '',
-                  cleanerName: row.cleaner_name || '',
-                  cleanerNames: row.cleaner_names || [],
-                  cleanerIds: row.cleaner_ids || [],
-                  hours: parseFloat(row.hours) || 0,
-                  day: row.day || 'monday',
-                  date: row.date || '',
-                  startTime: row.start_time || null,
-                  endTime: row.end_time || null,
-                  status: row.status || 'scheduled',
-                  weekId: row.week_id || '',
-                  notes: row.notes || null,
-                  priority: row.priority || 'medium',
-                  isRecurring: row.is_recurring || false,
-                  recurringId: row.recurring_id || null,
-                  isProject: row.is_project || false,
-                  projectId: row.project_id || null,
-                  projectName: row.project_name || null,
-                }));
+      if (!fetchError && freshData) {
+        // Convert database format to app format
+        const freshEntries = freshData.map((row: any) => ({
+          id: row.id,
+          clientName: row.client_name || '',
+          buildingName: row.building_name || '',
+          cleanerName: row.cleaner_name || '',
+          cleanerNames: row.cleaner_names || [],
+          cleanerIds: row.cleaner_ids || [],
+          hours: parseFloat(row.hours) || 0,
+          day: row.day || 'monday',
+          date: row.date || '',
+          startTime: row.start_time || null,
+          endTime: row.end_time || null,
+          status: row.status || 'scheduled',
+          weekId: row.week_id || '',
+          notes: row.notes || null,
+          priority: row.priority || 'medium',
+          isRecurring: row.is_recurring || false,
+          recurringId: row.recurring_id || null,
+          isProject: row.is_project || false,
+          projectId: row.project_id || null,
+          projectName: row.project_name || null,
+        }));
 
-                // Update the UI with fresh data
-                setCurrentWeekSchedule(freshEntries);
-                setScheduleKey(prev => prev + 1);
-              }
+        // Update the UI
+        setCurrentWeekSchedule(freshEntries);
+        setScheduleKey(prev => prev + 1);
+      }
 
-              // Close the modal
-              handleModalClose();
-            } catch (error: any) {
-              console.error('Delete failed:', error);
-              showToast(error.message || 'Failed to delete shift', 'error');
-            }
-          },
-        },
-      ]
-    );
+      // Close the modal
+      handleModalClose();
+    } catch (error: any) {
+      showToast(error.message || 'Failed to delete shift', 'error');
+    }
   }, [selectedEntry, currentWeekId, handleModalClose, showToast]);
 
   const handleAddClient = useCallback(async () => {
