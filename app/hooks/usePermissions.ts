@@ -3,7 +3,7 @@
  * React hooks for checking user permissions
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   hasPermission,
   getPermissionLevel,
@@ -150,7 +150,9 @@ export function usePermissionGuard(permissionModule: string) {
       fallback?: React.ReactNode;
     }) => {
       if (loading) return null;
-      return allowed ? <>{children}</> : <>{fallback}</>;
+      return allowed
+        ? React.createElement(React.Fragment, null, children)
+        : React.createElement(React.Fragment, null, fallback);
     },
     [allowed, loading]
   );
