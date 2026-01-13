@@ -3,13 +3,16 @@ import { Text, View, ScrollView, TouchableOpacity, TextInput, KeyboardAvoidingVi
 import { router } from 'expo-router';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { commonStyles, colors, spacing, typography } from '../../styles/commonStyles';
+import { enhancedStyles } from '../../styles/enhancedStyles';
 import CompanyLogo from '../../components/CompanyLogo';
 import Icon from '../../components/Icon';
+import IconButton from '../../components/IconButton';
 import { useTheme } from '../../hooks/useTheme';
 import { useChatData } from '../../hooks/useChatData';
 import { useClientData } from '../../hooks/useClientData';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import Button from '../../components/Button';
+import AnimatedCard from '../../components/AnimatedCard';
 
 export default function SupervisorChatScreen() {
   const { themeColor } = useTheme();
@@ -208,11 +211,16 @@ export default function SupervisorChatScreen() {
 
   if (isLoading) {
     return (
-      <View style={commonStyles.container}>
-        <View style={[commonStyles.header, { backgroundColor: themeColor }]}>
-          <CompanyLogo size="small" showText={false} variant="light" />
-          <Text style={commonStyles.headerTitle}>Messages</Text>
-          <View style={{ width: 24 }} />
+      <View style={enhancedStyles.screenContainer}>
+        <View style={[enhancedStyles.modernHeader, { backgroundColor: themeColor }]}>
+          <View style={enhancedStyles.headerTop}>
+            <View style={{ width: 40 }} />
+            <View style={enhancedStyles.headerTitleContainer}>
+              <Icon name="chatbubbles" size={32} style={{ color: '#FFFFFF' }} />
+            </View>
+            <View style={{ width: 40 }} />
+          </View>
+          <Text style={enhancedStyles.headerTitle}>Messages</Text>
         </View>
         <LoadingSpinner />
       </View>
@@ -221,91 +229,117 @@ export default function SupervisorChatScreen() {
 
   if (!selectedRoom) {
     return (
-      <View style={commonStyles.container}>
-        <View style={[commonStyles.header, { backgroundColor: themeColor }]}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Icon name="arrow-back" size={24} style={{ color: colors.background }} />
-          </TouchableOpacity>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-            <CompanyLogo size="small" showText={false} variant="light" />
-            <Text style={commonStyles.headerTitle}>Messages</Text>
+      <View style={enhancedStyles.screenContainer}>
+        {/* Modern Header */}
+        <View style={[enhancedStyles.modernHeader, { backgroundColor: themeColor }]}>
+          <View style={enhancedStyles.headerTop}>
+            <IconButton icon="arrow-back" onPress={() => router.back()} variant="white" />
+            <View style={enhancedStyles.headerTitleContainer}>
+              <Icon name="chatbubbles" size={32} style={{ color: '#FFFFFF' }} />
+            </View>
+            <View style={{ width: 40 }} />
           </View>
-          <TouchableOpacity onPress={() => setShowNewChatModal(true)}>
-            <Icon name="add" size={24} style={{ color: colors.background }} />
-          </TouchableOpacity>
+
+          <View>
+            <Text style={enhancedStyles.headerTitle}>Messages</Text>
+            <Text style={enhancedStyles.headerSubtitle}>
+              {chatRooms.length} {chatRooms.length === 1 ? 'conversation' : 'conversations'}
+            </Text>
+          </View>
         </View>
 
-        <ScrollView style={commonStyles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView style={enhancedStyles.scrollContainer} showsVerticalScrollIndicator={false}>
           {chatRooms.length === 0 ? (
-            <View style={{ alignItems: 'center', marginTop: spacing.xl }}>
-              <Icon name="chatbubbles-outline" size={64} style={{ color: colors.textSecondary, marginBottom: spacing.md }} />
-              <Text style={[typography.body, { color: colors.textSecondary, textAlign: 'center' }]}>
-                No conversations yet.{'\n'}Start a new chat to get started!
+            <View style={enhancedStyles.emptyState}>
+              <View style={[enhancedStyles.emptyStateIconContainer, { backgroundColor: themeColor + '10' }]}>
+                <Icon name="chatbubbles-outline" size={64} style={{ color: themeColor }} />
+              </View>
+              <Text style={enhancedStyles.emptyStateText}>No Conversations Yet</Text>
+              <Text style={enhancedStyles.emptyStateSubtext}>
+                Start a new chat to collaborate with your team
               </Text>
+              <Button text="New Chat" onPress={() => setShowNewChatModal(true)} variant="primary" />
             </View>
           ) : (
             chatRooms.map(room => (
-              <TouchableOpacity
+              <AnimatedCard
                 key={room.id}
-                style={[commonStyles.card, { marginBottom: spacing.sm }]}
+                style={enhancedStyles.modernCard}
                 onPress={() => {
                   console.log('Selected chat room:', room.id, room.name);
                   setSelectedRoom(room.id);
                 }}
               >
-                <View style={[commonStyles.row, { alignItems: 'flex-start' }]}>
-                  <View style={{ position: 'relative', marginRight: spacing.md }}>
-                    <Icon 
-                      name={getRoomIcon(room.type) as any} 
-                      size={32} 
-                      style={{ color: getRoomColor(room.type) }} 
-                    />
-                  </View>
-                  
-                  <View style={{ flex: 1 }}>
-                    <View style={[commonStyles.row, commonStyles.spaceBetween, { marginBottom: spacing.xs }]}>
-                      <Text style={[typography.body, { color: colors.text, fontWeight: '600' }]}>
-                        {room.name}
-                      </Text>
-                      {room.last_message_time && (
-                        <Text style={[typography.small, { color: colors.textSecondary }]}>
-                          {room.last_message_time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </Text>
-                      )}
+                <View style={enhancedStyles.cardBody}>
+                  <View style={[commonStyles.row, { alignItems: 'flex-start' }]}>
+                    <View style={{
+                      position: 'relative',
+                      marginRight: spacing.md,
+                      width: 48,
+                      height: 48,
+                      borderRadius: 24,
+                      backgroundColor: getRoomColor(room.type) + '15',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}>
+                      <Icon
+                        name={getRoomIcon(room.type) as any}
+                        size={28}
+                        style={{ color: getRoomColor(room.type) }}
+                      />
                     </View>
-                    
-                    <View style={[commonStyles.row, commonStyles.spaceBetween]}>
-                      <Text 
-                        style={[
-                          typography.caption, 
-                          { color: colors.textSecondary, flex: 1 }
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {room.last_message || 'No messages yet'}
-                      </Text>
-                      {room.unread_count > 0 && (
-                        <View style={{
-                          backgroundColor: themeColor,
-                          borderRadius: 10,
-                          minWidth: 20,
-                          height: 20,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          marginLeft: spacing.sm,
-                        }}>
-                          <Text style={[typography.small, { color: colors.background, fontWeight: '600' }]}>
-                            {room.unread_count}
+
+                    <View style={{ flex: 1 }}>
+                      <View style={[commonStyles.row, commonStyles.spaceBetween, { marginBottom: spacing.xs }]}>
+                        <Text style={enhancedStyles.titleText}>
+                          {room.name}
+                        </Text>
+                        {room.last_message_time && (
+                          <Text style={enhancedStyles.captionText}>
+                            {room.last_message_time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </Text>
-                        </View>
-                      )}
+                        )}
+                      </View>
+
+                      <View style={[commonStyles.row, commonStyles.spaceBetween]}>
+                        <Text
+                          style={[
+                            enhancedStyles.bodyText,
+                            { color: colors.textSecondary, flex: 1 }
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {room.last_message || 'No messages yet'}
+                        </Text>
+                        {room.unread_count > 0 && (
+                          <View style={[enhancedStyles.statusBadgeModern, {
+                            backgroundColor: themeColor,
+                            minWidth: 24,
+                            height: 24,
+                            borderRadius: 12,
+                            marginLeft: spacing.sm,
+                          }]}>
+                            <Text style={[enhancedStyles.statusText, { color: '#FFFFFF' }]}>
+                              {room.unread_count}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
                     </View>
                   </View>
                 </View>
-              </TouchableOpacity>
+              </AnimatedCard>
             ))
           )}
         </ScrollView>
+
+        {/* FAB - New Chat */}
+        <TouchableOpacity
+          style={[enhancedStyles.fab, { backgroundColor: themeColor, shadowColor: themeColor }]}
+          onPress={() => setShowNewChatModal(true)}
+        >
+          <Icon name="add" size={32} style={{ color: '#FFFFFF' }} />
+        </TouchableOpacity>
 
         <Modal
           visible={showNewChatModal}
@@ -424,30 +458,32 @@ export default function SupervisorChatScreen() {
   }
 
   return (
-    <KeyboardAvoidingView 
-      style={commonStyles.container}
+    <KeyboardAvoidingView
+      style={enhancedStyles.screenContainer}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
     >
-      <View style={[commonStyles.header, { backgroundColor: themeColor }]}>
-        <TouchableOpacity onPress={() => {
-          console.log('Going back to chat room list');
-          setSelectedRoom(null);
-        }}>
-          <Icon name="arrow-back" size={24} style={{ color: colors.background }} />
-        </TouchableOpacity>
-        <View style={{ flex: 1, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: spacing.sm }}>
-          <CompanyLogo size="small" showText={false} variant="light" />
-          <View style={{ alignItems: 'center' }}>
-            <Text style={[commonStyles.headerTitle, { fontSize: 18 }]}>{currentRoom?.name}</Text>
-            <Text style={[typography.small, { color: colors.background, opacity: 0.8 }]}>
-              {currentRoom?.members?.length || 0} members
-            </Text>
+      {/* Modern Chat Header */}
+      <View style={[enhancedStyles.modernHeader, { backgroundColor: themeColor }]}>
+        <View style={enhancedStyles.headerTop}>
+          <IconButton icon="arrow-back" onPress={() => {
+            console.log('Going back to chat room list');
+            setSelectedRoom(null);
+          }} variant="white" />
+          <View style={enhancedStyles.headerTitleContainer}>
+            <Icon name="chatbubbles" size={32} style={{ color: '#FFFFFF' }} />
           </View>
+          <TouchableOpacity onPress={() => router.push(`/supervisor/chat-room-settings?roomId=${selectedRoom}`)}>
+            <Icon name="ellipsis-vertical" size={28} style={{ color: '#FFFFFF' }} />
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity onPress={() => router.push(`/supervisor/chat-room-settings?roomId=${selectedRoom}`)}>
-          <Icon name="ellipsis-vertical" size={24} style={{ color: colors.background }} />
-        </TouchableOpacity>
+
+        <View>
+          <Text style={enhancedStyles.headerTitle}>{currentRoom?.name}</Text>
+          <Text style={enhancedStyles.headerSubtitle}>
+            {currentRoom?.members?.length || 0} {(currentRoom?.members?.length || 0) === 1 ? 'member' : 'members'}
+          </Text>
+        </View>
       </View>
 
       <ScrollView 
