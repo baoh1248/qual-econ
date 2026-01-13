@@ -8,6 +8,7 @@ import DateInput from '../DateInput';
 import type { ScheduleEntry } from '../../hooks/useScheduleStorage';
 import type { Client, ClientBuilding, Cleaner } from '../../hooks/useClientData';
 import { useTheme } from '../../hooks/useTheme';
+import { useTimeOffRequests } from '../../hooks/useTimeOffRequests';
 
 type ModalType = 'add' | 'edit' | 'add-client' | 'add-building' | 'add-cleaner' | 'details' | 'edit-client' | 'edit-building' | null;
 
@@ -129,6 +130,7 @@ const ScheduleModal = memo(({
   console.log('ScheduleModal rendered with type:', modalType, 'visible:', visible, 'isAddingFromGrid:', isAddingFromGrid);
 
   const { themeColor } = useTheme();
+  const { fetchApprovedTimeOff, isCleanerOnTimeOff, getCleanerTimeOffDetails } = useTimeOffRequests();
 
   // Local state for cleaner search
   const [cleanerSearchQuery, setCleanerSearchQuery] = useState('');
@@ -177,6 +179,23 @@ const ScheduleModal = memo(({
       }
     }
   }, [visible, modalType, isAddingFromGrid]);
+
+  // Fetch approved time off requests when modal opens or date changes
+  useEffect(() => {
+    if (visible && scheduleDate) {
+      // Fetch time off for a week range around the selected date for efficiency
+      const date = new Date(scheduleDate);
+      const startDate = new Date(date);
+      startDate.setDate(date.getDate() - 7);
+      const endDate = new Date(date);
+      endDate.setDate(date.getDate() + 7);
+
+      fetchApprovedTimeOff(
+        startDate.toISOString().split('T')[0],
+        endDate.toISOString().split('T')[0]
+      );
+    }
+  }, [visible, scheduleDate, fetchApprovedTimeOff]);
 
   // Filter buildings based on selected client
   const filteredBuildings = useMemo(() => {
@@ -830,31 +849,36 @@ const ScheduleModal = memo(({
                         const isSelected = selectedCleaners.includes(cleaner.name);
                         const securityLevel = cleaner.securityLevel || 'low';
                         const employeeId = cleaner.employeeId || 'N/A';
-                        
-                        const canAccess = selectedClientBuilding ? 
+
+                        const canAccess = selectedClientBuilding ?
                           canAccessJob(securityLevel, selectedClientBuilding.securityLevel) : true;
-                        
+
+                        // Check if cleaner has approved time off for the selected date
+                        const isOnTimeOff = scheduleDate ? isCleanerOnTimeOff(cleaner.name, scheduleDate) : false;
+                        const timeOffDetails = isOnTimeOff && scheduleDate ? getCleanerTimeOffDetails(cleaner.name, scheduleDate) : null;
+                        const canAssign = canAccess && !isOnTimeOff;
+
                         return (
                           <TouchableOpacity
                             key={index}
                             style={[
-                              styles.dropdownItem, 
+                              styles.dropdownItem,
                               isSelected && { backgroundColor: themeColor },
-                              !canAccess && styles.dropdownItemDisabled
+                              !canAssign && styles.dropdownItemDisabled
                             ]}
                             onPress={() => {
-                              if (canAccess) {
+                              if (canAssign) {
                                 toggleCleanerSelection(cleaner.name);
                               }
                             }}
-                            disabled={!canAccess}
+                            disabled={!canAssign}
                           >
                             <View style={styles.cleanerDropdownRow}>
                               <View style={styles.cleanerInfo}>
                                 <Text style={[
-                                  styles.dropdownText, 
+                                  styles.dropdownText,
                                   isSelected && styles.dropdownTextSelected,
-                                  !canAccess && styles.dropdownTextDisabled
+                                  !canAssign && styles.dropdownTextDisabled
                                 ]}>
                                   {cleaner.name}
                                 </Text>
@@ -862,7 +886,7 @@ const ScheduleModal = memo(({
                                   <Text style={[
                                     styles.cleanerMetadataText,
                                     isSelected && styles.cleanerMetadataTextSelected,
-                                    !canAccess && styles.cleanerMetadataTextDisabled
+                                    !canAssign && styles.cleanerMetadataTextDisabled
                                   ]}>
                                     ID: {employeeId} • {securityLevel.toUpperCase()} Security
                                     {cleaner.defaultHourlyRate && ` • $${cleaner.defaultHourlyRate.toFixed(2)}/hr`}
@@ -872,26 +896,45 @@ const ScheduleModal = memo(({
                                       Cannot access {selectedClientBuilding.securityLevel.toUpperCase()} security jobs
                                     </Text>
                                   )}
+                                  {isOnTimeOff && timeOffDetails && (
+                                    <Text style={styles.timeOffText}>
+                                      ⛱️ On approved time off - {timeOffDetails.reason}
+                                    </Text>
+                                  )}
                                 </View>
                               </View>
                               <View style={styles.cleanerActions}>
-                                <View style={[
-                                  styles.securityIndicator,
-                                  { backgroundColor: getSecurityLevelColor(securityLevel) + '20' }
-                                ]}>
-                                  <Icon 
-                                    name={getSecurityLevelIcon(securityLevel)} 
-                                    size={12} 
-                                    style={{ color: getSecurityLevelColor(securityLevel) }} 
-                                  />
-                                </View>
-                                <Icon 
-                                  name={isSelected ? "checkmark-circle" : "ellipse-outline"} 
-                                  size={20} 
-                                  style={{ 
-                                    color: isSelected ? colors.background : 
-                                           !canAccess ? colors.textSecondary + '50' : colors.textSecondary 
-                                  }} 
+                                {isOnTimeOff && (
+                                  <View style={[
+                                    styles.timeOffIndicator,
+                                    { backgroundColor: colors.warning + '20' }
+                                  ]}>
+                                    <Icon
+                                      name="calendar"
+                                      size={12}
+                                      style={{ color: colors.warning }}
+                                    />
+                                  </View>
+                                )}
+                                {!isOnTimeOff && (
+                                  <View style={[
+                                    styles.securityIndicator,
+                                    { backgroundColor: getSecurityLevelColor(securityLevel) + '20' }
+                                  ]}>
+                                    <Icon
+                                      name={getSecurityLevelIcon(securityLevel)}
+                                      size={12}
+                                      style={{ color: getSecurityLevelColor(securityLevel) }}
+                                    />
+                                  </View>
+                                )}
+                                <Icon
+                                  name={isSelected ? "checkmark-circle" : "ellipse-outline"}
+                                  size={20}
+                                  style={{
+                                    color: isSelected ? colors.background :
+                                           !canAssign ? colors.textSecondary + '50' : colors.textSecondary
+                                  }}
                                 />
                               </View>
                             </View>
@@ -1649,12 +1692,22 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     marginTop: 2,
   },
+  timeOffText: {
+    ...typography.small,
+    color: colors.warning,
+    fontStyle: 'italic',
+    marginTop: 2,
+  },
   cleanerActions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
   },
   securityIndicator: {
+    padding: 4,
+    borderRadius: 12,
+  },
+  timeOffIndicator: {
     padding: 4,
     borderRadius: 12,
   },

@@ -8,6 +8,7 @@ import IconButton from '../IconButton';
 import DateInput from '../DateInput';
 import { supabase } from '../../app/integrations/supabase/client';
 import type { Client, ClientBuilding, Cleaner } from '../../hooks/useClientData';
+import { useTimeOffRequests } from '../../hooks/useTimeOffRequests';
 import uuid from 'react-native-uuid';
 
 interface BuildingGroup {
@@ -41,7 +42,9 @@ const BuildingGroupScheduleModal = memo<BuildingGroupScheduleModalProps>(({
   date
 }) => {
   console.log('BuildingGroupScheduleModal rendered with date:', date);
-  
+
+  const { fetchApprovedTimeOff, isCleanerOnTimeOff, getCleanerTimeOffDetails } = useTimeOffRequests();
+
   const [buildingGroups, setBuildingGroups] = useState<BuildingGroup[]>([]);
   const [buildings, setBuildings] = useState<ClientBuilding[]>([]);
   const [loading, setLoading] = useState(false);
@@ -86,6 +89,23 @@ const BuildingGroupScheduleModal = memo<BuildingGroupScheduleModalProps>(({
       setNotes('');
     }
   }, [visible, date]);
+
+  // Fetch approved time off requests when modal opens or date changes
+  useEffect(() => {
+    if (visible && scheduleDate) {
+      // Fetch time off for a week range around the selected date
+      const dateObj = new Date(scheduleDate);
+      const startDate = new Date(dateObj);
+      startDate.setDate(dateObj.getDate() - 7);
+      const endDate = new Date(dateObj);
+      endDate.setDate(dateObj.getDate() + 7);
+
+      fetchApprovedTimeOff(
+        startDate.toISOString().split('T')[0],
+        endDate.toISOString().split('T')[0]
+      );
+    }
+  }, [visible, scheduleDate, fetchApprovedTimeOff]);
 
   const loadBuildingGroups = async () => {
     try {
@@ -499,28 +519,59 @@ const BuildingGroupScheduleModal = memo<BuildingGroupScheduleModalProps>(({
               <ScrollView style={{ maxHeight: 200 }} showsVerticalScrollIndicator={false}>
                 {cleaners.filter(c => c.isActive).map(cleaner => {
                   const isSelected = selectedCleaners.includes(cleaner.name);
+                  const isOnTimeOff = scheduleDate ? isCleanerOnTimeOff(cleaner.name, scheduleDate) : false;
+                  const timeOffDetails = isOnTimeOff && scheduleDate ? getCleanerTimeOffDetails(cleaner.name, scheduleDate) : null;
+                  const canAssign = !isOnTimeOff;
+
                   return (
                     <TouchableOpacity
                       key={cleaner.id}
                       style={[
                         styles.cleanerCard,
                         isSelected && styles.cleanerCardSelected,
+                        !canAssign && styles.cleanerCardDisabled,
                       ]}
-                      onPress={() => toggleCleanerSelection(cleaner.name)}
+                      onPress={() => canAssign && toggleCleanerSelection(cleaner.name)}
+                      disabled={!canAssign}
                     >
-                      <Icon 
-                        name={isSelected ? 'checkbox' : 'square-outline'} 
-                        size={24} 
-                        style={{ color: isSelected ? colors.primary : colors.textSecondary, marginRight: spacing.sm }} 
+                      <Icon
+                        name={isSelected ? 'checkbox' : 'square-outline'}
+                        size={24}
+                        style={{
+                          color: !canAssign ? colors.textSecondary + '50' : (isSelected ? colors.primary : colors.textSecondary),
+                          marginRight: spacing.sm
+                        }}
                       />
                       <View style={{ flex: 1 }}>
-                        <Text style={[styles.cleanerName, isSelected && { color: colors.primary }]}>
-                          {cleaner.name}
-                        </Text>
-                        <Text style={styles.cleanerInfo}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
+                          <Text style={[
+                            styles.cleanerName,
+                            isSelected && { color: colors.primary },
+                            !canAssign && { color: colors.textSecondary, opacity: 0.5 }
+                          ]}>
+                            {cleaner.name}
+                          </Text>
+                          {isOnTimeOff && (
+                            <View style={[styles.timeOffBadge, { backgroundColor: colors.warning + '20' }]}>
+                              <Icon name="calendar" size={10} style={{ color: colors.warning }} />
+                              <Text style={[styles.timeOffBadgeText, { color: colors.warning }]}>
+                                Time Off
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={[
+                          styles.cleanerInfo,
+                          !canAssign && { opacity: 0.5 }
+                        ]}>
                           {cleaner.employeeId} • {cleaner.securityLevel.toUpperCase()} Security
                           {cleaner.defaultHourlyRate && ` • $${cleaner.defaultHourlyRate.toFixed(2)}/hr`}
                         </Text>
+                        {isOnTimeOff && timeOffDetails && (
+                          <Text style={[styles.timeOffReason, { color: colors.warning }]}>
+                            ⛱️ {timeOffDetails.reason}
+                          </Text>
+                        )}
                       </View>
                     </TouchableOpacity>
                   );
@@ -755,6 +806,9 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
     backgroundColor: colors.primary + '10',
   },
+  cleanerCardDisabled: {
+    opacity: 0.5,
+  },
   cleanerName: {
     ...typography.body,
     color: colors.text,
@@ -764,6 +818,24 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.textSecondary,
     marginTop: 2,
+  },
+  timeOffBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  timeOffBadgeText: {
+    ...typography.caption,
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  timeOffReason: {
+    ...typography.caption,
+    marginTop: 2,
+    fontStyle: 'italic',
   },
   input: {
     backgroundColor: colors.background,
