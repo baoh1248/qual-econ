@@ -31,6 +31,7 @@ import UnassignedShiftNotifications from '../../components/UnassignedShiftNotifi
 import ScheduleChangeNotifications from '../../components/schedule/ScheduleChangeNotifications';
 import { projectToScheduleEntry, scheduleEntryExistsForProject } from '../../utils/projectScheduleSync';
 import { formatTimeRange } from '../../utils/timeFormatter';
+import { logShiftCreated, logShiftEdited, logShiftDeleted } from '../../utils/scheduleChangeLogger';
 import type { RecurringShiftPattern } from '../../utils/recurringShiftGenerator';
 import { 
   generateOccurrences, 
@@ -1087,6 +1088,16 @@ export default function ScheduleView() {
           console.log('✅ Entry saved successfully');
           showToast('Shift added successfully', 'success');
 
+          // Log the shift creation
+          await logShiftCreated({
+            clientName: savedEntry.clientName,
+            buildingName: savedEntry.buildingName,
+            cleanerNames: savedEntry.cleanerNames || [savedEntry.cleanerName],
+            shiftDate: savedEntry.date,
+            hours: savedEntry.hours,
+            shiftId: savedEntry.id,
+          });
+
           // Explicitly fetch fresh data to update UI
           const freshEntries = await fetchWeekSchedule(currentWeekId);
           setCurrentWeekSchedule(freshEntries);
@@ -1131,6 +1142,27 @@ export default function ScheduleView() {
           console.log('✅ Entry updated successfully');
           showToast('Shift updated successfully', 'success');
 
+          // Log the shift edit with changes
+          const changes: string[] = [];
+          if (JSON.stringify(selectedEntry.cleanerNames) !== JSON.stringify(selectedCleaners)) {
+            changes.push('cleaners updated');
+          }
+          if (selectedEntry.hours !== parseFloat(hours)) {
+            changes.push(`hours changed from ${selectedEntry.hours} to ${parseFloat(hours)}`);
+          }
+          if (selectedEntry.startTime !== startTime) {
+            changes.push('start time updated');
+          }
+
+          await logShiftEdited({
+            clientName: updatedEntry.clientName,
+            buildingName: updatedEntry.buildingName,
+            cleanerNames: updatedEntry.cleanerNames || [updatedEntry.cleanerName],
+            shiftDate: updatedEntry.date,
+            shiftId: updatedEntry.id,
+            changes: changes.length > 0 ? changes : ['shift details updated'],
+          });
+
           // Explicitly fetch fresh data to update UI
           const freshEntries = await fetchWeekSchedule(currentWeekId);
           setCurrentWeekSchedule(freshEntries);
@@ -1173,6 +1205,15 @@ export default function ScheduleView() {
 
       // Success! Show toast
       showToast('Shift deleted', 'success');
+
+      // Log the shift deletion
+      await logShiftDeleted({
+        clientName: selectedEntry.clientName,
+        buildingName: selectedEntry.buildingName,
+        cleanerNames: selectedEntry.cleanerNames || [selectedEntry.cleanerName],
+        shiftDate: selectedEntry.date,
+        shiftId: selectedEntry.id,
+      });
 
       // Refresh the schedule data
       const { data: freshData, error: fetchError } = await supabase
