@@ -117,28 +117,28 @@ export default function SupervisorTimeOffRequestsScreen() {
 
       let totalUnassigned = 0;
       const updatePromises: Promise<void>[] = [];
-      const shiftsToUpdate: Array<{ weekId: string; entryId: string; updates: any }> = [];
+      const shiftsToUpdate: Array<{ weekId: string; entryId: string; updates: any; originalEntry: any }> = [];
 
       for (const weekId of weeks) {
         const schedule = getWeekSchedule(weekId, true);
         console.log(`Week ${weekId}: ${schedule.length} entries`);
-        
+
         for (const entry of schedule) {
           if (!entry || !entry.date) continue;
-          
+
           const entryDate = new Date(entry.date);
           entryDate.setHours(0, 0, 0, 0);
-          
+
           if (entryDate >= start && entryDate <= end) {
-            const cleaners = entry.cleanerNames && entry.cleanerNames.length > 0 
-              ? entry.cleanerNames 
+            const cleaners = entry.cleanerNames && entry.cleanerNames.length > 0
+              ? entry.cleanerNames
               : (entry.cleanerName ? [entry.cleanerName] : []);
-            
+
             if (cleaners.includes(cleanerName)) {
               console.log(`Found shift to unassign: ${entry.id} on ${entry.date}`);
-              
+
               const updatedCleaners = cleaners.filter(name => name !== cleanerName);
-              
+
               if (updatedCleaners.length === 0) {
                 const updates = {
                   cleanerName: 'UNASSIGNED',
@@ -147,8 +147,8 @@ export default function SupervisorTimeOffRequestsScreen() {
                   status: 'scheduled' as const,
                   notes: `${entry.notes || ''}\n[Time off approved for ${cleanerName}]`.trim(),
                 };
-                
-                shiftsToUpdate.push({ weekId, entryId: entry.id, updates });
+
+                shiftsToUpdate.push({ weekId, entryId: entry.id, updates, originalEntry: entry });
                 console.log(`✅ Queued shift ${entry.id} to be marked as UNASSIGNED`);
                 totalUnassigned++;
               } else {
@@ -158,8 +158,8 @@ export default function SupervisorTimeOffRequestsScreen() {
                   cleanerIds: entry.cleanerIds?.filter((_, index) => cleaners[index] !== cleanerName) || [],
                   notes: `${entry.notes || ''}\n[${cleanerName} removed - time off approved]`.trim(),
                 };
-                
-                shiftsToUpdate.push({ weekId, entryId: entry.id, updates });
+
+                shiftsToUpdate.push({ weekId, entryId: entry.id, updates, originalEntry: entry });
                 console.log(`✅ Queued cleaner ${cleanerName} to be removed from shift ${entry.id}`);
                 totalUnassigned++;
               }
@@ -176,34 +176,27 @@ export default function SupervisorTimeOffRequestsScreen() {
 
       await Promise.all(updatePromises);
 
-      // Log each unassigned shift
+      // Log each unassigned shift IMMEDIATELY after updating, using the original entry data
       if (timeOffReason) {
-        for (const weekId of weeks) {
-          const schedule = getWeekSchedule(weekId, true);
-          for (const entry of schedule) {
-            if (!entry || !entry.date) continue;
-
-            const entryDate = new Date(entry.date);
-            entryDate.setHours(0, 0, 0, 0);
-
-            if (entryDate >= start && entryDate <= end) {
-              // Check if this shift was just unassigned (has UNASSIGNED or the cleaner was removed)
-              if (entry.cleanerName === 'UNASSIGNED' ||
-                  (entry.notes && entry.notes.includes(`Time off approved for ${cleanerName}`)) ||
-                  (entry.notes && entry.notes.includes(`${cleanerName} removed - time off approved`))) {
-                // Log the unassignment
-                await logShiftUnassignedTimeOff({
-                  clientName: entry.clientName,
-                  buildingName: entry.buildingName,
-                  cleanerName: cleanerName,
-                  shiftDate: entry.date,
-                  shiftId: entry.id,
-                  timeOffReason: timeOffReason,
-                });
-              }
-            }
+        console.log(`📝 Logging ${shiftsToUpdate.length} unassigned shifts...`);
+        for (const { originalEntry } of shiftsToUpdate) {
+          try {
+            console.log(`Logging unassignment for shift ${originalEntry.id} at ${originalEntry.clientName} - ${originalEntry.buildingName}`);
+            await logShiftUnassignedTimeOff({
+              clientName: originalEntry.clientName,
+              buildingName: originalEntry.buildingName,
+              cleanerName: cleanerName,
+              shiftDate: originalEntry.date,
+              shiftId: originalEntry.id,
+              timeOffReason: timeOffReason,
+            });
+            console.log(`✅ Logged successfully`);
+          } catch (logError) {
+            console.error(`❌ Failed to log shift ${originalEntry.id}:`, logError);
+            // Continue logging other shifts even if one fails
           }
         }
+        console.log(`✅ Finished logging all unassigned shifts`);
       }
 
       console.log(`✅ Total shifts unassigned: ${totalUnassigned}`);
@@ -230,29 +223,30 @@ export default function SupervisorTimeOffRequestsScreen() {
       console.log('Cleaner:', cleanerName);
       console.log('Dates:', dates);
       console.log('Recurring shift ID:', recurringShiftId);
-      
+
       let totalUnassigned = 0;
       const updatePromises: Promise<void>[] = [];
+      const shiftsToUpdate: Array<{ weekId: string; entryId: string; updates: any; originalEntry: any }> = [];
 
       for (const date of dates) {
         const weekId = getWeekIdFromDate(new Date(date));
         const schedule = getWeekSchedule(weekId, true);
-        
+
         console.log(`Processing date ${date} in week ${weekId}: ${schedule.length} entries`);
-        
+
         for (const entry of schedule) {
           if (entry.date === date) {
             if (recurringShiftId && entry.recurringId !== recurringShiftId) {
               continue;
             }
-            
+
             const cleaners = entry.cleanerNames || [entry.cleanerName];
-            
+
             if (cleaners.includes(cleanerName)) {
               console.log(`Found shift to unassign: ${entry.id} on ${entry.date}`);
-              
+
               const updatedCleaners = cleaners.filter(name => name !== cleanerName);
-              
+
               if (updatedCleaners.length === 0) {
                 const updates = {
                   cleanerName: 'UNASSIGNED',
@@ -261,10 +255,8 @@ export default function SupervisorTimeOffRequestsScreen() {
                   status: 'scheduled' as const,
                   notes: `${entry.notes || ''}\n[Time off approved for ${cleanerName}]`.trim(),
                 };
-                
-                const updatePromise = updateScheduleEntry(weekId, entry.id, updates);
-                updatePromises.push(updatePromise);
-                
+
+                shiftsToUpdate.push({ weekId, entryId: entry.id, updates, originalEntry: entry });
                 console.log(`✅ Queued shift ${entry.id} to be marked as UNASSIGNED`);
                 totalUnassigned++;
               } else {
@@ -274,10 +266,8 @@ export default function SupervisorTimeOffRequestsScreen() {
                   cleanerIds: entry.cleanerIds?.filter((_, index) => cleaners[index] !== cleanerName) || [],
                   notes: `${entry.notes || ''}\n[${cleanerName} removed - time off approved]`.trim(),
                 };
-                
-                const updatePromise = updateScheduleEntry(weekId, entry.id, updates);
-                updatePromises.push(updatePromise);
-                
+
+                shiftsToUpdate.push({ weekId, entryId: entry.id, updates, originalEntry: entry });
                 console.log(`✅ Queued cleaner ${cleanerName} to be removed from shift ${entry.id}`);
                 totalUnassigned++;
               }
@@ -286,33 +276,35 @@ export default function SupervisorTimeOffRequestsScreen() {
         }
       }
 
+      // Execute all updates
+      for (const { weekId, entryId, updates } of shiftsToUpdate) {
+        const updatePromise = updateScheduleEntry(weekId, entryId, updates);
+        updatePromises.push(updatePromise);
+      }
+
       await Promise.all(updatePromises);
 
-      // Log each unassigned shift
+      // Log each unassigned shift IMMEDIATELY after updating, using the original entry data
       if (timeOffReason) {
-        for (const date of dates) {
-          const weekId = getWeekIdFromDate(new Date(date));
-          const schedule = getWeekSchedule(weekId, true);
-
-          for (const entry of schedule) {
-            if (entry.date === date) {
-              // Check if this shift was just unassigned
-              if (entry.cleanerName === 'UNASSIGNED' ||
-                  (entry.notes && entry.notes.includes(`Time off approved for ${cleanerName}`)) ||
-                  (entry.notes && entry.notes.includes(`${cleanerName} removed - time off approved`))) {
-                // Log the unassignment
-                await logShiftUnassignedTimeOff({
-                  clientName: entry.clientName,
-                  buildingName: entry.buildingName,
-                  cleanerName: cleanerName,
-                  shiftDate: entry.date,
-                  shiftId: entry.id,
-                  timeOffReason: timeOffReason,
-                });
-              }
-            }
+        console.log(`📝 Logging ${shiftsToUpdate.length} unassigned shifts...`);
+        for (const { originalEntry } of shiftsToUpdate) {
+          try {
+            console.log(`Logging unassignment for shift ${originalEntry.id} at ${originalEntry.clientName} - ${originalEntry.buildingName}`);
+            await logShiftUnassignedTimeOff({
+              clientName: originalEntry.clientName,
+              buildingName: originalEntry.buildingName,
+              cleanerName: cleanerName,
+              shiftDate: originalEntry.date,
+              shiftId: originalEntry.id,
+              timeOffReason: timeOffReason,
+            });
+            console.log(`✅ Logged successfully`);
+          } catch (logError) {
+            console.error(`❌ Failed to log shift ${originalEntry.id}:`, logError);
+            // Continue logging other shifts even if one fails
           }
         }
+        console.log(`✅ Finished logging all unassigned shifts`);
       }
 
       console.log(`✅ Total shifts unassigned: ${totalUnassigned}`);
