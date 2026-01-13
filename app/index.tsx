@@ -2,31 +2,26 @@
 import { Redirect, router } from 'expo-router';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useState, useEffect } from 'react';
-import { supabase } from './integrations/supabase/client';
 import CompanyLogo from '../components/CompanyLogo';
 import Button from '../components/Button';
 import { commonStyles, colors, spacing, typography } from '../styles/commonStyles';
 import LoadingSpinner from '../components/LoadingSpinner';
+import { getSession, ROLE_LEVELS } from './utils/auth';
 
 export default function Index() {
   const [isLoading, setIsLoading] = useState(true);
-  const [session, setSession] = useState<any>(null);
+  const [userSession, setUserSession] = useState<any>(null);
 
   useEffect(() => {
     // Check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    const checkSession = async () => {
+      const session = await getSession();
       console.log('Current session:', session);
-      setSession(session);
+      setUserSession(session);
       setIsLoading(false);
-    });
+    };
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      console.log('Auth state changed:', _event, session);
-      setSession(session);
-    });
-
-    return () => subscription.unsubscribe();
+    checkSession();
   }, []);
 
   if (isLoading) {
@@ -38,10 +33,8 @@ export default function Index() {
   }
 
   // If user is logged in, redirect based on their role
-  if (session?.user) {
-    const userRole = session.user.user_metadata?.role;
-    
-    if (userRole === 'cleaner') {
+  if (userSession) {
+    if (userSession.roleLevel === ROLE_LEVELS.CLEANER) {
       return <Redirect href="/cleaner" />;
     } else {
       return <Redirect href="/supervisor" />;
@@ -60,29 +53,16 @@ export default function Index() {
         </Text>
 
         <View style={styles.buttonContainer}>
-          <Text style={styles.sectionTitle}>Cleaners</Text>
           <Button
-            text="Cleaner Sign In"
-            onPress={() => router.push('/auth/cleaner-signin')}
+            text="Sign In"
+            onPress={() => router.push('/auth/login')}
             variant="primary"
             style={styles.button}
           />
-          <Button
-            text="Cleaner Sign Up"
-            onPress={() => router.push('/auth/cleaner-signup')}
-            variant="secondary"
-            style={styles.button}
-          />
 
-          <View style={styles.divider} />
-
-          <Text style={styles.sectionTitle}>Supervisors</Text>
-          <Button
-            text="Supervisor Dashboard"
-            onPress={() => router.push('/supervisor')}
-            variant="primary"
-            style={styles.button}
-          />
+          <Text style={styles.helpText}>
+            Contact your administrator if you need help accessing your account
+          </Text>
         </View>
 
         <View style={styles.features}>
@@ -126,21 +106,17 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 400,
     marginBottom: spacing.xl,
-  },
-  sectionTitle: {
-    ...typography.h3,
-    color: colors.text,
-    marginBottom: spacing.md,
-    marginTop: spacing.lg,
-    fontWeight: '600',
+    alignItems: 'center',
   },
   button: {
     marginBottom: spacing.md,
+    width: '100%',
   },
-  divider: {
-    height: 1,
-    backgroundColor: colors.border,
-    marginVertical: spacing.lg,
+  helpText: {
+    ...typography.small,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: spacing.md,
   },
   features: {
     width: '100%',

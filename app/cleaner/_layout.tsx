@@ -3,10 +3,27 @@ import { Stack } from 'expo-router';
 import { View } from 'react-native';
 import { colors } from '../../styles/commonStyles';
 import BottomNavigation from '../../components/BottomNavigation';
+import { useProtectedRoute } from '../hooks/useAuth';
+import LoadingSpinner from '../../components/LoadingSpinner';
+import { commonStyles } from '../../styles/commonStyles';
 
 export default function CleanerLayout() {
-  console.log('CleanerLayout rendered');
-  
+  const { loading, session } = useProtectedRoute();
+
+  // Show loading spinner while checking auth
+  if (loading) {
+    return (
+      <View style={[commonStyles.container, commonStyles.centerContent]}>
+        <LoadingSpinner />
+      </View>
+    );
+  }
+
+  // If no session, useProtectedRoute will redirect to login
+  if (!session) {
+    return null;
+  }
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <Stack
