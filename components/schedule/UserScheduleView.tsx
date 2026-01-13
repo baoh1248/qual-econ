@@ -427,10 +427,12 @@ const styles = StyleSheet.create({
   dayHeaderColumn: {
     width: DAY_COLUMN_WIDTH,
     paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     borderRightWidth: 1,
     borderRightColor: colors.border,
+    minHeight: 60,
   },
   dayHeaderText: {
     ...typography.small,

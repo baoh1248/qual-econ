@@ -635,10 +635,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.md,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     borderRightWidth: 1,
     borderRightColor: '#E2E8F0',
     position: 'relative',
+    minHeight: 80,
   },
   dayHeaderCellToday: {
     backgroundColor: '#EFF6FF',
