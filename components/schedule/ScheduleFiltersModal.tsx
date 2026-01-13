@@ -449,6 +449,7 @@ const ScheduleFiltersModal = memo<ScheduleFiltersModalProps>(({
             title={hasActiveFilters ? 'Apply Filters' : 'Close'}
             onPress={handleApply}
             style={[styles.footerButton, { backgroundColor: themeColor }]}
+            textStyle={{ color: '#FFFFFF' }}
           />
         </View>
       </View>

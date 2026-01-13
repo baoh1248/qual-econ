@@ -29,7 +29,9 @@ interface ButtonProps {
   size?: ButtonSize;
   disabled?: boolean;
   loading?: boolean;
-  children: React.ReactNode;
+  children?: React.ReactNode;
+  title?: string;
+  text?: string;
   style?: ViewStyle;
   textStyle?: TextStyle;
 }
@@ -41,6 +43,8 @@ export const Button: React.FC<ButtonProps> = ({
   disabled = false,
   loading = false,
   children,
+  title,
+  text,
   style,
   textStyle,
 }) => {
@@ -99,6 +103,8 @@ export const Button: React.FC<ButtonProps> = ({
     }
   };
 
+  const buttonContent = title || text || children;
+
   return (
     <Pressable
       onPress={onPress}
@@ -128,7 +134,7 @@ export const Button: React.FC<ButtonProps> = ({
             textStyle,
           ])}
         >
-          {children}
+          {buttonContent}
         </Text>
       )}
     </Pressable>
