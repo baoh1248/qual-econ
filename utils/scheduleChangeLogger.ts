@@ -94,17 +94,31 @@ export async function logScheduleChange(params: {
       created_at: new Date().toISOString(),
     };
 
-    const { error } = await supabase
+    console.log('💾 Inserting log into database:', {
+      type: log.change_type,
+      description: log.description.substring(0, 50) + '...',
+      date: log.shift_date
+    });
+
+    const { data, error } = await supabase
       .from('schedule_change_logs')
-      .insert([log]);
+      .insert([log])
+      .select();
 
     if (error) {
-      console.error('Error logging schedule change:', error);
+      console.error('❌ Database error logging schedule change:', error);
+      console.error('Error code:', error.code);
+      console.error('Error message:', error.message);
+      console.error('Error details:', error.details);
+      throw error;
     } else {
-      console.log('✅ Schedule change logged:', params.changeType);
+      console.log('✅ Schedule change logged successfully:', params.changeType);
+      console.log('Inserted record:', data);
     }
-  } catch (error) {
-    console.error('Error in logScheduleChange:', error);
+  } catch (error: any) {
+    console.error('❌ Exception in logScheduleChange:', error);
+    console.error('Error message:', error.message);
+    throw error;
   }
 }
 

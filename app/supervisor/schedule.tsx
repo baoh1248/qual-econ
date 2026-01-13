@@ -1089,14 +1089,30 @@ export default function ScheduleView() {
           showToast('Shift added successfully', 'success');
 
           // Log the shift creation
-          await logShiftCreated({
-            clientName: savedEntry.clientName,
-            buildingName: savedEntry.buildingName,
-            cleanerNames: savedEntry.cleanerNames || [savedEntry.cleanerName],
-            shiftDate: savedEntry.date,
-            hours: savedEntry.hours,
-            shiftId: savedEntry.id,
-          });
+          try {
+            console.log('📝 Attempting to log shift creation:', {
+              client: savedEntry.clientName,
+              building: savedEntry.buildingName,
+              cleaners: savedEntry.cleanerNames || [savedEntry.cleanerName],
+              date: savedEntry.date,
+              hours: savedEntry.hours,
+              id: savedEntry.id
+            });
+
+            await logShiftCreated({
+              clientName: savedEntry.clientName,
+              buildingName: savedEntry.buildingName,
+              cleanerNames: savedEntry.cleanerNames || [savedEntry.cleanerName],
+              shiftDate: savedEntry.date,
+              hours: savedEntry.hours,
+              shiftId: savedEntry.id,
+            });
+
+            console.log('✅ Shift creation logged successfully');
+          } catch (logError: any) {
+            console.error('❌ Failed to log shift creation:', logError);
+            console.error('Error details:', logError.message, logError.code);
+          }
 
           // Explicitly fetch fresh data to update UI
           const freshEntries = await fetchWeekSchedule(currentWeekId);
@@ -1143,25 +1159,41 @@ export default function ScheduleView() {
           showToast('Shift updated successfully', 'success');
 
           // Log the shift edit with changes
-          const changes: string[] = [];
-          if (JSON.stringify(selectedEntry.cleanerNames) !== JSON.stringify(selectedCleaners)) {
-            changes.push('cleaners updated');
-          }
-          if (selectedEntry.hours !== parseFloat(hours)) {
-            changes.push(`hours changed from ${selectedEntry.hours} to ${parseFloat(hours)}`);
-          }
-          if (selectedEntry.startTime !== startTime) {
-            changes.push('start time updated');
-          }
+          try {
+            const changes: string[] = [];
+            if (JSON.stringify(selectedEntry.cleanerNames) !== JSON.stringify(selectedCleaners)) {
+              changes.push('cleaners updated');
+            }
+            if (selectedEntry.hours !== parseFloat(hours)) {
+              changes.push(`hours changed from ${selectedEntry.hours} to ${parseFloat(hours)}`);
+            }
+            if (selectedEntry.startTime !== startTime) {
+              changes.push('start time updated');
+            }
 
-          await logShiftEdited({
-            clientName: updatedEntry.clientName,
-            buildingName: updatedEntry.buildingName,
-            cleanerNames: updatedEntry.cleanerNames || [updatedEntry.cleanerName],
-            shiftDate: updatedEntry.date,
-            shiftId: updatedEntry.id,
-            changes: changes.length > 0 ? changes : ['shift details updated'],
-          });
+            console.log('📝 Attempting to log shift edit:', {
+              client: updatedEntry.clientName,
+              building: updatedEntry.buildingName,
+              cleaners: updatedEntry.cleanerNames || [updatedEntry.cleanerName],
+              date: updatedEntry.date,
+              id: updatedEntry.id,
+              changes: changes.length > 0 ? changes : ['shift details updated']
+            });
+
+            await logShiftEdited({
+              clientName: updatedEntry.clientName,
+              buildingName: updatedEntry.buildingName,
+              cleanerNames: updatedEntry.cleanerNames || [updatedEntry.cleanerName],
+              shiftDate: updatedEntry.date,
+              shiftId: updatedEntry.id,
+              changes: changes.length > 0 ? changes : ['shift details updated'],
+            });
+
+            console.log('✅ Shift edit logged successfully');
+          } catch (logError: any) {
+            console.error('❌ Failed to log shift edit:', logError);
+            console.error('Error details:', logError.message, logError.code);
+          }
 
           // Explicitly fetch fresh data to update UI
           const freshEntries = await fetchWeekSchedule(currentWeekId);
@@ -1207,13 +1239,28 @@ export default function ScheduleView() {
       showToast('Shift deleted', 'success');
 
       // Log the shift deletion
-      await logShiftDeleted({
-        clientName: selectedEntry.clientName,
-        buildingName: selectedEntry.buildingName,
-        cleanerNames: selectedEntry.cleanerNames || [selectedEntry.cleanerName],
-        shiftDate: selectedEntry.date,
-        shiftId: selectedEntry.id,
-      });
+      try {
+        console.log('📝 Attempting to log shift deletion:', {
+          client: selectedEntry.clientName,
+          building: selectedEntry.buildingName,
+          cleaners: selectedEntry.cleanerNames || [selectedEntry.cleanerName],
+          date: selectedEntry.date,
+          id: selectedEntry.id
+        });
+
+        await logShiftDeleted({
+          clientName: selectedEntry.clientName,
+          buildingName: selectedEntry.buildingName,
+          cleanerNames: selectedEntry.cleanerNames || [selectedEntry.cleanerName],
+          shiftDate: selectedEntry.date,
+          shiftId: selectedEntry.id,
+        });
+
+        console.log('✅ Shift deletion logged successfully');
+      } catch (logError: any) {
+        console.error('❌ Failed to log shift deletion:', logError);
+        console.error('Error details:', logError.message, logError.code);
+      }
 
       // Refresh the schedule data
       const { data: freshData, error: fetchError } = await supabase
