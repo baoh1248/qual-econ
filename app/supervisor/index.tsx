@@ -210,23 +210,28 @@ const SupervisorDashboard = () => {
     <View style={styles.container}>
       {/* Header */}
       <View style={[styles.header, { backgroundColor: themeColor }]}>
-        <CompanyLogo />
-        <Text style={styles.title}>Supervisor Dashboard</Text>
-        <View style={styles.headerActions}>
-          {/* Settings button */}
-          <TouchableOpacity
-            onPress={() => router.push('/supervisor/settings')}
-            style={styles.settingsButton}
-          >
-            <Icon name="settings" size={20} style={{ color: colors.background }} />
-          </TouchableOpacity>
-          
-          <InventoryAlertBadge 
-            lowStockCount={lowStockCount} 
-            criticalStockCount={criticalStockCount}
-            onPress={() => router.push('/supervisor/inventory')}
-          />
+        <View style={styles.headerRow}>
+          <CompanyLogo size="small" showText={false} variant="light" />
+          <View style={styles.headerActions}>
+            {/* Settings button */}
+            <TouchableOpacity
+              onPress={() => router.push('/supervisor/settings')}
+              style={styles.settingsButton}
+            >
+              <Icon name="settings" size={22} style={{ color: colors.background }} />
+            </TouchableOpacity>
+
+            <InventoryAlertBadge
+              lowStockCount={lowStockCount}
+              criticalStockCount={criticalStockCount}
+              onPress={() => router.push('/supervisor/inventory')}
+            />
+          </View>
         </View>
+        <Text style={styles.title}>Supervisor Dashboard</Text>
+        <Text style={styles.subtitle}>
+          {teamMembers.length} team members • {taskSummary.completed} tasks completed today
+        </Text>
       </View>
 
       <ScrollView
@@ -238,9 +243,11 @@ const SupervisorDashboard = () => {
       >
         {/* Quick Stats */}
         <View style={styles.statsContainer}>
-          <AnimatedCard style={styles.statCard}>
+          <AnimatedCard style={[styles.statCard, { borderLeftColor: themeColor }]}>
             <View style={styles.statContent}>
-              <Icon name="people" size={24} style={{ color: themeColor }} />
+              <View style={[styles.statIconContainer, { backgroundColor: themeColor + '15' }]}>
+                <Icon name="people" size={24} style={{ color: themeColor }} />
+              </View>
               <View style={styles.statText}>
                 <Text style={styles.statValue}>{teamMembers.length}</Text>
                 <Text style={styles.statLabel}>Team Members</Text>
@@ -248,9 +255,11 @@ const SupervisorDashboard = () => {
             </View>
           </AnimatedCard>
 
-          <AnimatedCard style={styles.statCard}>
+          <AnimatedCard style={[styles.statCard, { borderLeftColor: colors.success }]}>
             <View style={styles.statContent}>
-              <Icon name="checkmark-circle" size={24} style={{ color: colors.success }} />
+              <View style={[styles.statIconContainer, { backgroundColor: colors.success + '15' }]}>
+                <Icon name="checkmark-circle" size={24} style={{ color: colors.success }} />
+              </View>
               <View style={styles.statText}>
                 <Text style={styles.statValue}>{taskSummary.completed}</Text>
                 <Text style={styles.statLabel}>Completed</Text>
@@ -258,9 +267,11 @@ const SupervisorDashboard = () => {
             </View>
           </AnimatedCard>
 
-          <AnimatedCard style={styles.statCard}>
+          <AnimatedCard style={[styles.statCard, { borderLeftColor: colors.warning }]}>
             <View style={styles.statContent}>
-              <Icon name="time" size={24} style={{ color: colors.warning }} />
+              <View style={[styles.statIconContainer, { backgroundColor: colors.warning + '15' }]}>
+                <Icon name="time" size={24} style={{ color: colors.warning }} />
+              </View>
               <View style={styles.statText}>
                 <Text style={styles.statValue}>{taskSummary.inProgress}</Text>
                 <Text style={styles.statLabel}>In Progress</Text>
@@ -268,9 +279,11 @@ const SupervisorDashboard = () => {
             </View>
           </AnimatedCard>
 
-          <AnimatedCard style={styles.statCard}>
+          <AnimatedCard style={[styles.statCard, { borderLeftColor: colors.danger }]}>
             <View style={styles.statContent}>
-              <Icon name="alert-circle" size={24} style={{ color: colors.danger }} />
+              <View style={[styles.statIconContainer, { backgroundColor: colors.danger + '15' }]}>
+                <Icon name="alert-circle" size={24} style={{ color: colors.danger }} />
+              </View>
               <View style={styles.statText}>
                 <Text style={styles.statValue}>{taskSummary.overdue}</Text>
                 <Text style={styles.statLabel}>Overdue</Text>
@@ -525,21 +538,37 @@ const SupervisorDashboard = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: '#F5F7FA',
   },
   header: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.xxl,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    marginBottom: spacing.md,
   },
   title: {
-    ...typography.h2,
-    color: colors.textInverse,
-    fontWeight: '600',
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
+    marginTop: spacing.sm,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.9)',
+    marginTop: spacing.xs,
   },
   headerActions: {
     flexDirection: 'row',
@@ -547,9 +576,9 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   settingsButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
@@ -557,38 +586,57 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: spacing.lg,
+    paddingBottom: 80,
   },
   statsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     marginBottom: spacing.lg,
-    gap: spacing.md,
+    gap: spacing.sm,
+    marginTop: -spacing.xl,
   },
   statCard: {
     flex: 1,
     minWidth: '45%',
     padding: spacing.md,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderLeftWidth: 4,
+    elevation: 3,
   },
   statContent: {
-    flexDirection: 'row',
     alignItems: 'center',
   },
+  statIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
+  },
   statText: {
-    marginLeft: spacing.md,
+    alignItems: 'center',
   },
   statValue: {
-    ...typography.h2,
+    fontSize: 24,
     color: colors.text,
-    fontWeight: '700',
-    marginBottom: 2,
+    fontWeight: '800',
+    marginBottom: 4,
   },
   statLabel: {
-    ...typography.small,
+    fontSize: 12,
     color: colors.textSecondary,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   liveMapCard: {
     marginBottom: spacing.lg,
     padding: spacing.lg,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    elevation: 4,
   },
   liveMapHeader: {
     flexDirection: 'row',
@@ -628,6 +676,9 @@ const styles = StyleSheet.create({
   cleanersCard: {
     marginBottom: spacing.lg,
     padding: spacing.lg,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    elevation: 4,
   },
   cleanersHeader: {
     flexDirection: 'row',
@@ -667,6 +718,9 @@ const styles = StyleSheet.create({
   progressCard: {
     marginBottom: spacing.lg,
     padding: spacing.lg,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    elevation: 4,
   },
   progressHeader: {
     flexDirection: 'row',
@@ -709,6 +763,9 @@ const styles = StyleSheet.create({
   teamCard: {
     marginBottom: spacing.lg,
     padding: spacing.lg,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    elevation: 4,
   },
   cardHeader: {
     flexDirection: 'row',
@@ -784,6 +841,9 @@ const styles = StyleSheet.create({
   clientCard: {
     marginBottom: spacing.lg,
     padding: spacing.lg,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    elevation: 4,
   },
   clientItem: {
     flexDirection: 'row',
@@ -834,12 +894,12 @@ const styles = StyleSheet.create({
   actionButton: {
     flex: 1,
     minWidth: '45%',
-    backgroundColor: colors.backgroundAlt,
-    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
     padding: spacing.lg,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
+    elevation: 3,
+    borderWidth: 0,
   },
   actionButtonText: {
     ...typography.body,
