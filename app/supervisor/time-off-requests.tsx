@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, TextInput, Modal, RefreshControl, Pressable } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, TextInput, Modal, RefreshControl, Pressable, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { useTheme } from '../../hooks/useTheme';
 import { useDatabase } from '../../hooks/useDatabase';
@@ -374,72 +374,89 @@ export default function SupervisorTimeOffRequestsScreen() {
 
   const handleApproveRequest = async (request: TimeOffRequest) => {
     console.log('🔘 handleApproveRequest called for:', request.cleaner_name);
-    Alert.alert(
-      'Approve Time Off Request',
-      `Approve time off for ${request.cleaner_name}?\n\nThis will unassign their shifts during the requested time period.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Approve',
-          onPress: async () => {
-            try {
-              console.log('=== APPROVING TIME OFF REQUEST ===');
-              console.log('Request:', request);
+    console.log('Platform:', Platform.OS);
 
-              const { error: updateError } = await supabase
-                .from('time_off_requests')
-                .update({
-                  status: 'approved',
-                  reviewed_by: 'Supervisor',
-                  reviewed_at: new Date().toISOString(),
-                  updated_at: new Date().toISOString(),
-                })
-                .eq('id', request.id);
+    const approveRequest = async () => {
+      try {
+        console.log('=== APPROVING TIME OFF REQUEST ===');
+        console.log('Request:', request);
 
-              if (updateError) throw updateError;
+        const { error: updateError } = await supabase
+          .from('time_off_requests')
+          .update({
+            status: 'approved',
+            reviewed_by: 'Supervisor',
+            reviewed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', request.id);
 
-              console.log('✅ Time off request status updated in database');
+        if (updateError) throw updateError;
 
-              let unassignedCount = 0;
+        console.log('✅ Time off request status updated in database');
 
-              if (request.request_type === 'date_range' && request.start_date && request.end_date) {
-                unassignedCount = await unassignShiftsInDateRange(
-                  request.cleaner_name,
-                  request.start_date,
-                  request.end_date
-                );
-              } else if (request.request_type === 'recurring_instances' && request.requested_dates) {
-                unassignedCount = await unassignShiftsOnDates(
-                  request.cleaner_name,
-                  request.requested_dates,
-                  request.recurring_shift_id
-                );
-              } else if (request.request_type === 'single_shift' && request.shift_date) {
-                unassignedCount = await unassignShiftsOnDates(
-                  request.cleaner_name,
-                  [request.shift_date],
-                  undefined
-                );
-              }
+        let unassignedCount = 0;
 
-              await createUnassignedShiftNotifications(request, unassignedCount);
+        if (request.request_type === 'date_range' && request.start_date && request.end_date) {
+          unassignedCount = await unassignShiftsInDateRange(
+            request.cleaner_name,
+            request.start_date,
+            request.end_date
+          );
+        } else if (request.request_type === 'recurring_instances' && request.requested_dates) {
+          unassignedCount = await unassignShiftsOnDates(
+            request.cleaner_name,
+            request.requested_dates,
+            request.recurring_shift_id
+          );
+        } else if (request.request_type === 'single_shift' && request.shift_date) {
+          unassignedCount = await unassignShiftsOnDates(
+            request.cleaner_name,
+            [request.shift_date],
+            undefined
+          );
+        }
 
-              console.log('🔄 Clearing all schedule caches and reloading data...');
-              clearCaches();
-              await reloadScheduleData();
+        await createUnassignedShiftNotifications(request, unassignedCount);
 
-              showToast(`Time off approved - ${unassignedCount} shift${unassignedCount !== 1 ? 's' : ''} unassigned`, 'success');
-              await loadTimeOffRequests();
-              
-              console.log('✅ TIME OFF REQUEST APPROVAL COMPLETED ===');
-            } catch (error) {
-              console.error('❌ Error approving request:', error);
-              showToast('Failed to approve request', 'error');
-            }
+        console.log('🔄 Clearing all schedule caches and reloading data...');
+        clearCaches();
+        await reloadScheduleData();
+
+        showToast(`Time off approved - ${unassignedCount} shift${unassignedCount !== 1 ? 's' : ''} unassigned`, 'success');
+        await loadTimeOffRequests();
+
+        console.log('✅ TIME OFF REQUEST APPROVAL COMPLETED ===');
+      } catch (error) {
+        console.error('❌ Error approving request:', error);
+        showToast('Failed to approve request', 'error');
+      }
+    };
+
+    // Use native confirm for web, Alert.alert for mobile
+    if (Platform.OS === 'web') {
+      console.log('Using web confirm dialog');
+      const confirmed = window.confirm(
+        `Approve time off for ${request.cleaner_name}?\n\nThis will unassign their shifts during the requested time period.`
+      );
+      console.log('User confirmed:', confirmed);
+      if (confirmed) {
+        await approveRequest();
+      }
+    } else {
+      console.log('Using Alert.alert');
+      Alert.alert(
+        'Approve Time Off Request',
+        `Approve time off for ${request.cleaner_name}?\n\nThis will unassign their shifts during the requested time period.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Approve',
+            onPress: approveRequest,
           },
-        },
-      ]
-    );
+        ]
+      );
+    }
   };
 
   const handleDeclineRequest = (request: TimeOffRequest) => {
