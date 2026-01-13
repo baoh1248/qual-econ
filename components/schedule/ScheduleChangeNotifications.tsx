@@ -138,24 +138,30 @@ const ScheduleChangeNotifications: React.FC<ScheduleChangeNotificationsProps> = 
     }
   };
 
-  const formatTimeAgo = (dateString: string): string => {
+  const formatTimestamp = (dateString: string): string => {
     const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffSecs = Math.floor(diffMs / 1000);
-    const diffMins = Math.floor(diffSecs / 60);
-    const diffHours = Math.floor(diffMins / 60);
-    const diffDays = Math.floor(diffHours / 24);
 
-    if (diffDays > 0) {
-      return `${diffDays}d ago`;
-    } else if (diffHours > 0) {
-      return `${diffHours}h ago`;
-    } else if (diffMins > 0) {
-      return `${diffMins}m ago`;
-    } else {
-      return 'Just now';
-    }
+    // Format time as "1:00 PM"
+    const time = date.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
+
+    // Format date as "Jan 13th 2026"
+    const day = date.getDate();
+    const suffix = day === 1 || day === 21 || day === 31 ? 'st'
+                  : day === 2 || day === 22 ? 'nd'
+                  : day === 3 || day === 23 ? 'rd'
+                  : 'th';
+
+    const dateStr = date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    }).replace(/(\d+),/, `$1${suffix},`);
+
+    return `${time} ${dateStr}`;
   };
 
   const formatDate = (dateString?: string): string => {
@@ -187,13 +193,13 @@ const ScheduleChangeNotifications: React.FC<ScheduleChangeNotificationsProps> = 
             </Text>
             <Text style={styles.changeMetaText}> • </Text>
             <Text style={styles.changeMetaText}>
-              {formatTimeAgo(change.created_at)}
+              {formatTimestamp(change.created_at)}
             </Text>
             {change.shift_date && (
               <>
                 <Text style={styles.changeMetaText}> • </Text>
                 <Text style={styles.changeMetaText}>
-                  {formatDate(change.shift_date)}
+                  Shift: {formatDate(change.shift_date)}
                 </Text>
               </>
             )}
