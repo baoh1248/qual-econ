@@ -530,6 +530,11 @@ export default function ScheduleView() {
   const scheduleWithTimeOff = useMemo(() => {
     const timeOffEntries: ScheduleEntry[] = [];
 
+    // Ensure timeOffRequests is defined
+    if (!timeOffRequests || timeOffRequests.length === 0) {
+      return currentWeekSchedule;
+    }
+
     // Transform approved time off requests into schedule-like entries
     timeOffRequests.forEach(request => {
       const dates: string[] = [];
@@ -549,7 +554,9 @@ export default function ScheduleView() {
 
       // Create a time off entry for each date
       dates.forEach(date => {
-        const dayOfWeek = new Date(date).toLocaleDateString('en-US', { weekday: 'lowercase' }) as any;
+        const dateObj = new Date(date);
+        const dayOfWeek = dateObj.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase() as any;
+
         timeOffEntries.push({
           id: `timeoff-${request.id}-${date}`,
           clientName: '⛱️ Time Off',
@@ -560,7 +567,7 @@ export default function ScheduleView() {
           day: dayOfWeek,
           date: date,
           status: 'scheduled',
-          weekId: getWeekIdFromDate(new Date(date)),
+          weekId: getWeekIdFromDate(dateObj),
           notes: `Time off: ${request.reason}`,
           // Mark this as a time off entry so we can style it differently
           isTimeOff: true,
