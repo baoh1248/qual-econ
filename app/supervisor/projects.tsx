@@ -13,7 +13,9 @@ import LoadingSpinner from '../../components/LoadingSpinner';
 import Icon from '../../components/Icon';
 import IconButton from '../../components/IconButton';
 import CompanyLogo from '../../components/CompanyLogo';
+import ProjectModal from '../../components/ProjectModal';
 import { commonStyles, colors, spacing, typography } from '../../styles/commonStyles';
+import uuid from 'react-native-uuid';
 
 interface ClientProject {
   id: string;
@@ -48,6 +50,8 @@ const ProjectsScreen = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'completed' | 'cancelled' | 'on-hold'>('all');
   const [filterBilling, setFilterBilling] = useState<'all' | 'included' | 'billable'>('all');
+  const [showProjectModal, setShowProjectModal] = useState(false);
+  const [selectedProject, setSelectedProject] = useState<ClientProject | undefined>(undefined);
 
   // Load projects from database
   const loadProjects = useCallback(async () => {
@@ -116,28 +120,141 @@ const ProjectsScreen = () => {
           onPress: async () => {
             try {
               console.log('Deleting project...');
-              
+
               // Delete related resources
               await executeQuery('delete', 'project_labor', undefined, { project_id: projectId });
               await executeQuery('delete', 'project_equipment', undefined, { project_id: projectId });
               await executeQuery('delete', 'project_vehicles', undefined, { project_id: projectId });
               await executeQuery('delete', 'project_supplies', undefined, { project_id: projectId });
               await executeQuery('delete', 'project_completions', undefined, { project_id: projectId });
-              
+
               await executeQuery<ClientProject>(
                 'delete',
                 'client_projects',
                 undefined,
                 { id: projectId }
               );
-              
+
               console.log('✓ Project deleted successfully');
               showToast('Project deleted successfully', 'success');
-              
+
               await loadProjects();
             } catch (error: any) {
               console.error('Error deleting project:', error);
               showToast(`Failed to delete project: ${error?.message || 'Unknown error'}`, 'error');
+            }
+          },
+        },
+      ]
+    );
+  }, [executeQuery, showToast, loadProjects]);
+
+  const handleAddProject = useCallback(() => {
+    setSelectedProject(undefined);
+    setShowProjectModal(true);
+  }, []);
+
+  const handleEditProject = useCallback((project: ClientProject) => {
+    setSelectedProject(project);
+    setShowProjectModal(true);
+  }, []);
+
+  const handleSaveProject = useCallback(async (project: ClientProject) => {
+    try {
+      if (selectedProject?.id) {
+        // Update existing project
+        console.log('Updating project...');
+        await executeQuery(
+          'update',
+          'client_projects',
+          {
+            client_name: project.client_name,
+            building_name: project.building_name || null,
+            project_name: project.project_name,
+            description: project.description || null,
+            frequency: project.frequency,
+            is_included_in_contract: project.is_included_in_contract,
+            billing_amount: project.billing_amount,
+            status: project.status,
+            next_scheduled_date: project.next_scheduled_date || null,
+            notes: project.notes || null,
+            work_order_number: project.work_order_number || null,
+            invoice_number: project.invoice_number || null,
+            is_recurring: project.is_recurring,
+            updated_at: new Date().toISOString(),
+          },
+          { id: selectedProject.id }
+        );
+        console.log('✓ Project updated successfully');
+        showToast('Project updated successfully', 'success');
+      } else {
+        // Create new project
+        console.log('Creating new project...');
+        const newProject = {
+          id: uuid.v4() as string,
+          client_name: project.client_name,
+          building_name: project.building_name || null,
+          project_name: project.project_name,
+          description: project.description || null,
+          frequency: project.frequency,
+          is_included_in_contract: project.is_included_in_contract,
+          billing_amount: project.billing_amount,
+          status: project.status,
+          next_scheduled_date: project.next_scheduled_date || null,
+          notes: project.notes || null,
+          work_order_number: project.work_order_number || null,
+          invoice_number: project.invoice_number || null,
+          is_recurring: project.is_recurring,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+
+        await executeQuery('insert', 'client_projects', newProject);
+        console.log('✓ Project created successfully');
+        showToast('Project created successfully', 'success');
+      }
+
+      await loadProjects();
+      setShowProjectModal(false);
+      setSelectedProject(undefined);
+    } catch (error: any) {
+      console.error('Error saving project:', error);
+      showToast(`Failed to save project: ${error?.message || 'Unknown error'}`, 'error');
+      throw error;
+    }
+  }, [selectedProject, executeQuery, showToast, loadProjects]);
+
+  const handleCompleteProject = useCallback(async (project: ClientProject) => {
+    Alert.alert(
+      'Complete Project',
+      `Mark "${project.project_name}" as completed?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Complete',
+          style: 'default',
+          onPress: async () => {
+            try {
+              console.log('Marking project as completed...');
+
+              await executeQuery(
+                'update',
+                'client_projects',
+                {
+                  status: 'completed',
+                  last_completed_date: new Date().toISOString(),
+                  updated_at: new Date().toISOString(),
+                },
+                { id: project.id }
+              );
+
+              console.log('✓ Project marked as completed');
+              showToast('Project marked as completed', 'success');
+
+              await loadProjects();
+            } catch (error: any) {
+              console.error('Error completing project:', error);
+              showToast(`Failed to complete project: ${error?.message || 'Unknown error'}`, 'error');
             }
           },
         },
@@ -384,10 +501,7 @@ const ProjectsScreen = () => {
         </View>
         <IconButton
           icon="add"
-          onPress={() => {
-            console.log('Add button pressed - Feature coming soon!');
-            showToast('Add project feature coming soon!', 'info');
-          }}
+          onPress={handleAddProject}
           variant="white"
         />
       </View>
@@ -460,10 +574,10 @@ const ProjectsScreen = () => {
             <Text style={styles.emptyStateText}>
               {projects.length === 0 ? 'No projects yet' : 'No projects match your filters'}
             </Text>
-            <Button 
-              text="Add Your First Project" 
-              onPress={() => showToast('Add project feature coming soon!', 'info')} 
-              variant="primary" 
+            <Button
+              text="Add Your First Project"
+              onPress={handleAddProject}
+              variant="primary"
             />
           </View>
         ) : (
@@ -541,22 +655,22 @@ const ProjectsScreen = () => {
               <View style={styles.projectActions}>
                 <TouchableOpacity
                   style={styles.actionButton}
-                  onPress={() => showToast('Mark complete feature coming soon!', 'info')}
+                  onPress={() => handleCompleteProject(project)}
                 >
                   <Icon name="checkmark-done" size={20} style={{ color: colors.success }} />
                   <Text style={[styles.actionButtonText, { color: colors.success }]}>Complete</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity 
-                  style={styles.actionButton} 
-                  onPress={() => showToast('Edit feature coming soon!', 'info')}
+                <TouchableOpacity
+                  style={styles.actionButton}
+                  onPress={() => handleEditProject(project)}
                 >
                   <Icon name="create" size={20} style={{ color: colors.warning }} />
                   <Text style={[styles.actionButtonText, { color: colors.warning }]}>Edit</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity 
-                  style={styles.actionButton} 
+                <TouchableOpacity
+                  style={styles.actionButton}
                   onPress={() => handleDeleteProject(project.id)}
                 >
                   <Icon name="trash" size={20} style={{ color: colors.danger }} />
@@ -567,6 +681,18 @@ const ProjectsScreen = () => {
           ))
         )}
       </ScrollView>
+
+      <ProjectModal
+        visible={showProjectModal}
+        onClose={() => {
+          setShowProjectModal(false);
+          setSelectedProject(undefined);
+        }}
+        onSave={handleSaveProject}
+        project={selectedProject}
+        clients={clients}
+        themeColor={themeColor}
+      />
 
       <Toast />
     </View>
