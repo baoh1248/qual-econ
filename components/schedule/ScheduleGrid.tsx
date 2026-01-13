@@ -312,10 +312,12 @@ const styles = StyleSheet.create({
   },
   dayHeaderCell: {
     paddingHorizontal: spacing.xs,
-    justifyContent: 'center',
+    paddingVertical: spacing.sm,
+    justifyContent: 'flex-start',
     alignItems: 'center',
     borderRightWidth: 1,
     borderRightColor: colors.border,
+    minHeight: 60,
   },
   headerText: {
     ...typography.body,
