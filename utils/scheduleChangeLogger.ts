@@ -248,20 +248,15 @@ export async function logCleanerRemoved(params: {
  * Fetch recent schedule changes
  */
 export async function fetchRecentChanges(limit: number = 50): Promise<ScheduleChangeLog[]> {
-  try {
-    const { data, error } = await supabase
-      .from('schedule_change_logs')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(limit);
+  const { data, error } = await supabase
+    .from('schedule_change_logs')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit);
 
-    if (error) throw error;
+  if (error) throw error;
 
-    return data || [];
-  } catch (error) {
-    console.error('Error fetching schedule changes:', error);
-    return [];
-  }
+  return data || [];
 }
 
 /**
@@ -271,39 +266,29 @@ export async function fetchChangesByDateRange(
   startDate: string,
   endDate: string
 ): Promise<ScheduleChangeLog[]> {
-  try {
-    const { data, error } = await supabase
-      .from('schedule_change_logs')
-      .select('*')
-      .gte('shift_date', startDate)
-      .lte('shift_date', endDate)
-      .order('created_at', { ascending: false });
+  const { data, error } = await supabase
+    .from('schedule_change_logs')
+    .select('*')
+    .gte('shift_date', startDate)
+    .lte('shift_date', endDate)
+    .order('created_at', { ascending: false });
 
-    if (error) throw error;
+  if (error) throw error;
 
-    return data || [];
-  } catch (error) {
-    console.error('Error fetching schedule changes by date:', error);
-    return [];
-  }
+  return data || [];
 }
 
 /**
  * Fetch schedule changes for a specific shift
  */
 export async function fetchChangesByShiftId(shiftId: string): Promise<ScheduleChangeLog[]> {
-  try {
-    const { data, error } = await supabase
-      .from('schedule_change_logs')
-      .select('*')
-      .eq('shift_id', shiftId)
-      .order('created_at', { ascending: false });
+  const { data, error } = await supabase
+    .from('schedule_change_logs')
+    .select('*')
+    .eq('shift_id', shiftId)
+    .order('created_at', { ascending: false });
 
-    if (error) throw error;
+  if (error) throw error;
 
-    return data || [];
-  } catch (error) {
-    console.error('Error fetching schedule changes by shift ID:', error);
-    return [];
-  }
+  return data || [];
 }
