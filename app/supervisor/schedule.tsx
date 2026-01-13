@@ -7,6 +7,7 @@ import { useClientData, type Client, type ClientBuilding, type Cleaner } from '.
 import { useToast } from '../../hooks/useToast';
 import { useDatabase } from '../../hooks/useDatabase';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
+import { supabase } from '../integrations/supabase/client';
 import { commonStyles, colors, spacing, typography, buttonStyles } from '../../styles/commonStyles';
 import { enhancedStyles } from '../../styles/enhancedStyles';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -1076,76 +1077,87 @@ export default function ScheduleView() {
   }, [modalType, selectedClientBuilding, selectedCleaners, hours, startTime, selectedDay, currentDate, currentWeekId, selectedEntry, addScheduleEntry, updateScheduleEntry, fetchWeekSchedule, handleModalClose, showToast, addHoursToTime]);
 
   const handleModalDelete = useCallback(async () => {
-    console.log('=== SCHEDULE MODAL DELETE HANDLER ===');
-    console.log('Selected entry:', selectedEntry);
-
     if (!selectedEntry) {
-      console.error('❌ No entry selected for deletion');
-      showToast('No entry selected', 'error');
+      showToast('No shift selected', 'error');
       return;
     }
 
-    console.log('📝 Entry to delete:', {
-      id: selectedEntry.id,
-      cleaner: selectedEntry.cleanerName,
-      building: selectedEntry.buildingName,
-      date: selectedEntry.date,
-      day: selectedEntry.day
-    });
-
     Alert.alert(
       'Delete Shift',
-      `Are you sure you want to delete the shift for ${selectedEntry.cleanerName} at ${selectedEntry.buildingName}?\n\nDate: ${selectedEntry.date}\nDay: ${selectedEntry.day}`,
+      `Delete shift for ${selectedEntry.cleanerName} at ${selectedEntry.buildingName}?`,
       [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-          onPress: () => console.log('❌ Delete cancelled by user')
-        },
+        { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
             try {
-              console.log('🗑️ Starting delete operation for entry:', selectedEntry.id);
+              // Store values before deletion
+              const entryId = selectedEntry.id;
+              const entryWeekId = selectedEntry.weekId;
 
-              // Use the simplified hook - it handles Supabase delete + refetch
-              const success = await deleteScheduleEntry(selectedEntry.id);
+              // Direct Supabase delete - simple and straightforward
+              const { error: deleteError } = await supabase
+                .from('schedule_entries')
+                .delete()
+                .eq('id', entryId);
 
-              console.log('Delete operation result:', success);
+              if (deleteError) {
+                throw deleteError;
+              }
 
-              if (success) {
-                console.log('✅ Entry deleted successfully from Supabase');
-                showToast('Shift deleted successfully', 'success');
+              // Success! Show toast
+              showToast('Shift deleted', 'success');
 
-                // Explicitly fetch fresh data to update UI
-                console.log('🔄 Fetching fresh schedule data for week:', currentWeekId);
-                const freshEntries = await fetchWeekSchedule(currentWeekId);
-                console.log(`✅ Fetched ${freshEntries.length} entries after delete`);
+              // Refresh the schedule data directly from Supabase
+              const { data: freshData, error: fetchError } = await supabase
+                .from('schedule_entries')
+                .select('*')
+                .eq('week_id', entryWeekId)
+                .order('date', { ascending: true })
+                .order('start_time', { ascending: true });
 
+              if (!fetchError && freshData) {
+                // Convert database format to app format
+                const freshEntries = freshData.map((row: any) => ({
+                  id: row.id,
+                  clientName: row.client_name || '',
+                  buildingName: row.building_name || '',
+                  cleanerName: row.cleaner_name || '',
+                  cleanerNames: row.cleaner_names || [],
+                  cleanerIds: row.cleaner_ids || [],
+                  hours: parseFloat(row.hours) || 0,
+                  day: row.day || 'monday',
+                  date: row.date || '',
+                  startTime: row.start_time || null,
+                  endTime: row.end_time || null,
+                  status: row.status || 'scheduled',
+                  weekId: row.week_id || '',
+                  notes: row.notes || null,
+                  priority: row.priority || 'medium',
+                  isRecurring: row.is_recurring || false,
+                  recurringId: row.recurring_id || null,
+                  isProject: row.is_project || false,
+                  projectId: row.project_id || null,
+                  projectName: row.project_name || null,
+                }));
+
+                // Update the UI with fresh data
                 setCurrentWeekSchedule(freshEntries);
                 setScheduleKey(prev => prev + 1);
-                console.log('✅ UI state updated, closing modal');
-
-                handleModalClose();
-              } else {
-                console.error('❌ Delete operation returned false');
-                throw new Error('Delete operation failed - returned false');
               }
+
+              // Close the modal
+              handleModalClose();
             } catch (error: any) {
-              console.error('❌ Error during delete operation:', error);
-              console.error('Error details:', {
-                message: error.message,
-                stack: error.stack,
-                name: error.name
-              });
-              showToast(`Failed to delete shift: ${error.message || 'Unknown error'}`, 'error');
+              console.error('Delete failed:', error);
+              showToast(error.message || 'Failed to delete shift', 'error');
             }
           },
         },
       ]
     );
-  }, [selectedEntry, deleteScheduleEntry, fetchWeekSchedule, currentWeekId, handleModalClose, showToast]);
+  }, [selectedEntry, currentWeekId, handleModalClose, showToast]);
 
   const handleAddClient = useCallback(async () => {
     console.log('Adding client:', newClientName);
