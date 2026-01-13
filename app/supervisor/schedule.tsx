@@ -28,6 +28,7 @@ import LoadingSpinner from '../../components/LoadingSpinner';
 import CompanyLogo from '../../components/CompanyLogo';
 import IconButton from '../../components/IconButton';
 import UnassignedShiftNotifications from '../../components/UnassignedShiftNotifications';
+import ScheduleChangeNotifications from '../../components/schedule/ScheduleChangeNotifications';
 import { projectToScheduleEntry, scheduleEntryExistsForProject } from '../../utils/projectScheduleSync';
 import { formatTimeRange } from '../../utils/timeFormatter';
 import type { RecurringShiftPattern } from '../../utils/recurringShiftGenerator';
@@ -117,6 +118,7 @@ export default function ScheduleView() {
   const [scheduleKey, setScheduleKey] = useState(0);
   
   const [showFiltersModal, setShowFiltersModal] = useState(false);
+  const [showChangeNotifications, setShowChangeNotifications] = useState(false);
   const [filters, setFilters] = useState<ScheduleFilters>({
     shiftType: 'all',
     clientName: '',
@@ -1799,6 +1801,13 @@ export default function ScheduleView() {
             />
 
             <TouchableOpacity
+              onPress={() => setShowChangeNotifications(true)}
+              style={[buttonStyles.backButton, { backgroundColor: 'rgba(255,255,255,0.2)' }]}
+            >
+              <Icon name="time" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
               onPress={() => setShowFiltersModal(true)}
               style={[buttonStyles.backButton, { backgroundColor: 'rgba(255,255,255,0.2)', position: 'relative' }]}
             >
@@ -2034,6 +2043,11 @@ export default function ScheduleView() {
         weekId={currentWeekId}
         day={selectedDay || 'monday'}
         date={currentDate.toISOString().split('T')[0]}
+      />
+
+      <ScheduleChangeNotifications
+        visible={showChangeNotifications}
+        onClose={() => setShowChangeNotifications(false)}
       />
 
       <Toast />
