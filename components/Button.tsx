@@ -20,7 +20,7 @@ const zincColors = {
   900: '#18181b',
 };
 
-type ButtonVariant = "filled" | "outline" | "ghost";
+type ButtonVariant = "filled" | "outline" | "ghost" | "primary" | "secondary" | "danger" | "light" | "white";
 type ButtonSize = "sm" | "md" | "lg";
 
 interface ButtonProps {
@@ -74,6 +74,33 @@ export const Button: React.FC<ButtonProps> = ({
           ...baseStyle,
           backgroundColor: isDark ? zincColors[50] : zincColors[900],
         };
+      case "primary":
+        return {
+          ...baseStyle,
+          backgroundColor: appleBlue,
+        };
+      case "secondary":
+        return {
+          ...baseStyle,
+          backgroundColor: "transparent",
+          borderWidth: 2,
+          borderColor: appleBlue,
+        };
+      case "danger":
+        return {
+          ...baseStyle,
+          backgroundColor: colors.danger || "#EF4444",
+        };
+      case "light":
+        return {
+          ...baseStyle,
+          backgroundColor: isDark ? zincColors[700] : zincColors[50],
+        };
+      case "white":
+        return {
+          ...baseStyle,
+          backgroundColor: "#FFFFFF",
+        };
       case "outline":
         return {
           ...baseStyle,
@@ -97,6 +124,16 @@ export const Button: React.FC<ButtonProps> = ({
     switch (variant) {
       case "filled":
         return isDark ? zincColors[900] : zincColors[50];
+      case "primary":
+        return "#FFFFFF";
+      case "secondary":
+        return appleBlue;
+      case "danger":
+        return "#FFFFFF";
+      case "light":
+        return isDark ? zincColors[50] : zincColors[900];
+      case "white":
+        return appleBlue;
       case "outline":
       case "ghost":
         return appleBlue;
