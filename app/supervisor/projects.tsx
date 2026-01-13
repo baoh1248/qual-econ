@@ -309,207 +309,342 @@ const ProjectsScreen = () => {
   const styles = StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: colors.background,
+      backgroundColor: '#F5F7FA',
     },
     header: {
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.xl,
+      paddingBottom: spacing.xxl,
+      backgroundColor: themeColor,
+      borderBottomLeftRadius: 24,
+      borderBottomRightRadius: 24,
+      ...commonStyles.shadow,
+      elevation: 8,
+    },
+    headerTop: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      paddingHorizontal: spacing.lg,
-      paddingVertical: spacing.md,
-      backgroundColor: themeColor,
+      marginBottom: spacing.lg,
     },
-    filtersContainer: {
-      paddingHorizontal: spacing.lg,
-      paddingVertical: spacing.md,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
+    headerTitleContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    headerTitle: {
+      fontSize: 28,
+      fontWeight: '700',
+      color: '#FFFFFF',
+      letterSpacing: 0.5,
+    },
+    headerSubtitle: {
+      fontSize: 14,
+      color: 'rgba(255,255,255,0.9)',
+      marginTop: spacing.xs,
     },
     searchContainer: {
       flexDirection: 'row',
       alignItems: 'center',
-      backgroundColor: colors.backgroundAlt,
-      borderRadius: 8,
+      backgroundColor: 'rgba(255,255,255,0.95)',
+      borderRadius: 16,
       paddingHorizontal: spacing.md,
-      marginBottom: spacing.sm,
+      marginTop: spacing.md,
+      ...commonStyles.shadow,
+      elevation: 2,
     },
     searchIcon: {
-      color: colors.textSecondary,
+      color: themeColor,
       marginRight: spacing.sm,
     },
     searchInput: {
       flex: 1,
-      paddingVertical: spacing.sm,
+      paddingVertical: spacing.md,
       fontSize: 16,
       color: colors.text,
+    },
+    filtersContainer: {
+      marginTop: -spacing.xl,
+      paddingHorizontal: spacing.lg,
+      paddingBottom: spacing.md,
+    },
+    filterScrollView: {
+      flexGrow: 0,
     },
     filterRow: {
       flexDirection: 'row',
       gap: spacing.sm,
     },
     filterChip: {
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.xs,
-      borderRadius: 16,
-      backgroundColor: colors.backgroundAlt,
-      borderWidth: 1,
-      borderColor: colors.border,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.sm,
+      borderRadius: 20,
+      backgroundColor: '#FFFFFF',
+      borderWidth: 2,
+      borderColor: '#E0E6ED',
+      ...commonStyles.shadow,
+      elevation: 2,
     },
     filterChipActive: {
       backgroundColor: themeColor,
       borderColor: themeColor,
+      elevation: 4,
     },
     filterChipText: {
-      ...typography.small,
+      fontSize: 14,
       color: colors.text,
-      fontWeight: '500',
+      fontWeight: '600',
     },
     filterChipTextActive: {
-      color: colors.background,
-      fontWeight: '600',
+      color: '#FFFFFF',
+      fontWeight: '700',
     },
     statsContainer: {
       flexDirection: 'row',
       paddingHorizontal: spacing.lg,
       paddingVertical: spacing.md,
       gap: spacing.sm,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
     },
     statCard: {
       flex: 1,
-      backgroundColor: colors.backgroundAlt,
-      borderRadius: 8,
+      backgroundColor: '#FFFFFF',
+      borderRadius: 16,
       padding: spacing.md,
       alignItems: 'center',
+      ...commonStyles.shadow,
+      elevation: 3,
+      borderLeftWidth: 4,
+      borderLeftColor: themeColor,
+    },
+    statIconContainer: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: themeColor + '15',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: spacing.xs,
     },
     statValue: {
-      ...typography.h2,
-      color: themeColor,
-      fontWeight: 'bold',
+      fontSize: 24,
+      color: colors.text,
+      fontWeight: '800',
       marginBottom: spacing.xs,
     },
     statLabel: {
-      ...typography.small,
+      fontSize: 12,
       color: colors.textSecondary,
+      fontWeight: '600',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
     },
     content: {
       flex: 1,
       paddingHorizontal: spacing.lg,
       paddingTop: spacing.md,
+      paddingBottom: 80,
     },
     emptyState: {
       flex: 1,
       alignItems: 'center',
       justifyContent: 'center',
       paddingVertical: spacing.xxl,
+      paddingHorizontal: spacing.lg,
+    },
+    emptyStateIconContainer: {
+      width: 120,
+      height: 120,
+      borderRadius: 60,
+      backgroundColor: themeColor + '10',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: spacing.lg,
     },
     emptyStateText: {
-      ...typography.h3,
+      fontSize: 20,
+      fontWeight: '700',
+      color: colors.text,
+      marginBottom: spacing.xs,
+      textAlign: 'center',
+    },
+    emptyStateSubtext: {
+      fontSize: 14,
       color: colors.textSecondary,
-      marginVertical: spacing.lg,
+      textAlign: 'center',
+      marginBottom: spacing.lg,
     },
     projectCard: {
       marginBottom: spacing.md,
-      padding: spacing.md,
-      backgroundColor: colors.backgroundAlt,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: colors.border,
+      backgroundColor: '#FFFFFF',
+      borderRadius: 20,
+      overflow: 'hidden',
+      ...commonStyles.shadow,
+      elevation: 4,
     },
-    projectHeader: {
-      marginBottom: spacing.sm,
+    projectCardHeader: {
+      padding: spacing.md,
+      backgroundColor: themeColor + '08',
+      borderLeftWidth: 4,
+      borderLeftColor: themeColor,
     },
     projectTitleRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
-      alignItems: 'center',
+      alignItems: 'flex-start',
       marginBottom: spacing.xs,
     },
+    projectNameContainer: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
     projectName: {
-      ...typography.h3,
+      fontSize: 18,
       color: colors.text,
-      fontWeight: '600',
+      fontWeight: '700',
       flex: 1,
     },
-    clientName: {
-      ...typography.body,
-      color: colors.textSecondary,
-    },
-    projectDescription: {
-      ...typography.body,
-      color: colors.text,
-      marginBottom: spacing.sm,
-    },
-    projectDetails: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: spacing.md,
-      marginBottom: spacing.sm,
-    },
-    detailItem: {
+    statusBadge: {
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.xs,
+      borderRadius: 16,
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.xs,
     },
-    detailText: {
-      ...typography.small,
-      color: colors.textSecondary,
-    },
-    statusBadge: {
-      paddingHorizontal: spacing.sm,
-      paddingVertical: spacing.xs,
-      borderRadius: 12,
+    statusDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
     },
     statusText: {
-      ...typography.small,
-      fontWeight: '600',
-      textTransform: 'capitalize',
+      fontSize: 12,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
     },
-    projectActions: {
-      flexDirection: 'row',
-      justifyContent: 'space-around',
-      paddingTop: spacing.sm,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
-    },
-    actionButton: {
+    clientRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.xs,
+      marginTop: spacing.xs,
+    },
+    clientName: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      fontWeight: '600',
+    },
+    projectBody: {
+      padding: spacing.md,
+    },
+    projectDescription: {
+      fontSize: 14,
+      color: colors.text,
+      lineHeight: 20,
+      marginBottom: spacing.md,
+    },
+    detailsGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: spacing.sm,
+      marginBottom: spacing.md,
+    },
+    detailChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      paddingHorizontal: spacing.md,
       paddingVertical: spacing.xs,
-      paddingHorizontal: spacing.sm,
+      borderRadius: 12,
+      backgroundColor: '#F5F7FA',
+      borderWidth: 1,
+      borderColor: '#E0E6ED',
+    },
+    detailChipIcon: {
+      opacity: 0.7,
+    },
+    detailChipText: {
+      fontSize: 13,
+      color: colors.text,
+      fontWeight: '600',
+    },
+    projectFooter: {
+      flexDirection: 'row',
+      borderTopWidth: 1,
+      borderTopColor: '#F0F3F7',
+      backgroundColor: '#FAFBFC',
+    },
+    actionButton: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.xs,
+      paddingVertical: spacing.md,
+      borderRightWidth: 1,
+      borderRightColor: '#F0F3F7',
+    },
+    actionButtonLast: {
+      borderRightWidth: 0,
     },
     actionButtonText: {
-      ...typography.small,
-      fontWeight: '600',
+      fontSize: 13,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    fab: {
+      position: 'absolute',
+      right: spacing.lg,
+      bottom: spacing.xl,
+      width: 64,
+      height: 64,
+      borderRadius: 32,
+      backgroundColor: themeColor,
+      alignItems: 'center',
+      justifyContent: 'center',
+      ...commonStyles.shadow,
+      elevation: 8,
+      shadowColor: themeColor,
+      shadowOpacity: 0.4,
+      shadowRadius: 12,
+    },
+    sectionTitle: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: colors.text,
+      marginBottom: spacing.sm,
+      marginTop: spacing.xs,
     },
   });
 
   return (
     <View style={styles.container}>
-      {/* Header */}
+      {/* Enhanced Header */}
       <View style={styles.header}>
-        <IconButton 
-          icon="arrow-back" 
-          onPress={() => router.back()} 
-          variant="white"
-        />
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-          <CompanyLogo size="small" showText={false} variant="light" />
-          <Text style={commonStyles.headerTitle}>Client Projects</Text>
+        <View style={styles.headerTop}>
+          <IconButton
+            icon="arrow-back"
+            onPress={() => router.back()}
+            variant="white"
+          />
+          <View style={styles.headerTitleContainer}>
+            <Icon name="briefcase" size={32} style={{ color: '#FFFFFF' }} />
+          </View>
+          <View style={{ width: 40 }} />
         </View>
-        <IconButton
-          icon="add"
-          onPress={handleAddProject}
-          variant="white"
-        />
-      </View>
 
-      {/* Filters */}
-      <View style={styles.filtersContainer}>
+        <View>
+          <Text style={styles.headerTitle}>Client Projects</Text>
+          <Text style={styles.headerSubtitle}>
+            {projects.length} {projects.length === 1 ? 'project' : 'projects'} • {projects.filter(p => p.status === 'active').length} active
+          </Text>
+        </View>
+
+        {/* Search Bar in Header */}
         <View style={styles.searchContainer}>
-          <Icon name="search" size={20} style={styles.searchIcon} />
+          <Icon name="search" size={22} style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
             placeholder="Search projects..."
@@ -518,47 +653,84 @@ const ProjectsScreen = () => {
             placeholderTextColor={colors.textSecondary}
           />
         </View>
-
-        <View style={styles.filterRow}>
-          <TouchableOpacity
-            style={[styles.filterChip, filterStatus !== 'all' && styles.filterChipActive]}
-            onPress={() => setFilterStatus(filterStatus === 'all' ? 'active' : 'all')}
-          >
-            <Text style={[styles.filterChipText, filterStatus !== 'all' && styles.filterChipTextActive]}>
-              {filterStatus === 'all' ? 'All Status' : filterStatus.charAt(0).toUpperCase() + filterStatus.slice(1)}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.filterChip, filterBilling !== 'all' && styles.filterChipActive]}
-            onPress={() => {
-              if (filterBilling === 'all') setFilterBilling('included');
-              else if (filterBilling === 'included') setFilterBilling('billable');
-              else setFilterBilling('all');
-            }}
-          >
-            <Text style={[styles.filterChipText, filterBilling !== 'all' && styles.filterChipTextActive]}>
-              {filterBilling === 'all' ? 'All Projects' : filterBilling === 'included' ? 'Included' : 'Billable'}
-            </Text>
-          </TouchableOpacity>
-        </View>
       </View>
 
-      {/* Stats Summary */}
+      {/* Filter Chips */}
+      <View style={styles.filtersContainer}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterScrollView}
+        >
+          <View style={styles.filterRow}>
+            <TouchableOpacity
+              style={[styles.filterChip, filterStatus === 'all' && styles.filterChipActive]}
+              onPress={() => setFilterStatus('all')}
+            >
+              <Text style={[styles.filterChipText, filterStatus === 'all' && styles.filterChipTextActive]}>
+                All Status
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.filterChip, filterStatus === 'active' && styles.filterChipActive]}
+              onPress={() => setFilterStatus('active')}
+            >
+              <Text style={[styles.filterChipText, filterStatus === 'active' && styles.filterChipTextActive]}>
+                Active
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.filterChip, filterStatus === 'completed' && styles.filterChipActive]}
+              onPress={() => setFilterStatus('completed')}
+            >
+              <Text style={[styles.filterChipText, filterStatus === 'completed' && styles.filterChipTextActive]}>
+                Completed
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.filterChip, filterBilling === 'included' && styles.filterChipActive]}
+              onPress={() => setFilterBilling('included')}
+            >
+              <Text style={[styles.filterChipText, filterBilling === 'included' && styles.filterChipTextActive]}>
+                Included
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.filterChip, filterBilling === 'billable' && styles.filterChipActive]}
+              onPress={() => setFilterBilling('billable')}
+            >
+              <Text style={[styles.filterChipText, filterBilling === 'billable' && styles.filterChipTextActive]}>
+                Billable
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </View>
+
+      {/* Enhanced Stats Summary */}
       <View style={styles.statsContainer}>
         <View style={styles.statCard}>
+          <View style={styles.statIconContainer}>
+            <Icon name="checkmark-circle" size={24} style={{ color: themeColor }} />
+          </View>
           <Text style={styles.statValue}>{projects.filter((p) => p.status === 'active').length}</Text>
           <Text style={styles.statLabel}>Active</Text>
         </View>
         <View style={styles.statCard}>
+          <View style={styles.statIconContainer}>
+            <Icon name="documents" size={24} style={{ color: themeColor }} />
+          </View>
           <Text style={styles.statValue}>{projects.filter((p) => p.is_included_in_contract).length}</Text>
           <Text style={styles.statLabel}>Included</Text>
         </View>
         <View style={styles.statCard}>
-          <Text style={styles.statValue}>{projects.filter((p) => !p.is_included_in_contract).length}</Text>
-          <Text style={styles.statLabel}>Billable</Text>
-        </View>
-        <View style={styles.statCard}>
+          <View style={styles.statIconContainer}>
+            <Icon name="cash" size={24} style={{ color: themeColor }} />
+          </View>
           <Text style={[styles.statValue, { color: colors.success }]}>
             ${projects.filter((p) => !p.is_included_in_contract).reduce((sum, p) => sum + p.billing_amount, 0).toFixed(0)}
           </Text>
@@ -570,117 +742,154 @@ const ProjectsScreen = () => {
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {filteredProjects.length === 0 ? (
           <View style={styles.emptyState}>
-            <Icon name="folder-open-outline" size={64} style={{ color: colors.textSecondary }} />
+            <View style={styles.emptyStateIconContainer}>
+              <Icon name="folder-open-outline" size={64} style={{ color: themeColor }} />
+            </View>
             <Text style={styles.emptyStateText}>
-              {projects.length === 0 ? 'No projects yet' : 'No projects match your filters'}
+              {projects.length === 0 ? 'No Projects Yet' : 'No Matching Projects'}
             </Text>
-            <Button
-              text="Add Your First Project"
-              onPress={handleAddProject}
-              variant="primary"
-            />
+            <Text style={styles.emptyStateSubtext}>
+              {projects.length === 0
+                ? 'Start by creating your first project to track work orders and billing'
+                : 'Try adjusting your filters to find what you\'re looking for'}
+            </Text>
+            {projects.length === 0 && (
+              <Button
+                text="Create First Project"
+                onPress={handleAddProject}
+                variant="primary"
+              />
+            )}
           </View>
         ) : (
-          filteredProjects.map((project) => (
-            <AnimatedCard key={project.id} style={styles.projectCard}>
-              <View style={styles.projectHeader}>
-                <View style={styles.projectTitleRow}>
-                  <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
-                    {project.is_recurring && (
-                      <Icon name="repeat" size={20} style={{ color: themeColor }} />
-                    )}
-                    <Text style={[styles.projectName, { flex: 1 }]}>{project.project_name}</Text>
+          <>
+            {filteredProjects.length > 0 && (
+              <Text style={styles.sectionTitle}>
+                {filteredProjects.length} {filteredProjects.length === 1 ? 'Project' : 'Projects'}
+              </Text>
+            )}
+            {filteredProjects.map((project) => (
+              <AnimatedCard key={project.id} style={styles.projectCard}>
+                {/* Card Header */}
+                <View style={styles.projectCardHeader}>
+                  <View style={styles.projectTitleRow}>
+                    <View style={styles.projectNameContainer}>
+                      {project.is_recurring && (
+                        <Icon name="repeat" size={22} style={{ color: themeColor }} />
+                      )}
+                      <Text style={styles.projectName}>{project.project_name}</Text>
+                    </View>
+                    <View
+                      style={[styles.statusBadge, { backgroundColor: getStatusColor(project.status) + '20' }]}
+                    >
+                      <View style={[styles.statusDot, { backgroundColor: getStatusColor(project.status) }]} />
+                      <Text style={[styles.statusText, { color: getStatusColor(project.status) }]}>
+                        {project.status}
+                      </Text>
+                    </View>
                   </View>
-                  <View
-                    style={[styles.statusBadge, { backgroundColor: getStatusColor(project.status) + '20' }]}
-                  >
-                    <Text style={[styles.statusText, { color: getStatusColor(project.status) }]}>
-                      {project.status}
+
+                  <View style={styles.clientRow}>
+                    <Icon name="business" size={16} style={{ color: colors.textSecondary }} />
+                    <Text style={styles.clientName}>
+                      {project.client_name}
+                      {project.building_name && ` • ${project.building_name}`}
                     </Text>
                   </View>
                 </View>
-                <Text style={styles.clientName}>
-                  {project.client_name}
-                  {project.building_name && ` • ${project.building_name}`}
-                </Text>
-              </View>
 
-              {project.description && (
-                <Text style={styles.projectDescription} numberOfLines={2}>
-                  {project.description}
-                </Text>
-              )}
+                {/* Card Body */}
+                <View style={styles.projectBody}>
+                  {project.description && (
+                    <Text style={styles.projectDescription} numberOfLines={2}>
+                      {project.description}
+                    </Text>
+                  )}
 
-              <View style={styles.projectDetails}>
-                {project.work_order_number && (
-                  <View style={styles.detailItem}>
-                    <Icon name="document-text" size={16} style={{ color: themeColor }} />
-                    <Text style={styles.detailText}>WO: {project.work_order_number}</Text>
+                  <View style={styles.detailsGrid}>
+                    {project.work_order_number && (
+                      <View style={styles.detailChip}>
+                        <Icon name="document-text" size={16} style={[{ color: themeColor }, styles.detailChipIcon]} />
+                        <Text style={styles.detailChipText}>WO: {project.work_order_number}</Text>
+                      </View>
+                    )}
+
+                    {project.invoice_number && (
+                      <View style={styles.detailChip}>
+                        <Icon name="receipt" size={16} style={[{ color: colors.warning }, styles.detailChipIcon]} />
+                        <Text style={styles.detailChipText}>INV: {project.invoice_number}</Text>
+                      </View>
+                    )}
+
+                    <View style={styles.detailChip}>
+                      <Icon name="time" size={16} style={[{ color: colors.textSecondary }, styles.detailChipIcon]} />
+                      <Text style={styles.detailChipText}>{getFrequencyLabel(project.frequency)}</Text>
+                    </View>
+
+                    <View style={[styles.detailChip, {
+                      backgroundColor: project.is_included_in_contract ? colors.success + '15' : colors.warning + '15',
+                      borderColor: project.is_included_in_contract ? colors.success + '30' : colors.warning + '30'
+                    }]}>
+                      <Icon
+                        name={project.is_included_in_contract ? 'checkmark-circle' : 'cash'}
+                        size={16}
+                        style={{
+                          color: project.is_included_in_contract ? colors.success : colors.warning,
+                        }}
+                      />
+                      <Text style={[styles.detailChipText, {
+                        color: project.is_included_in_contract ? colors.success : colors.warning,
+                        fontWeight: '700',
+                      }]}>
+                        {project.is_included_in_contract ? 'Included' : `$${project.billing_amount.toFixed(2)}`}
+                      </Text>
+                    </View>
+
+                    {project.next_scheduled_date && (
+                      <View style={styles.detailChip}>
+                        <Icon name="calendar" size={16} style={[{ color: themeColor }, styles.detailChipIcon]} />
+                        <Text style={styles.detailChipText}>{formatDate(project.next_scheduled_date)}</Text>
+                      </View>
+                    )}
                   </View>
-                )}
-
-                {project.invoice_number && (
-                  <View style={styles.detailItem}>
-                    <Icon name="receipt" size={16} style={{ color: colors.warning }} />
-                    <Text style={styles.detailText}>INV: {project.invoice_number}</Text>
-                  </View>
-                )}
-
-                <View style={styles.detailItem}>
-                  <Icon name="repeat" size={16} style={{ color: colors.textSecondary }} />
-                  <Text style={styles.detailText}>{getFrequencyLabel(project.frequency)}</Text>
                 </View>
 
-                <View style={styles.detailItem}>
-                  <Icon
-                    name={project.is_included_in_contract ? 'checkmark-circle' : 'cash'}
-                    size={16}
-                    style={{
-                      color: project.is_included_in_contract ? colors.success : colors.warning,
-                    }}
-                  />
-                  <Text style={styles.detailText}>
-                    {project.is_included_in_contract ? 'Included' : `$${project.billing_amount.toFixed(2)}`}
-                  </Text>
+                {/* Card Footer - Action Buttons */}
+                <View style={styles.projectFooter}>
+                  <TouchableOpacity
+                    style={styles.actionButton}
+                    onPress={() => handleCompleteProject(project)}
+                  >
+                    <Icon name="checkmark-done" size={18} style={{ color: colors.success }} />
+                    <Text style={[styles.actionButtonText, { color: colors.success }]}>Complete</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.actionButton}
+                    onPress={() => handleEditProject(project)}
+                  >
+                    <Icon name="create" size={18} style={{ color: colors.warning }} />
+                    <Text style={[styles.actionButtonText, { color: colors.warning }]}>Edit</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.actionButtonLast]}
+                    onPress={() => handleDeleteProject(project.id)}
+                  >
+                    <Icon name="trash" size={18} style={{ color: colors.danger }} />
+                    <Text style={[styles.actionButtonText, { color: colors.danger }]}>Delete</Text>
+                  </TouchableOpacity>
                 </View>
-                
-                {project.next_scheduled_date && (
-                  <View style={styles.detailItem}>
-                    <Icon name="calendar" size={16} style={{ color: themeColor }} />
-                    <Text style={styles.detailText}>{formatDate(project.next_scheduled_date)}</Text>
-                  </View>
-                )}
-              </View>
-
-              <View style={styles.projectActions}>
-                <TouchableOpacity
-                  style={styles.actionButton}
-                  onPress={() => handleCompleteProject(project)}
-                >
-                  <Icon name="checkmark-done" size={20} style={{ color: colors.success }} />
-                  <Text style={[styles.actionButtonText, { color: colors.success }]}>Complete</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.actionButton}
-                  onPress={() => handleEditProject(project)}
-                >
-                  <Icon name="create" size={20} style={{ color: colors.warning }} />
-                  <Text style={[styles.actionButtonText, { color: colors.warning }]}>Edit</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.actionButton}
-                  onPress={() => handleDeleteProject(project.id)}
-                >
-                  <Icon name="trash" size={20} style={{ color: colors.danger }} />
-                  <Text style={[styles.actionButtonText, { color: colors.danger }]}>Delete</Text>
-                </TouchableOpacity>
-              </View>
-            </AnimatedCard>
-          ))
+              </AnimatedCard>
+            ))}
+          </>
         )}
       </ScrollView>
+
+      {/* Floating Action Button */}
+      <TouchableOpacity style={styles.fab} onPress={handleAddProject}>
+        <Icon name="add" size={32} style={{ color: '#FFFFFF' }} />
+      </TouchableOpacity>
 
       <ProjectModal
         visible={showProjectModal}
