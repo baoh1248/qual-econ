@@ -1076,45 +1076,70 @@ export default function ScheduleView() {
   }, [modalType, selectedClientBuilding, selectedCleaners, hours, startTime, selectedDay, currentDate, currentWeekId, selectedEntry, addScheduleEntry, updateScheduleEntry, fetchWeekSchedule, handleModalClose, showToast, addHoursToTime]);
 
   const handleModalDelete = useCallback(async () => {
-    console.log('=== SCHEDULE MODAL DELETE HANDLER (SIMPLIFIED) ===');
+    console.log('=== SCHEDULE MODAL DELETE HANDLER ===');
+    console.log('Selected entry:', selectedEntry);
 
     if (!selectedEntry) {
+      console.error('❌ No entry selected for deletion');
       showToast('No entry selected', 'error');
       return;
     }
 
+    console.log('📝 Entry to delete:', {
+      id: selectedEntry.id,
+      cleaner: selectedEntry.cleanerName,
+      building: selectedEntry.buildingName,
+      date: selectedEntry.date,
+      day: selectedEntry.day
+    });
+
     Alert.alert(
       'Delete Shift',
-      'Are you sure you want to delete this shift?',
+      `Are you sure you want to delete the shift for ${selectedEntry.cleanerName} at ${selectedEntry.buildingName}?\n\nDate: ${selectedEntry.date}\nDay: ${selectedEntry.day}`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Cancel',
+          style: 'cancel',
+          onPress: () => console.log('❌ Delete cancelled by user')
+        },
         {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
             try {
-              console.log('📝 Deleting schedule entry:', selectedEntry.id);
+              console.log('🗑️ Starting delete operation for entry:', selectedEntry.id);
 
               // Use the simplified hook - it handles Supabase delete + refetch
               const success = await deleteScheduleEntry(selectedEntry.id);
 
+              console.log('Delete operation result:', success);
+
               if (success) {
-                console.log('✅ Entry deleted successfully');
+                console.log('✅ Entry deleted successfully from Supabase');
                 showToast('Shift deleted successfully', 'success');
 
                 // Explicitly fetch fresh data to update UI
+                console.log('🔄 Fetching fresh schedule data for week:', currentWeekId);
                 const freshEntries = await fetchWeekSchedule(currentWeekId);
+                console.log(`✅ Fetched ${freshEntries.length} entries after delete`);
+
                 setCurrentWeekSchedule(freshEntries);
                 setScheduleKey(prev => prev + 1);
-                console.log('✅ UI updated with', freshEntries.length, 'entries');
+                console.log('✅ UI state updated, closing modal');
 
                 handleModalClose();
               } else {
-                throw new Error('Failed to delete entry');
+                console.error('❌ Delete operation returned false');
+                throw new Error('Delete operation failed - returned false');
               }
-            } catch (error) {
-              console.error('❌ Error deleting schedule entry:', error);
-              showToast('Failed to delete shift', 'error');
+            } catch (error: any) {
+              console.error('❌ Error during delete operation:', error);
+              console.error('Error details:', {
+                message: error.message,
+                stack: error.stack,
+                name: error.name
+              });
+              showToast(`Failed to delete shift: ${error.message || 'Unknown error'}`, 'error');
             }
           },
         },

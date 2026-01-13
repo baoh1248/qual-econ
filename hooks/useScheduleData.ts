@@ -296,39 +296,71 @@ export const useScheduleData = () => {
    */
   const deleteEntry = useCallback(async (id: string): Promise<boolean> => {
     console.log('🗑️ [useScheduleData] Deleting entry:', id);
+    console.log('Current entries count:', entries.length);
     setIsSaving(true);
     setError(null);
 
     try {
       // Find the entry first to know which week to refetch
       const entryToDelete = entries.find(e => e.id === id);
-      const weekId = entryToDelete?.weekId || currentWeekIdRef.current;
+      console.log('Entry to delete found:', entryToDelete ? 'Yes' : 'No');
 
-      const { error: deleteError } = await supabase
+      if (entryToDelete) {
+        console.log('Entry details:', {
+          id: entryToDelete.id,
+          cleaner: entryToDelete.cleanerName,
+          building: entryToDelete.buildingName,
+          weekId: entryToDelete.weekId
+        });
+      }
+
+      const weekId = entryToDelete?.weekId || currentWeekIdRef.current;
+      console.log('Week ID for refetch:', weekId);
+
+      console.log('🔄 Executing Supabase delete...');
+      const { data, error: deleteError, count } = await supabase
         .from('schedule_entries')
         .delete()
-        .eq('id', id);
+        .eq('id', id)
+        .select();
+
+      console.log('Supabase delete response:', { data, count, error: deleteError });
 
       if (deleteError) {
-        console.error('❌ [useScheduleData] Delete error:', deleteError);
+        console.error('❌ [useScheduleData] Delete error from Supabase:', deleteError);
+        console.error('Error details:', {
+          message: deleteError.message,
+          details: deleteError.details,
+          hint: deleteError.hint,
+          code: deleteError.code
+        });
         throw deleteError;
       }
 
-      console.log('✅ [useScheduleData] Entry deleted successfully');
+      if (!data || data.length === 0) {
+        console.warn('⚠️ [useScheduleData] No rows were deleted. Entry may not exist.');
+      } else {
+        console.log('✅ [useScheduleData] Entry deleted successfully. Deleted rows:', data.length);
+      }
 
       // Refetch the week to ensure UI is in sync
       if (weekId) {
         console.log('🔄 [useScheduleData] Refetching week after delete:', weekId);
-        await fetchWeekSchedule(weekId);
+        const freshEntries = await fetchWeekSchedule(weekId);
+        console.log(`✅ [useScheduleData] Refetched ${freshEntries.length} entries`);
+      } else {
+        console.warn('⚠️ [useScheduleData] No weekId available, skipping refetch');
       }
 
       return true;
     } catch (err: any) {
       console.error('❌ [useScheduleData] Error deleting entry:', err);
+      console.error('Error stack:', err.stack);
       setError(err.message || 'Failed to delete entry');
       return false;
     } finally {
       setIsSaving(false);
+      console.log('🏁 [useScheduleData] Delete operation completed');
     }
   }, [entries, fetchWeekSchedule]);
 
