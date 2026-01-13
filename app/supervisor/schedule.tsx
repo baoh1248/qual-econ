@@ -29,7 +29,6 @@ import IconButton from '../../components/IconButton';
 import UnassignedShiftNotifications from '../../components/UnassignedShiftNotifications';
 import { projectToScheduleEntry, scheduleEntryExistsForProject } from '../../utils/projectScheduleSync';
 import { formatTimeRange } from '../../utils/timeFormatter';
-import { supabase } from '../integrations/supabase/client';
 import type { RecurringShiftPattern } from '../../utils/recurringShiftGenerator';
 import { 
   generateOccurrences, 
