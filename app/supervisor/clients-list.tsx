@@ -13,7 +13,9 @@ import { useTheme } from '../../hooks/useTheme';
 import Button from '../../components/Button';
 import AnimatedCard from '../../components/AnimatedCard';
 import { commonStyles, colors, spacing, typography } from '../../styles/commonStyles';
+import { enhancedStyles } from '../../styles/enhancedStyles';
 import Icon from '../../components/Icon';
+import IconButton from '../../components/IconButton';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import BuildingGroupsModal from '../../components/BuildingGroupsModal';
 
@@ -70,115 +72,20 @@ interface BuildingFormData {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  header: {
+  clientCardTitleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.md,
-  },
-  headerTitle: {
-    fontSize: typography.sizes.xxl,
-    fontWeight: typography.weights.bold as any,
-    color: colors.text,
-  },
-  searchContainer: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.md,
-  },
-  searchInput: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: spacing.md,
-    fontSize: typography.sizes.md,
-    color: colors.text,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.md,
-    gap: spacing.sm,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: spacing.md,
-    alignItems: 'center',
-  },
-  statValue: {
-    fontSize: typography.sizes.xl,
-    fontWeight: typography.weights.bold as any,
-    color: colors.primary,
-  },
-  statLabel: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
-  listContainer: {
-    paddingHorizontal: spacing.lg,
-  },
-  clientCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  clientHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-  clientName: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.semibold as any,
-    color: colors.text,
-    flex: 1,
   },
   clientActions: {
     flexDirection: 'row',
     gap: spacing.sm,
   },
-  clientInfo: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md,
-    marginTop: spacing.sm,
-  },
-  infoItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  infoText: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-  },
-  badge: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: 8,
-  },
-  badgeText: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold as any,
-  },
   buildingsSection: {
     marginTop: spacing.md,
     paddingTop: spacing.md,
     borderTopWidth: 1,
-    borderTopColor: colors.border,
+    borderTopColor: '#F0F3F7',
   },
   buildingsSectionHeader: {
     flexDirection: 'row',
@@ -187,24 +94,25 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   buildingsSectionTitle: {
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.semibold as any,
+    fontSize: 14,
+    fontWeight: '600',
     color: colors.text,
   },
   buildingItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: spacing.md,
     gap: spacing.xs,
-    backgroundColor: colors.background,
-    borderRadius: 8,
+    backgroundColor: '#F5F7FA',
+    borderRadius: 12,
     marginBottom: spacing.xs,
   },
   buildingName: {
-    fontSize: typography.sizes.sm,
+    fontSize: 13,
     color: colors.text,
     flex: 1,
+    fontWeight: '600',
   },
   buildingActionsRow: {
     flexDirection: 'row',
@@ -216,16 +124,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.primary + '20',
-    paddingVertical: spacing.sm,
+    backgroundColor: colors.primary + '10',
+    paddingVertical: spacing.md,
     paddingHorizontal: spacing.sm,
-    borderRadius: 8,
+    borderRadius: 12,
     gap: spacing.xs,
   },
   buildingActionButtonText: {
     color: colors.primary,
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold as any,
+    fontSize: 13,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   modalOverlay: {
     flex: 1,
@@ -741,118 +651,154 @@ export default function ClientsListScreen() {
     return <LoadingSpinner />;
   }
 
+  const themeColor = theme.colors.primary;
+
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <CompanyLogo />
-        <TouchableOpacity onPress={() => router.back()}>
-          <Icon name="close" size={24} color={colors.text} />
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Clients</Text>
-        <TouchableOpacity onPress={() => setShowAddModal(true)}>
-          <Icon name="add-circle" size={32} color={colors.primary} />
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.searchContainer}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search clients..."
-          placeholderTextColor={colors.textSecondary}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
-      </View>
-
-      <View style={styles.statsContainer}>
-        <View style={styles.statCard}>
-          <Text style={styles.statValue}>{stats.totalClients}</Text>
-          <Text style={styles.statLabel}>Total</Text>
+    <View style={enhancedStyles.screenContainer}>
+      {/* Modern Header */}
+      <View style={[enhancedStyles.modernHeader, { backgroundColor: themeColor }]}>
+        <View style={enhancedStyles.headerTop}>
+          <IconButton icon="arrow-back" onPress={() => router.back()} variant="white" />
+          <View style={enhancedStyles.headerTitleContainer}>
+            <Icon name="people" size={32} style={{ color: '#FFFFFF' }} />
+          </View>
+          <View style={{ width: 40 }} />
         </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statValue}>{stats.activeClients}</Text>
-          <Text style={styles.statLabel}>Active</Text>
+
+        <View>
+          <Text style={enhancedStyles.headerTitle}>Clients</Text>
+          <Text style={enhancedStyles.headerSubtitle}>
+            {stats.activeClients} active · {stats.totalBuildings} buildings · {stats.totalProjects} projects
+          </Text>
         </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statValue}>{stats.totalBuildings}</Text>
-          <Text style={styles.statLabel}>Buildings</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statValue}>{stats.totalProjects}</Text>
-          <Text style={styles.statLabel}>Projects</Text>
+
+        {/* Search in header */}
+        <View style={enhancedStyles.searchContainer}>
+          <Icon name="search" size={22} style={{ color: themeColor }} />
+          <TextInput
+            style={enhancedStyles.searchInput}
+            placeholder="Search clients..."
+            placeholderTextColor={colors.textSecondary}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
         </View>
       </View>
 
-      <ScrollView style={styles.listContainer}>
+      {/* Stats Cards */}
+      <View style={enhancedStyles.statsContainer}>
+        <View style={[enhancedStyles.statCard, { borderLeftColor: themeColor }]}>
+          <View style={[enhancedStyles.statIconContainer, { backgroundColor: themeColor + '15' }]}>
+            <Icon name="people" size={24} style={{ color: themeColor }} />
+          </View>
+          <Text style={enhancedStyles.statValue}>{stats.totalClients}</Text>
+          <Text style={enhancedStyles.statLabel}>Total</Text>
+        </View>
+        <View style={[enhancedStyles.statCard, { borderLeftColor: colors.success }]}>
+          <View style={[enhancedStyles.statIconContainer, { backgroundColor: colors.success + '15' }]}>
+            <Icon name="checkmark-circle" size={24} style={{ color: colors.success }} />
+          </View>
+          <Text style={enhancedStyles.statValue}>{stats.activeClients}</Text>
+          <Text style={enhancedStyles.statLabel}>Active</Text>
+        </View>
+        <View style={[enhancedStyles.statCard, { borderLeftColor: '#8B5CF6' }]}>
+          <View style={[enhancedStyles.statIconContainer, { backgroundColor: '#8B5CF615' }]}>
+            <Icon name="business" size={24} style={{ color: '#8B5CF6' }} />
+          </View>
+          <Text style={enhancedStyles.statValue}>{stats.totalBuildings}</Text>
+          <Text style={enhancedStyles.statLabel}>Buildings</Text>
+        </View>
+        <View style={[enhancedStyles.statCard, { borderLeftColor: '#F59E0B' }]}>
+          <View style={[enhancedStyles.statIconContainer, { backgroundColor: '#F59E0B15' }]}>
+            <Icon name="folder" size={24} style={{ color: '#F59E0B' }} />
+          </View>
+          <Text style={enhancedStyles.statValue}>{stats.totalProjects}</Text>
+          <Text style={enhancedStyles.statLabel}>Projects</Text>
+        </View>
+      </View>
+
+      <ScrollView style={enhancedStyles.scrollContainer}>
         {filteredClients.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Icon name="business" size={64} color={colors.textSecondary} />
-            <Text style={styles.emptyStateText}>
-              {searchQuery ? 'No clients found' : 'No clients yet'}
+          <View style={enhancedStyles.emptyState}>
+            <View style={[enhancedStyles.emptyStateIconContainer, { backgroundColor: themeColor + '10' }]}>
+              <Icon name="business" size={64} style={{ color: themeColor }} />
+            </View>
+            <Text style={enhancedStyles.emptyStateText}>
+              {searchQuery ? 'No Clients Found' : 'No Clients Yet'}
             </Text>
+            <Text style={enhancedStyles.emptyStateSubtext}>
+              {searchQuery ? 'Try adjusting your search' : 'Add your first client to get started'}
+            </Text>
+            {!searchQuery && (
+              <Button text="Add Client" onPress={() => setShowAddModal(true)} variant="primary" />
+            )}
           </View>
         ) : (
           filteredClients.map((client) => {
             const clientData = clients.find(c => c.name === client.clientName);
             const isExpanded = expandedClients.has(client.clientName);
             const clientBuildingsList = clientBuildings.filter(b => b.clientName === client.clientName);
+            const statusColor = clientData?.isActive ? colors.success : colors.textSecondary;
 
             return (
-              <AnimatedCard key={client.clientName} style={styles.clientCard}>
+              <AnimatedCard key={client.clientName} style={enhancedStyles.modernCard}>
+                {/* Card Header */}
                 <TouchableOpacity onPress={() => handleClientPress(client.clientName)}>
-                  <View style={styles.clientHeader}>
-                    <Text style={styles.clientName}>{client.clientName}</Text>
-                    <View style={styles.clientActions}>
-                      <TouchableOpacity onPress={() => openEditModal(client.clientName)}>
-                        <Icon name="create" size={20} color={colors.primary} />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => handleDeleteClient(clientData?.id || '', client.clientName)}
-                      >
-                        <Icon name="trash" size={20} color={colors.error} />
-                      </TouchableOpacity>
+                  <View style={[enhancedStyles.cardHeader, {
+                    backgroundColor: themeColor + '08',
+                    borderLeftColor: themeColor
+                  }]}>
+                    <View style={styles.clientCardTitleRow}>
+                      <Text style={enhancedStyles.titleText}>{client.clientName}</Text>
+                      <View style={styles.clientActions}>
+                        <TouchableOpacity onPress={() => openEditModal(client.clientName)}>
+                          <Icon name="create" size={20} color={themeColor} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => handleDeleteClient(clientData?.id || '', client.clientName)}
+                        >
+                          <Icon name="trash" size={20} color={colors.danger} />
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   </View>
 
-                  <View style={styles.clientInfo}>
-                    <View style={styles.infoItem}>
-                      <Icon name="business" size={16} color={colors.textSecondary} />
-                      <Text style={styles.infoText}>
-                        {client.buildingCount} {client.buildingCount === 1 ? 'Building' : 'Buildings'}
-                      </Text>
-                    </View>
-                    <View style={styles.infoItem}>
-                      <Icon name="folder" size={16} color={colors.textSecondary} />
-                      <Text style={styles.infoText}>
-                        {client.projectCount} {client.projectCount === 1 ? 'Project' : 'Projects'}
-                      </Text>
-                    </View>
-                    <View style={styles.infoItem}>
-                      <Icon name="checkmark-circle" size={16} color={colors.success} />
-                      <Text style={styles.infoText}>
-                        {client.activeProjects} Active
-                      </Text>
-                    </View>
-                    {clientData && (
-                      <View
-                        style={[
-                          styles.badge,
-                          { backgroundColor: getSecurityLevelColor(clientData.securityLevel) + '20' },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.badgeText,
-                            { color: getSecurityLevelColor(clientData.securityLevel) },
-                          ]}
-                        >
-                          {clientData.securityLevel.toUpperCase()}
+                  {/* Card Body */}
+                  <View style={enhancedStyles.cardBody}>
+                    <View style={enhancedStyles.detailsGrid}>
+                      <View style={enhancedStyles.detailChip}>
+                        <Icon name="business" size={16} style={{ color: themeColor }} />
+                        <Text style={enhancedStyles.detailChipText}>
+                          {client.buildingCount} {client.buildingCount === 1 ? 'Building' : 'Buildings'}
                         </Text>
                       </View>
-                    )}
+                      <View style={enhancedStyles.detailChip}>
+                        <Icon name="folder" size={16} style={{ color: themeColor }} />
+                        <Text style={enhancedStyles.detailChipText}>
+                          {client.projectCount} {client.projectCount === 1 ? 'Project' : 'Projects'}
+                        </Text>
+                      </View>
+                      <View style={enhancedStyles.detailChip}>
+                        <Icon name="checkmark-circle" size={16} style={{ color: colors.success }} />
+                        <Text style={enhancedStyles.detailChipText}>
+                          {client.activeProjects} Active
+                        </Text>
+                      </View>
+                      {clientData && (
+                        <View style={[enhancedStyles.statusBadgeModern, {
+                          backgroundColor: getSecurityLevelColor(clientData.securityLevel) + '20'
+                        }]}>
+                          <View style={[enhancedStyles.statusDot, {
+                            backgroundColor: getSecurityLevelColor(clientData.securityLevel)
+                          }]} />
+                          <Text style={[enhancedStyles.statusText, {
+                            color: getSecurityLevelColor(clientData.securityLevel)
+                          }]}>
+                            {clientData.securityLevel.toUpperCase()}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
                   </View>
                 </TouchableOpacity>
 
@@ -922,6 +868,14 @@ export default function ClientsListScreen() {
           })
         )}
       </ScrollView>
+
+      {/* FAB - Add Client */}
+      <TouchableOpacity
+        style={[enhancedStyles.fab, { backgroundColor: themeColor, shadowColor: themeColor }]}
+        onPress={() => setShowAddModal(true)}
+      >
+        <Icon name="add" size={32} style={{ color: '#FFFFFF' }} />
+      </TouchableOpacity>
 
       {/* Building Groups Modal */}
       <BuildingGroupsModal
