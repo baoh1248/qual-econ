@@ -27,24 +27,41 @@ const ScheduleChangeNotifications: React.FC<ScheduleChangeNotificationsProps> = 
   const [changes, setChanges] = useState<ScheduleChangeLog[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const loadChanges = useCallback(async () => {
     try {
       setIsLoading(true);
+      setError(null);
+
+      console.log('📊 Loading schedule changes...');
 
       let fetchedChanges: ScheduleChangeLog[];
       if (dateRange) {
+        console.log('Fetching changes for date range:', dateRange);
         fetchedChanges = await fetchChangesByDateRange(
           dateRange.startDate,
           dateRange.endDate
         );
       } else {
+        console.log('Fetching recent 50 changes');
         fetchedChanges = await fetchRecentChanges(50);
       }
 
+      console.log('✅ Fetched', fetchedChanges.length, 'changes');
       setChanges(fetchedChanges);
-    } catch (error) {
-      console.error('Error loading schedule changes:', error);
+    } catch (error: any) {
+      console.error('❌ Error loading schedule changes:', error);
+
+      // Check if it's a table not found error
+      if (error?.message?.includes('does not exist') ||
+          error?.code === '42P01' ||
+          error?.message?.includes('relation') ||
+          error?.message?.includes('schedule_change_logs')) {
+        setError('Database table not created yet. Please run the SQL migration first.');
+      } else {
+        setError('Failed to load activity log. Please try again.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -202,7 +219,20 @@ const ScheduleChangeNotifications: React.FC<ScheduleChangeNotificationsProps> = 
               />
             }
           >
-            {isLoading && changes.length === 0 ? (
+            {error ? (
+              <View style={styles.emptyState}>
+                <Icon name="alert-circle" size={48} style={{ color: colors.danger }} />
+                <Text style={[styles.emptyStateText, { color: colors.danger, fontWeight: '600' }]}>
+                  {error}
+                </Text>
+                {error.includes('SQL migration') && (
+                  <Text style={[styles.emptyStateText, { marginTop: spacing.md, fontSize: 12 }]}>
+                    Run the SQL script from:{'\n'}
+                    supabase/migrations/create_schedule_change_logs.sql
+                  </Text>
+                )}
+              </View>
+            ) : isLoading && changes.length === 0 ? (
               <View style={styles.emptyState}>
                 <Icon name="time-outline" size={48} style={{ color: colors.textSecondary }} />
                 <Text style={styles.emptyStateText}>Loading activity...</Text>
@@ -211,6 +241,10 @@ const ScheduleChangeNotifications: React.FC<ScheduleChangeNotificationsProps> = 
               <View style={styles.emptyState}>
                 <Icon name="time-outline" size={48} style={{ color: colors.textSecondary }} />
                 <Text style={styles.emptyStateText}>No recent activity</Text>
+                <Text style={[styles.emptyStateText, { marginTop: spacing.sm, fontSize: 12 }]}>
+                  Activity will appear here after approving time off{'\n'}
+                  or making schedule changes
+                </Text>
               </View>
             ) : (
               changes.map(renderChangeItem)
@@ -296,10 +330,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: spacing.xxl,
     gap: spacing.md,
+    minHeight: 300,
   },
   emptyStateText: {
     ...typography.body,
     color: colors.textSecondary,
+    textAlign: 'center',
   },
 });
 
