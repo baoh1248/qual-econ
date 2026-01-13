@@ -7,6 +7,7 @@ import { useClientData, type Client, type ClientBuilding, type Cleaner } from '.
 import { useToast } from '../../hooks/useToast';
 import { useDatabase } from '../../hooks/useDatabase';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
+import { useTimeOffRequests } from '../../hooks/useTimeOffRequests';
 import { supabase } from '../integrations/supabase/client';
 import { commonStyles, colors, spacing, typography, buttonStyles } from '../../styles/commonStyles';
 import { enhancedStyles } from '../../styles/enhancedStyles';
@@ -133,6 +134,7 @@ export default function ScheduleView() {
   const { showToast } = useToast();
   const { executeQuery } = useDatabase();
   const { clients, clientBuildings, cleaners, refreshData, addClient, addClientBuilding, addCleaner, updateClient, updateClientBuilding } = useClientData();
+  const { fetchApprovedTimeOff, timeOffRequests, getTimeOffForDate } = useTimeOffRequests();
 
   // NEW SIMPLIFIED SCHEDULE HOOK - Supabase is the single source of truth
   const {
@@ -153,6 +155,23 @@ export default function ScheduleView() {
   const currentWeekId = useMemo(() => {
     return getWeekIdFromDate(currentDate);
   }, [currentDate, getWeekIdFromDate]);
+
+  // Fetch approved time off for the current week
+  useEffect(() => {
+    const fetchTimeOff = async () => {
+      const weekStart = new Date(currentDate);
+      weekStart.setDate(currentDate.getDate() - currentDate.getDay());
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekStart.getDate() + 6);
+
+      await fetchApprovedTimeOff(
+        weekStart.toISOString().split('T')[0],
+        weekEnd.toISOString().split('T')[0]
+      );
+    };
+
+    fetchTimeOff();
+  }, [currentDate, fetchApprovedTimeOff]);
 
   // Realtime sync with proper error handling and UI refresh
   const { isConnected, lastSyncTime } = useRealtimeSync({
@@ -507,9 +526,54 @@ export default function ScheduleView() {
     return Array.from(names).sort();
   }, [currentWeekSchedule]);
 
+  // Merge time off entries with schedule
+  const scheduleWithTimeOff = useMemo(() => {
+    const timeOffEntries: ScheduleEntry[] = [];
+
+    // Transform approved time off requests into schedule-like entries
+    timeOffRequests.forEach(request => {
+      const dates: string[] = [];
+
+      // Collect all dates for this time off request
+      if (request.request_type === 'single_shift' && request.shift_date) {
+        dates.push(request.shift_date);
+      } else if (request.request_type === 'date_range' && request.start_date && request.end_date) {
+        const start = new Date(request.start_date);
+        const end = new Date(request.end_date);
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+          dates.push(d.toISOString().split('T')[0]);
+        }
+      } else if (request.request_type === 'recurring_instances' && request.requested_dates) {
+        dates.push(...request.requested_dates);
+      }
+
+      // Create a time off entry for each date
+      dates.forEach(date => {
+        const dayOfWeek = new Date(date).toLocaleDateString('en-US', { weekday: 'lowercase' }) as any;
+        timeOffEntries.push({
+          id: `timeoff-${request.id}-${date}`,
+          clientName: '⛱️ Time Off',
+          buildingName: request.cleaner_name,
+          cleanerName: request.cleaner_name,
+          cleanerNames: [request.cleaner_name],
+          hours: 0,
+          day: dayOfWeek,
+          date: date,
+          status: 'scheduled',
+          weekId: getWeekIdFromDate(new Date(date)),
+          notes: `Time off: ${request.reason}`,
+          // Mark this as a time off entry so we can style it differently
+          isTimeOff: true,
+        } as ScheduleEntry & { isTimeOff?: boolean });
+      });
+    });
+
+    return [...currentWeekSchedule, ...timeOffEntries];
+  }, [currentWeekSchedule, timeOffRequests, getWeekIdFromDate]);
+
   const filteredSchedule = useMemo(() => {
     console.log('🔍 Filtering schedule with filters:', filters);
-    
+
     if (filters.shiftType === 'all' &&
         !filters.clientName.trim() &&
         !filters.buildingName.trim() &&
@@ -517,11 +581,11 @@ export default function ScheduleView() {
         !filters.buildingGroupName.trim() &&
         !filters.cleanerGroupName.trim() &&
         filters.status === 'all') {
-      console.log('✅ No filters applied, returning all schedule entries');
-      return currentWeekSchedule;
+      console.log('✅ No filters applied, returning all schedule entries (including time off)');
+      return scheduleWithTimeOff;
     }
 
-    let filtered = currentWeekSchedule;
+    let filtered = scheduleWithTimeOff;
 
     if (filters.shiftType !== 'all') {
       filtered = filtered.filter(entry => 
@@ -605,7 +669,7 @@ export default function ScheduleView() {
 
     console.log(`✅ Final filtered schedule: ${filtered.length} entries`);
     return filtered;
-  }, [currentWeekSchedule, filters, buildingGroups, clientBuildings, cleanerGroups, cleaners]);
+  }, [scheduleWithTimeOff, filters, buildingGroups, clientBuildings, cleanerGroups, cleaners]);
 
   const filteredClientBuildings = useMemo(() => {
     console.log('🔍 Filtering client buildings based on schedule entries');
