@@ -8,6 +8,7 @@ import { useToast } from '../../hooks/useToast';
 import { useDatabase } from '../../hooks/useDatabase';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import { commonStyles, colors, spacing, typography, buttonStyles } from '../../styles/commonStyles';
+import { enhancedStyles } from '../../styles/enhancedStyles';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import RecurringTaskModal from '../../components/schedule/RecurringTaskModal';
@@ -1464,26 +1465,7 @@ export default function ScheduleView() {
   const styles = StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: colors.background,
-    },
-    header: {
-      paddingVertical: spacing.lg,
-      paddingHorizontal: spacing.xl,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-    },
-    headerLeft: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.md,
-    },
-    headerTitle: {
-      ...typography.h2,
-      color: colors.textInverse,
-      fontWeight: '600',
+      backgroundColor: '#F5F7FA',
     },
     headerRight: {
       flexDirection: 'row',
@@ -1515,34 +1497,40 @@ export default function ScheduleView() {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      paddingHorizontal: spacing.xl,
+      paddingHorizontal: spacing.lg,
       paddingVertical: spacing.md,
-      backgroundColor: colors.card,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
+      backgroundColor: '#F5F7FA',
+      marginTop: -spacing.lg,
     },
     viewToggle: {
       flexDirection: 'row',
-      gap: spacing.xs,
+      gap: spacing.sm,
     },
     viewButton: {
       paddingHorizontal: spacing.lg,
       paddingVertical: spacing.sm,
-      borderRadius: 8,
-      backgroundColor: colors.backgroundAlt,
+      borderRadius: 20,
+      backgroundColor: '#FFFFFF',
+      borderWidth: 2,
+      borderColor: '#E0E6ED',
+      ...typography.bodyMedium,
     },
     viewButtonActive: {
       paddingHorizontal: spacing.lg,
       paddingVertical: spacing.sm,
-      borderRadius: 8,
+      borderRadius: 20,
+      borderWidth: 2,
+      elevation: 4,
     },
     viewButtonText: {
-      ...typography.bodyMedium,
+      fontSize: 14,
+      fontWeight: '600',
       color: colors.text,
     },
     viewButtonTextActive: {
-      ...typography.bodyMedium,
-      color: colors.textInverse,
+      fontSize: 14,
+      fontWeight: '700',
+      color: '#FFFFFF',
     },
     dateNavigation: {
       flexDirection: 'row',
@@ -1583,26 +1571,32 @@ export default function ScheduleView() {
     },
     modeToggle: {
       flexDirection: 'row',
-      gap: spacing.xs,
+      gap: spacing.sm,
     },
     modeButton: {
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.xs,
-      borderRadius: 6,
-      backgroundColor: colors.backgroundAlt,
+      borderRadius: 16,
+      backgroundColor: '#FFFFFF',
+      borderWidth: 2,
+      borderColor: '#E0E6ED',
     },
     modeButtonActive: {
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.xs,
-      borderRadius: 6,
+      borderRadius: 16,
+      borderWidth: 2,
+      elevation: 3,
     },
     modeButtonText: {
-      ...typography.small,
+      fontSize: 13,
+      fontWeight: '600',
       color: colors.text,
     },
     modeButtonTextActive: {
-      ...typography.small,
-      color: colors.textInverse,
+      fontSize: 13,
+      fontWeight: '700',
+      color: '#FFFFFF',
     },
     dayEntry: {
       backgroundColor: colors.backgroundAlt,
@@ -1677,60 +1671,65 @@ export default function ScheduleView() {
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { backgroundColor: themeColor }]}>
-        <View style={styles.headerLeft}>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={[buttonStyles.backButton, { backgroundColor: 'rgba(255,255,255,0.2)' }]}
-          >
-            <Icon name="arrow-left" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Schedule</Text>
-        </View>
-        <View style={styles.headerRight}>
-          <View style={styles.syncIndicator}>
-            <View style={styles.syncIndicatorDot} />
-            <Text style={styles.syncIndicatorText}>
-              {isConnected ? 'LIVE' : 'OFFLINE'}
-            </Text>
+      {/* Modern Header */}
+      <View style={[enhancedStyles.modernHeader, { backgroundColor: themeColor }]}>
+        <View style={enhancedStyles.headerTop}>
+          <IconButton icon="arrow-back" onPress={() => router.back()} variant="white" />
+          <View style={enhancedStyles.headerTitleContainer}>
+            <Icon name="calendar" size={32} style={{ color: '#FFFFFF' }} />
           </View>
-          
-          {isSyncing && (
-            <ActivityIndicator size="small" color="#FFFFFF" />
-          )}
-          
-          <UnassignedShiftNotifications
-            themeColor={themeColor}
-            onAssignShift={(notification) => {
-              console.log('Assign shift from notification:', notification);
-              if (notification.shift_date) {
-                setCurrentDate(new Date(notification.shift_date));
-              }
-            }}
-            onRemoveShift={(notification) => {
-              console.log('Remove shift from notification:', notification);
-            }}
-          />
-          
-          <TouchableOpacity
-            onPress={() => setShowFiltersModal(true)}
-            style={[buttonStyles.backButton, { backgroundColor: 'rgba(255,255,255,0.2)', position: 'relative' }]}
-          >
-            <Icon name="filter" size={24} color="#FFFFFF" />
-            {activeFilterCount > 0 && (
-              <View style={styles.filterBadge}>
-                <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
-              </View>
+          <View style={styles.headerRight}>
+            <View style={styles.syncIndicator}>
+              <View style={styles.syncIndicatorDot} />
+              <Text style={styles.syncIndicatorText}>
+                {isConnected ? 'LIVE' : 'OFFLINE'}
+              </Text>
+            </View>
+
+            {isSyncing && (
+              <ActivityIndicator size="small" color="#FFFFFF" />
             )}
-          </TouchableOpacity>
-          <CompanyLogo size={40} />
+
+            <UnassignedShiftNotifications
+              themeColor={themeColor}
+              onAssignShift={(notification) => {
+                console.log('Assign shift from notification:', notification);
+                if (notification.shift_date) {
+                  setCurrentDate(new Date(notification.shift_date));
+                }
+              }}
+              onRemoveShift={(notification) => {
+                console.log('Remove shift from notification:', notification);
+              }}
+            />
+
+            <TouchableOpacity
+              onPress={() => setShowFiltersModal(true)}
+              style={[buttonStyles.backButton, { backgroundColor: 'rgba(255,255,255,0.2)', position: 'relative' }]}
+            >
+              <Icon name="filter" size={24} color="#FFFFFF" />
+              {activeFilterCount > 0 && (
+                <View style={styles.filterBadge}>
+                  <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            <CompanyLogo size={40} />
+          </View>
+        </View>
+
+        <View>
+          <Text style={enhancedStyles.headerTitle}>Schedule</Text>
+          <Text style={enhancedStyles.headerSubtitle}>
+            {viewType === 'daily' ? 'Daily View' : viewType === 'weekly' ? 'Weekly View' : 'Monthly View'} · {filteredSchedule.length} shifts
+          </Text>
         </View>
       </View>
 
       <View style={styles.controls}>
         <View style={styles.viewToggle}>
           <TouchableOpacity
-            style={viewType === 'daily' ? [styles.viewButtonActive, { backgroundColor: themeColor }] : styles.viewButton}
+            style={viewType === 'daily' ? [styles.viewButtonActive, { backgroundColor: themeColor, borderColor: themeColor }] : styles.viewButton}
             onPress={() => setViewType('daily')}
           >
             <Text style={viewType === 'daily' ? styles.viewButtonTextActive : styles.viewButtonText}>
@@ -1738,7 +1737,7 @@ export default function ScheduleView() {
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={viewType === 'weekly' ? [styles.viewButtonActive, { backgroundColor: themeColor }] : styles.viewButton}
+            style={viewType === 'weekly' ? [styles.viewButtonActive, { backgroundColor: themeColor, borderColor: themeColor }] : styles.viewButton}
             onPress={() => setViewType('weekly')}
           >
             <Text style={viewType === 'weekly' ? styles.viewButtonTextActive : styles.viewButtonText}>
@@ -1746,7 +1745,7 @@ export default function ScheduleView() {
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={viewType === 'monthly' ? [styles.viewButtonActive, { backgroundColor: themeColor }] : styles.viewButton}
+            style={viewType === 'monthly' ? [styles.viewButtonActive, { backgroundColor: themeColor, borderColor: themeColor }] : styles.viewButton}
             onPress={() => setViewType('monthly')}
           >
             <Text style={viewType === 'monthly' ? styles.viewButtonTextActive : styles.viewButtonText}>
@@ -1758,7 +1757,7 @@ export default function ScheduleView() {
         {viewType === 'weekly' && (
           <View style={styles.modeToggle}>
             <TouchableOpacity
-              style={viewMode === 'building' ? [styles.modeButtonActive, { backgroundColor: themeColor }] : styles.modeButton}
+              style={viewMode === 'building' ? [styles.modeButtonActive, { backgroundColor: themeColor, borderColor: themeColor }] : styles.modeButton}
               onPress={() => setViewMode('building')}
             >
               <Text style={viewMode === 'building' ? styles.modeButtonTextActive : styles.modeButtonText}>
@@ -1766,7 +1765,7 @@ export default function ScheduleView() {
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={viewMode === 'user' ? [styles.modeButtonActive, { backgroundColor: themeColor }] : styles.modeButton}
+              style={viewMode === 'user' ? [styles.modeButtonActive, { backgroundColor: themeColor, borderColor: themeColor }] : styles.modeButton}
               onPress={() => setViewMode('user')}
             >
               <Text style={viewMode === 'user' ? styles.modeButtonTextActive : styles.modeButtonText}>
