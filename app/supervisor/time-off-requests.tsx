@@ -373,6 +373,7 @@ export default function SupervisorTimeOffRequestsScreen() {
   }, [getWeekSchedule, getWeekIdFromDate]);
 
   const handleApproveRequest = async (request: TimeOffRequest) => {
+    console.log('🔘 handleApproveRequest called for:', request.cleaner_name);
     Alert.alert(
       'Approve Time Off Request',
       `Approve time off for ${request.cleaner_name}?\n\nThis will unassign their shifts during the requested time period.`,
@@ -600,15 +601,29 @@ export default function SupervisorTimeOffRequestsScreen() {
         {isPending && (
           <View style={styles.actionButtons}>
             <Pressable
-              style={[styles.actionButton, styles.declineButton]}
-              onPress={() => handleDeclineRequest(request)}
+              style={({ pressed }) => [
+                styles.actionButton,
+                styles.declineButton,
+                { opacity: pressed ? 0.7 : 1 }
+              ]}
+              onPress={() => {
+                console.log('🔘 Decline button pressed');
+                handleDeclineRequest(request);
+              }}
             >
               <Icon name="close-circle" size={20} color={colors.textInverse} />
               <Text style={styles.actionButtonText}>Decline</Text>
             </Pressable>
             <Pressable
-              style={[styles.actionButton, styles.approveButton, { backgroundColor: themeColor }]}
-              onPress={() => handleApproveRequest(request)}
+              style={({ pressed }) => [
+                styles.actionButton,
+                styles.approveButton,
+                { backgroundColor: themeColor, opacity: pressed ? 0.7 : 1 }
+              ]}
+              onPress={() => {
+                console.log('🔘 Approve button pressed for:', request.cleaner_name);
+                handleApproveRequest(request);
+              }}
             >
               <Icon name="checkmark-circle" size={20} color={colors.textInverse} />
               <Text style={styles.actionButtonText}>Approve</Text>
