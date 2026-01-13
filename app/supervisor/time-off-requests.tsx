@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, TextInput, Modal, RefreshControl } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, TextInput, Modal, RefreshControl, Pressable } from 'react-native';
 import { router } from 'expo-router';
 import { useTheme } from '../../hooks/useTheme';
 import { useDatabase } from '../../hooks/useDatabase';
@@ -599,26 +599,20 @@ export default function SupervisorTimeOffRequestsScreen() {
 
         {isPending && (
           <View style={styles.actionButtons}>
-            <Button
-              variant="danger"
-              style={styles.actionButton}
+            <Pressable
+              style={[styles.actionButton, styles.declineButton]}
               onPress={() => handleDeclineRequest(request)}
             >
-              <View style={styles.buttonContent}>
-                <Icon name="close-circle" size={20} color={colors.textInverse} />
-                <Text style={styles.actionButtonText}>Decline</Text>
-              </View>
-            </Button>
-            <Button
-              variant="primary"
-              style={[styles.actionButton, { backgroundColor: themeColor }]}
+              <Icon name="close-circle" size={20} color={colors.textInverse} />
+              <Text style={styles.actionButtonText}>Decline</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.actionButton, styles.approveButton, { backgroundColor: themeColor }]}
               onPress={() => handleApproveRequest(request)}
             >
-              <View style={styles.buttonContent}>
-                <Icon name="checkmark-circle" size={20} color={colors.textInverse} />
-                <Text style={styles.actionButtonText}>Approve</Text>
-              </View>
-            </Button>
+              <Icon name="checkmark-circle" size={20} color={colors.textInverse} />
+              <Text style={styles.actionButtonText}>Approve</Text>
+            </Pressable>
           </View>
         )}
 
@@ -931,11 +925,12 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     flex: 1,
-  },
-  buttonContent: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: spacing.xs,
+    paddingVertical: spacing.md,
+    borderRadius: 8,
   },
   approveButton: {
     backgroundColor: colors.success,
