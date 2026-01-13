@@ -399,7 +399,7 @@ const styles = StyleSheet.create({
 });
 
 export default function SupervisorInventoryScreen() {
-  const { theme } = useTheme();
+  const { theme, themeColor } = useTheme();
   const { showToast } = useToast();
   const { config, syncStatus } = useDatabase();
 
@@ -834,7 +834,7 @@ export default function SupervisorInventoryScreen() {
       case 'approved':
         return colors.success;
       case 'ordered':
-        return colors.primary;
+        return themeColor;
       case 'delivered':
         return colors.success;
       default:
@@ -862,7 +862,7 @@ export default function SupervisorInventoryScreen() {
   return (
     <View style={styles.container}>
       {/* Enhanced Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { backgroundColor: themeColor }]}>
         <View style={styles.headerTop}>
           <IconButton
             icon="arrow-back"
@@ -884,7 +884,7 @@ export default function SupervisorInventoryScreen() {
 
         {/* Search Bar in Header */}
         <View style={styles.searchContainer}>
-          <Icon name="search" size={22} style={[styles.searchIcon, { color: colors.primary }]} />
+          <Icon name="search" size={22} style={[styles.searchIcon, { color: themeColor }]} />
           <TextInput
             style={styles.searchInput}
             placeholder="Search inventory..."
@@ -901,39 +901,39 @@ export default function SupervisorInventoryScreen() {
           style={styles.actionButton}
           onPress={() => setShowAddModal(true)}
         >
-          <Icon name="add" size={20} color={colors.primary} />
-          <Text style={styles.actionButtonText}>Add Item</Text>
+          <Icon name="add" size={20} color={themeColor} />
+          <Text style={[styles.actionButtonText, { color: themeColor }]}>Add Item</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.actionButton}
           onPress={() => setShowSendItemsModal(true)}
         >
-          <Icon name="send" size={20} color={colors.primary} />
-          <Text style={styles.actionButtonText}>Send Items</Text>
+          <Icon name="send" size={20} color={themeColor} />
+          <Text style={[styles.actionButtonText, { color: themeColor }]}>Send Items</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.actionButton}
           onPress={() => setShowTransferHistoryModal(true)}
         >
-          <Icon name="time" size={20} color={colors.primary} />
-          <Text style={styles.actionButtonText}>History</Text>
+          <Icon name="time" size={20} color={themeColor} />
+          <Text style={[styles.actionButtonText, { color: themeColor }]}>History</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.actionButton}
           onPress={() => router.push('/supervisor/inventory-transfer-statements')}
         >
-          <Icon name="stats-chart" size={20} color={colors.primary} />
-          <Text style={styles.actionButtonText}>Statements</Text>
+          <Icon name="stats-chart" size={20} color={themeColor} />
+          <Text style={[styles.actionButtonText, { color: themeColor }]}>Statements</Text>
         </TouchableOpacity>
       </View>
 
       {/* Filter Chips */}
       <View style={styles.filterContainer}>
         <TouchableOpacity
-          style={[styles.filterChip, filterCategory === 'all' && styles.filterChipActive]}
+          style={[styles.filterChip, filterCategory === 'all' && [styles.filterChipActive, { backgroundColor: themeColor, borderColor: themeColor }]]}
           onPress={() => setFilterCategory('all')}
         >
           <Text style={[styles.filterChipText, filterCategory === 'all' && styles.filterChipTextActive]}>
@@ -941,7 +941,7 @@ export default function SupervisorInventoryScreen() {
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.filterChip, filterCategory === 'cleaning-supplies' && styles.filterChipActive]}
+          style={[styles.filterChip, filterCategory === 'cleaning-supplies' && [styles.filterChipActive, { backgroundColor: themeColor, borderColor: themeColor }]]}
           onPress={() => setFilterCategory('cleaning-supplies')}
         >
           <Text style={[styles.filterChipText, filterCategory === 'cleaning-supplies' && styles.filterChipTextActive]}>
@@ -949,7 +949,7 @@ export default function SupervisorInventoryScreen() {
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.filterChip, filterCategory === 'equipment' && styles.filterChipActive]}
+          style={[styles.filterChip, filterCategory === 'equipment' && [styles.filterChipActive, { backgroundColor: themeColor, borderColor: themeColor }]]}
           onPress={() => setFilterCategory('equipment')}
         >
           <Text style={[styles.filterChipText, filterCategory === 'equipment' && styles.filterChipTextActive]}>
@@ -957,7 +957,7 @@ export default function SupervisorInventoryScreen() {
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.filterChip, filterCategory === 'safety' && styles.filterChipActive]}
+          style={[styles.filterChip, filterCategory === 'safety' && [styles.filterChipActive, { backgroundColor: themeColor, borderColor: themeColor }]]}
           onPress={() => setFilterCategory('safety')}
         >
           <Text style={[styles.filterChipText, filterCategory === 'safety' && styles.filterChipTextActive]}>
@@ -968,9 +968,9 @@ export default function SupervisorInventoryScreen() {
 
       {/* Enhanced Stats */}
       <View style={styles.statsContainer}>
-        <View style={[styles.statCard, { borderLeftColor: colors.primary }]}>
-          <View style={[styles.statIconContainer, { backgroundColor: colors.primary + '15' }]}>
-            <Icon name="cube" size={24} style={{ color: colors.primary }} />
+        <View style={[styles.statCard, { borderLeftColor: themeColor }]}>
+          <View style={[styles.statIconContainer, { backgroundColor: themeColor + '15' }]}>
+            <Icon name="cube" size={24} style={{ color: themeColor }} />
           </View>
           <Text style={styles.statValue}>{stats.totalItems}</Text>
           <Text style={styles.statLabel}>Total Items</Text>
@@ -1006,7 +1006,7 @@ export default function SupervisorInventoryScreen() {
               return (
                 <AnimatedCard key={item.id} style={styles.itemCard}>
                   <View style={styles.itemHeader}>
-                    <Icon name={getCategoryIcon(item.category)} size={32} color={colors.primary} />
+                    <Icon name={getCategoryIcon(item.category)} size={32} color={themeColor} />
                     <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
                   </View>
 
@@ -1022,7 +1022,7 @@ export default function SupervisorInventoryScreen() {
 
                   <View style={styles.itemActions}>
                     <TouchableOpacity onPress={() => openEditModal(item)}>
-                      <Icon name="create" size={18} color={colors.primary} />
+                      <Icon name="create" size={18} color={themeColor} />
                     </TouchableOpacity>
                     <TouchableOpacity onPress={() => handleDeleteItem(item.id, item.name)}>
                       <Icon name="trash" size={18} color={colors.error} />
