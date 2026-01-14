@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { View, Text, StyleSheet, ViewStyle } from 'react-native';
+import { View, Text, StyleSheet, ViewStyle, Image } from 'react-native';
 import { colors, spacing, typography } from '../styles/commonStyles';
 import Icon from './Icon';
 
@@ -49,23 +49,21 @@ export default function CompanyLogo({
     return (
       <View style={[styles.container, { padding: sizeStyles.containerPadding }, style]}>
         <View style={styles.logoContainer}>
-          <View style={[styles.iconContainer, { backgroundColor: colors.primary }]}>
-            <Icon 
-              name="business" 
-              size={sizeStyles.iconSize} 
-              style={{ color: colors.background }} 
-            />
-          </View>
+          <Image
+            source={{ uri: '/logo192x192.png' }}
+            style={[styles.logoImage, { width: sizeStyles.iconSize, height: sizeStyles.iconSize }]}
+            resizeMode="contain"
+          />
           {showText && (
             <Text style={[
-              styles.companyText, 
-              { 
+              styles.companyText,
+              {
                 color: textColor,
                 fontSize: sizeStyles.fontSize,
                 fontWeight: '700'
               }
             ]}>
-              QualEcon
+              Qual-Econ USA
             </Text>
           )}
         </View>
@@ -77,7 +75,7 @@ export default function CompanyLogo({
     return (
       <View style={[styles.container, style]}>
         <Text style={[styles.companyText, { color: colors.text }]}>
-          QualEcon
+          Qual-Econ USA
         </Text>
       </View>
     );
@@ -94,11 +92,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
   },
-  iconContainer: {
+  logoImage: {
     borderRadius: 8,
-    padding: spacing.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   companyText: {
     fontWeight: '700',

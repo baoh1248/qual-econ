@@ -46,8 +46,8 @@ export default function Index() {
     <View style={commonStyles.container}>
       <View style={styles.content}>
         <CompanyLogo size="large" showText={true} />
-        
-        <Text style={styles.title}>Commercial Cleaning Management</Text>
+
+        <Text style={styles.title}>Qual-Econ USA</Text>
         <Text style={styles.subtitle}>
           Streamline your cleaning operations with our comprehensive management system
         </Text>
