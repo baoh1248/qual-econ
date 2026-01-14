@@ -30,7 +30,7 @@ export default function CompanyLogo({
           };
         case 'large':
           return {
-            iconSize: 48,
+            iconSize: 80,
             fontSize: typography.h2.fontSize,
             containerPadding: spacing.lg,
           };
