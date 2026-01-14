@@ -57,7 +57,7 @@ export default function LoginScreen() {
           employment_status,
           password_hash,
           role_id,
-          roles!inner(id, name, display_name, level)
+          roles(id, name, display_name, level)
         `)
         .eq('phone_number', cleanedPhone)
         .maybeSingle();
@@ -83,8 +83,8 @@ export default function LoginScreen() {
         return;
       }
 
-      // Verify password
-      const passwordHash = await hashPassword(password);
+      // Verify password (trim to remove any whitespace)
+      const passwordHash = await hashPassword(password.trim());
       const isPasswordValid = passwordHash === userData.password_hash;
 
       if (!isPasswordValid) {

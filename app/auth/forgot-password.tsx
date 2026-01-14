@@ -116,8 +116,8 @@ export default function ForgotPasswordScreen() {
     try {
       setIsLoading(true);
 
-      // Hash the new password
-      const passwordHash = await hashPassword(newPassword);
+      // Hash the new password (trim to remove any whitespace)
+      const passwordHash = await hashPassword(newPassword.trim());
 
       // Update password in database
       const { error } = await supabase
