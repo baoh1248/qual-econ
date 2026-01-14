@@ -36,22 +36,43 @@ export default function LoginScreen() {
       return;
     }
 
-    const cleanedPhone = cleanPhoneNumber(phoneNumber);
-
-    if (!isValidPhoneNumber(cleanedPhone)) {
-      showToast('Please enter a valid 10-digit phone number', 'error');
-      return;
-    }
-
     try {
       setIsLoading(true);
 
-      // Look up user by phone number (simple query without roles)
-      const { data: userData, error: lookupError } = await supabase
+      // Try to find user with the phone number (try multiple formats)
+      const cleanedPhone = cleanPhoneNumber(phoneNumber);
+
+      // First try with cleaned phone
+      let { data: userData, error: lookupError } = await supabase
         .from('cleaners')
         .select('id, name, phone_number, is_active, employment_status, password_hash, role_id')
         .eq('phone_number', cleanedPhone)
         .maybeSingle();
+
+      // If not found, try with original phone number
+      if (!userData && !lookupError) {
+        const result = await supabase
+          .from('cleaners')
+          .select('id, name, phone_number, is_active, employment_status, password_hash, role_id')
+          .eq('phone_number', phoneNumber.trim())
+          .maybeSingle();
+
+        userData = result.data;
+        lookupError = result.error;
+      }
+
+      // If still not found, try searching with LIKE to be more flexible
+      if (!userData && !lookupError) {
+        const phoneDigits = phoneNumber.replace(/\D/g, '');
+        const result = await supabase
+          .from('cleaners')
+          .select('id, name, phone_number, is_active, employment_status, password_hash, role_id')
+          .like('phone_number', `%${phoneDigits.slice(-10)}%`)
+          .maybeSingle();
+
+        userData = result.data;
+        lookupError = result.error;
+      }
 
       if (lookupError) {
         showToast('Failed to look up account. Please try again.', 'error');
