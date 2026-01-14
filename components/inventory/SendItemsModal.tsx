@@ -88,10 +88,12 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
         .select('*')
         .order('client_name', { ascending: true });
 
+      let buildingsList: ClientBuilding[] = [];
+
       if (buildingsError) {
         console.error('❌ Error loading buildings:', buildingsError);
       } else {
-        const buildingsList: ClientBuilding[] = (buildingsData || []).map(row => ({
+        buildingsList = (buildingsData || []).map(row => ({
           id: row.id,
           clientName: row.client_name,
           buildingName: row.building_name,
@@ -105,7 +107,7 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
         }));
         setBuildings(buildingsList);
         console.log(`✅ Loaded ${buildingsList.length} buildings`);
-        
+
         // Auto-expand all building clients
         const buildingClients = new Set(buildingsList.map(b => b.clientName));
         setExpandedBuildingClients(buildingClients);
@@ -121,7 +123,7 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
         console.error('❌ Error loading building groups:', groupsError);
       } else {
         const groupsWithBuildings: BuildingGroup[] = [];
-        
+
         for (const group of groupsData || []) {
           const { data: membersData, error: membersError } = await supabase
             .from('building_group_members')
