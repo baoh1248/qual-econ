@@ -80,7 +80,7 @@ export default function LoginScreen() {
       }
 
       if (!userData) {
-        showToast('Invalid phone number or password', 'error');
+        showToast(`No account found for phone: ${cleanedPhone}`, 'error');
         return;
       }
 
@@ -96,10 +96,11 @@ export default function LoginScreen() {
 
       // Verify password (plain text comparison)
       const enteredPassword = password.trim();
-      const isPasswordValid = enteredPassword === userData.password_hash;
+      const storedPassword = userData.password_hash;
+      const isPasswordValid = enteredPassword === storedPassword;
 
       if (!isPasswordValid) {
-        showToast('Invalid phone number or password', 'error');
+        showToast(`Password mismatch. Entered: "${enteredPassword}" vs Stored: "${storedPassword}"`, 'error');
         return;
       }
 
