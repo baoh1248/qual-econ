@@ -202,10 +202,19 @@ const ScheduleModal = memo(({
 
   // Update scheduleDate when modal opens or selectedEntry/selectedDay changes
   useEffect(() => {
+    console.log('📅 Date useEffect triggered:', {
+      visible,
+      selectedDay,
+      hasCurrentDate: !!currentDate,
+      hasSelectedEntry: !!selectedEntry,
+      selectedEntryDate: selectedEntry?.date
+    });
+
     if (!visible) return;
 
     if (selectedEntry?.date) {
       const dateStr = selectedEntry.date.split('T')[0];
+      console.log('📅 Using selectedEntry date:', dateStr);
       setScheduleDate(dateStr);
     } else if (selectedDay && currentDate) {
       // Calculate date from selected day
@@ -213,7 +222,9 @@ const ScheduleModal = memo(({
       console.log('📅 Calculating date for day:', selectedDay, '→', calculatedDate);
       setScheduleDate(calculatedDate);
     } else {
-      setScheduleDate(new Date().toISOString().split('T')[0]);
+      const fallbackDate = new Date().toISOString().split('T')[0];
+      console.log('📅 Using fallback date (today):', fallbackDate, 'because selectedDay:', selectedDay, 'currentDate:', !!currentDate);
+      setScheduleDate(fallbackDate);
     }
   }, [visible, selectedEntry, selectedDay, currentDate]);
 

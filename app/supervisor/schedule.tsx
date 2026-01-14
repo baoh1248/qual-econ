@@ -1004,7 +1004,7 @@ export default function ScheduleView() {
     setSelectedCleaners([]);
     setHours('');
     setStartTime('09:00');
-    setSelectedDay('');
+    // Don't reset selectedDay here - let it persist for proper key prop behavior
     setNewClientName('');
     setNewClientSecurity('');
     setNewClientSecurityLevel('low');
