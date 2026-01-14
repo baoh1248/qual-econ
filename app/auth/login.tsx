@@ -100,7 +100,7 @@ export default function LoginScreen() {
       const isPasswordValid = enteredPassword === storedPassword;
 
       if (!isPasswordValid) {
-        showToast(`Password mismatch. Entered: "${enteredPassword}" vs Stored: "${storedPassword}"`, 'error');
+        showToast('Invalid phone number or password', 'error');
         return;
       }
 

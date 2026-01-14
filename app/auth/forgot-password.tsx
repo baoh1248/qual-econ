@@ -139,11 +139,11 @@ export default function ForgotPasswordScreen() {
       }
 
       if (!data || data.length === 0) {
-        showToast(`Failed to update. UserID: ${userId} Phone: ${phoneNumber}`, 'error');
+        showToast('Failed to update password. Please try again.', 'error');
         return;
       }
 
-      showToast(`Password set! Use: "${trimmedPassword}" to log in`, 'success');
+      showToast('Password reset successful!', 'success');
 
       // Redirect to login after a short delay
       setTimeout(() => {
