@@ -2048,6 +2048,7 @@ export default function ScheduleView() {
       />
 
       <ScheduleModal
+        key={`${modalVisible}-${selectedDay}-${selectedEntry?.id || 'new'}`}
         visible={modalVisible}
         modalType={modalType}
         selectedEntry={selectedEntry}
