@@ -117,7 +117,8 @@ export default function ForgotPasswordScreen() {
       setIsLoading(true);
 
       // Hash the new password (trim to remove any whitespace)
-      const passwordHash = await hashPassword(newPassword.trim());
+      const trimmedPassword = newPassword.trim();
+      const passwordHash = await hashPassword(trimmedPassword);
 
       // Update password in database
       const { error } = await supabase
@@ -129,7 +130,7 @@ export default function ForgotPasswordScreen() {
 
       if (error) throw error;
 
-      showToast('Password reset successfully! Please sign in with your new password.', 'success');
+      showToast(`Password set! Use: "${trimmedPassword}" to log in`, 'success');
 
       // Redirect to login after a short delay
       setTimeout(() => {
