@@ -13,7 +13,6 @@ import Icon from '../../components/Icon';
 import Button from '../../components/Button';
 import { supabase } from '../integrations/supabase/client';
 import { useTheme } from '../../hooks/useTheme';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface Task {
   id: string;
@@ -316,15 +315,11 @@ export default function CleanerDashboard() {
 
   const loadProfile = useCallback(async () => {
     try {
-      // Get cleaner info from AsyncStorage
-      const cleanerId = await AsyncStorage.getItem('cleaner_id');
-      const cleanerName = await AsyncStorage.getItem('cleaner_name');
-      const cleanerPhone = await AsyncStorage.getItem('cleaner_phone');
+      // Get session from auth system
+      const { getSession } = await import('../utils/auth');
+      const session = await getSession();
 
-      console.log('Loading profile from AsyncStorage:', { cleanerId, cleanerName, cleanerPhone });
-
-      if (!cleanerId || !cleanerName) {
-        console.log('No session found, redirecting to signin');
+      if (!session) {
         router.replace('/auth/login');
         return;
       }
@@ -333,7 +328,7 @@ export default function CleanerDashboard() {
       const { data: cleanerData, error } = await supabase
         .from('cleaners')
         .select('*')
-        .eq('id', cleanerId)
+        .eq('id', session.id)
         .maybeSingle();
 
       if (error) {
@@ -341,8 +336,8 @@ export default function CleanerDashboard() {
       }
 
       if (!cleanerData) {
-        console.log('Cleaner not found in database, clearing session');
-        await AsyncStorage.multiRemove(['cleaner_id', 'cleaner_name', 'cleaner_phone']);
+        const { clearSession } = await import('../utils/auth');
+        await clearSession();
         router.replace('/auth/login');
         return;
       }
@@ -356,7 +351,8 @@ export default function CleanerDashboard() {
             {
               text: 'OK',
               onPress: async () => {
-                await AsyncStorage.multiRemove(['cleaner_id', 'cleaner_name', 'cleaner_phone']);
+                const { clearSession } = await import('../utils/auth');
+                await clearSession();
                 router.replace('/auth/login');
               }
             }
@@ -367,7 +363,7 @@ export default function CleanerDashboard() {
 
       setProfile({
         id: cleanerData.id,
-        name: cleanerData.name || cleanerData.go_by || cleanerName,
+        name: cleanerData.name || cleanerData.go_by || session.name,
         currentLocation: 'On Site',
         todayHours: 0,
         todayTasks: 0,
@@ -459,8 +455,9 @@ export default function CleanerDashboard() {
 
   const handleLogoutConfirm = async () => {
     try {
-      // Clear session from AsyncStorage
-      await AsyncStorage.multiRemove(['cleaner_id', 'cleaner_name', 'cleaner_phone']);
+      // Clear session using auth system
+      const { clearSession } = await import('../utils/auth');
+      await clearSession();
       setShowLogoutModal(false);
       router.replace('/');
     } catch (error) {

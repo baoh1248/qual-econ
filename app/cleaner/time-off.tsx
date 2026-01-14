@@ -13,7 +13,6 @@ import LoadingSpinner from '../../components/LoadingSpinner';
 import Toast from '../../components/Toast';
 import { supabase } from '../integrations/supabase/client';
 import uuid from 'react-native-uuid';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface TimeOffRequest {
   id: string;
@@ -61,21 +60,14 @@ export default function CleanerTimeOffScreen() {
 
   const loadCleanerInfo = useCallback(async () => {
     try {
-      console.log('Loading cleaner info from AsyncStorage...');
-      
-      // Get cleaner info from AsyncStorage (set during sign-in)
-      const storedCleanerId = await AsyncStorage.getItem('cleaner_id');
-      const storedCleanerName = await AsyncStorage.getItem('cleaner_name');
-      
-      console.log('Stored cleaner ID:', storedCleanerId);
-      console.log('Stored cleaner name:', storedCleanerName);
+      // Get session from auth system
+      const { getSession } = await import('../utils/auth');
+      const session = await getSession();
 
-      if (storedCleanerId && storedCleanerName) {
-        setCleanerId(storedCleanerId);
-        setCleanerName(storedCleanerName);
-        console.log('Cleaner info loaded successfully');
+      if (session && session.id && session.name) {
+        setCleanerId(session.id);
+        setCleanerName(session.name);
       } else {
-        console.log('No cleaner info found in AsyncStorage');
         // If no session found, redirect to sign-in
         Alert.alert(
           'Session Expired',
