@@ -37,6 +37,7 @@ export default function LoginScreen() {
     }
 
     const cleanedPhone = cleanPhoneNumber(phoneNumber);
+    console.log('🔍 Login Debug - Phone:', { original: phoneNumber, cleaned: cleanedPhone });
 
     if (!isValidPhoneNumber(cleanedPhone)) {
       showToast('Please enter a valid 10-digit phone number', 'error');
@@ -62,6 +63,14 @@ export default function LoginScreen() {
         .eq('phone_number', cleanedPhone)
         .maybeSingle();
 
+      console.log('🔍 Login Debug - User Found:', {
+        found: !!userData,
+        name: userData?.name,
+        phone: userData?.phone_number,
+        hasPassword: !!userData?.password_hash,
+        passwordHashPreview: userData?.password_hash?.substring(0, 10) + '...',
+      });
+
       if (lookupError) {
         console.error('User lookup error:', lookupError);
         showToast('Failed to look up account. Please try again.', 'error');
@@ -69,6 +78,7 @@ export default function LoginScreen() {
       }
 
       if (!userData) {
+        console.log('❌ No user found with phone:', cleanedPhone);
         showToast('Invalid phone number or password', 'error');
         return;
       }
@@ -87,10 +97,21 @@ export default function LoginScreen() {
       const passwordHash = await hashPassword(password.trim());
       const isPasswordValid = passwordHash === userData.password_hash;
 
+      console.log('🔍 Login Debug - Password Check:', {
+        enteredHash: passwordHash?.substring(0, 15) + '...',
+        storedHash: userData.password_hash?.substring(0, 15) + '...',
+        match: isPasswordValid,
+        enteredLength: password.length,
+        trimmedLength: password.trim().length,
+      });
+
       if (!isPasswordValid) {
+        console.log('❌ Password mismatch!');
         showToast('Invalid phone number or password', 'error');
         return;
       }
+
+      console.log('✅ Password verified successfully!');
 
       // Check if account is active
       if (!userData.is_active || userData.employment_status !== 'active') {
