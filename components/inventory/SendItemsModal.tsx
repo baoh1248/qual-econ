@@ -45,7 +45,7 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
   console.log('SendItemsModal rendered');
   
   const [destination, setDestination] = useState('');
-  const [destinationType, setDestinationType] = useState<'custom' | 'building' | 'group'>('custom');
+  const [destinationType, setDestinationType] = useState<'building' | 'group'>('building');
   const [selectedBuildingId, setSelectedBuildingId] = useState<string | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [selectedItems, setSelectedItems] = useState<SelectedItem[]>([]);
@@ -61,23 +61,12 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
   const [expandedBuildingClients, setExpandedBuildingClients] = useState<Set<string>>(new Set());
   const [expandedGroupClients, setExpandedGroupClients] = useState<Set<string>>(new Set());
 
-  const commonDestinations = [
-    'TechCorp Main Office',
-    'Downtown Mall Food Court',
-    'City Hospital',
-    'University Campus',
-    'Shopping Center',
-    'Office Complex A',
-    'Retail Store Chain',
-    'Medical Center',
-  ];
-
   useEffect(() => {
     if (visible) {
       loadDestinations();
     } else {
       setDestination('');
-      setDestinationType('custom');
+      setDestinationType('building');
       setSelectedBuildingId(null);
       setSelectedGroupId(null);
       setSelectedItems([]);
@@ -219,7 +208,7 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
       const group = buildingGroups.find(g => g.id === selectedGroupId);
       return group ? `${group.client_name} - ${group.group_name} (${group.buildings.length} buildings)` : '';
     }
-    return destination;
+    return '';
   };
 
   const handleSendItems = async () => {
@@ -401,40 +390,6 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
               <View style={[commonStyles.row, { gap: spacing.sm, marginBottom: spacing.md }]}>
                 <TouchableOpacity
                   style={[
-                    destinationType === 'custom' ? buttonStyles.quickSelectButtonActive : buttonStyles.quickSelectButton,
-                    { flex: 1, borderWidth: 0 }
-                  ]}
-                  onPress={() => {
-                    setDestinationType('custom');
-                    setSelectedBuildingId(null);
-                    setSelectedGroupId(null);
-                  }}
-                >
-                  <Icon 
-                    name="create" 
-                    size={16} 
-                    style={{ 
-                      color: destinationType === 'custom' 
-                        ? getContrastColor(colors.primary) 
-                        : getContrastColor(colors.background),
-                      marginRight: spacing.xs 
-                    }} 
-                  />
-                  <Text style={[
-                    typography.caption,
-                    { 
-                      color: destinationType === 'custom' 
-                        ? getContrastColor(colors.primary) 
-                        : getContrastColor(colors.background),
-                      fontWeight: destinationType === 'custom' ? '700' : '500'
-                    }
-                  ]}>
-                    Custom
-                  </Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity
-                  style={[
                     destinationType === 'building' ? buttonStyles.quickSelectButtonActive : buttonStyles.quickSelectButton,
                     { flex: 1, borderWidth: 0 }
                   ]}
@@ -444,21 +399,21 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
                     setSelectedGroupId(null);
                   }}
                 >
-                  <Icon 
-                    name="business" 
-                    size={16} 
-                    style={{ 
-                      color: destinationType === 'building' 
-                        ? getContrastColor(colors.primary) 
+                  <Icon
+                    name="business"
+                    size={16}
+                    style={{
+                      color: destinationType === 'building'
+                        ? getContrastColor(colors.primary)
                         : getContrastColor(colors.background),
-                      marginRight: spacing.xs 
-                    }} 
+                      marginRight: spacing.xs
+                    }}
                   />
                   <Text style={[
                     typography.caption,
-                    { 
-                      color: destinationType === 'building' 
-                        ? getContrastColor(colors.primary) 
+                    {
+                      color: destinationType === 'building'
+                        ? getContrastColor(colors.primary)
                         : getContrastColor(colors.background),
                       fontWeight: destinationType === 'building' ? '700' : '500'
                     }
@@ -466,7 +421,7 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
                     Building
                   </Text>
                 </TouchableOpacity>
-                
+
                 <TouchableOpacity
                   style={[
                     destinationType === 'group' ? buttonStyles.quickSelectButtonActive : buttonStyles.quickSelectButton,
@@ -478,21 +433,21 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
                     setSelectedBuildingId(null);
                   }}
                 >
-                  <Icon 
-                    name="albums" 
-                    size={16} 
-                    style={{ 
-                      color: destinationType === 'group' 
-                        ? getContrastColor(colors.primary) 
+                  <Icon
+                    name="albums"
+                    size={16}
+                    style={{
+                      color: destinationType === 'group'
+                        ? getContrastColor(colors.primary)
                         : getContrastColor(colors.background),
-                      marginRight: spacing.xs 
-                    }} 
+                      marginRight: spacing.xs
+                    }}
                   />
                   <Text style={[
                     typography.caption,
-                    { 
-                      color: destinationType === 'group' 
-                        ? getContrastColor(colors.primary) 
+                    {
+                      color: destinationType === 'group'
+                        ? getContrastColor(colors.primary)
                         : getContrastColor(colors.background),
                       fontWeight: destinationType === 'group' ? '700' : '500'
                     }
@@ -501,49 +456,6 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
                   </Text>
                 </TouchableOpacity>
               </View>
-
-              {/* Custom Destination Input */}
-              {destinationType === 'custom' && (
-                <>
-                  <TextInput
-                    style={[commonStyles.textInput, { marginBottom: spacing.sm }]}
-                    placeholder="Enter destination (e.g., TechCorp Main Office)"
-                    placeholderTextColor={colors.textSecondary}
-                    value={destination}
-                    onChangeText={setDestination}
-                  />
-                  
-                  <Text style={[typography.caption, { color: colors.textSecondary, marginBottom: spacing.sm }]}>
-                    Quick Select:
-                  </Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                    <View style={[commonStyles.row, { gap: spacing.sm, paddingHorizontal: spacing.xs }]}>
-                      {commonDestinations.map(dest => (
-                        <TouchableOpacity
-                          key={dest}
-                          style={[
-                            destination === dest ? buttonStyles.quickSelectButtonActive : buttonStyles.quickSelectButton,
-                            { borderWidth: 0 }
-                          ]}
-                          onPress={() => setDestination(dest)}
-                        >
-                          <Text style={[
-                            typography.caption,
-                            { 
-                              color: destination === dest 
-                                ? getContrastColor(colors.primary) 
-                                : getContrastColor(colors.background),
-                              fontWeight: destination === dest ? '700' : '500'
-                            }
-                          ]}>
-                            {dest}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </ScrollView>
-                </>
-              )}
 
               {/* Building Selector - Collapsible by Client */}
               {destinationType === 'building' && (
@@ -731,7 +643,7 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
                       </View>
                     );
                   })}
-                  {buildingGroups.length === 0 && (
+                  {Object.keys(groupsByClient).length === 0 && (
                     <Text style={[typography.caption, { color: colors.textSecondary, textAlign: 'center', padding: spacing.md }]}>
                       No building groups available. Create groups in the Clients screen.
                     </Text>
