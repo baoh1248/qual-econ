@@ -51,6 +51,7 @@ interface Shift {
 interface CleanerProfile {
   id: string;
   name: string;
+  employeeId: string;
   currentLocation: string;
   todayHours: number;
   todayTasks: number;
@@ -75,6 +76,12 @@ const styles = StyleSheet.create({
     ...typography.h1,
     color: colors.textInverse,
     marginBottom: spacing.xs,
+  },
+  employeeIdText: {
+    ...typography.small,
+    color: 'rgba(255, 255, 255, 0.8)',
+    marginBottom: spacing.xs,
+    fontWeight: '500',
   },
   subGreeting: {
     ...typography.body,
@@ -296,6 +303,7 @@ export default function CleanerDashboard() {
   const [profile, setProfile] = useState<CleanerProfile>({
     id: '1',
     name: 'Loading...',
+    employeeId: '',
     currentLocation: 'Unknown',
     todayHours: 0,
     todayTasks: 0,
@@ -364,6 +372,7 @@ export default function CleanerDashboard() {
       setProfile({
         id: cleanerData.id,
         name: cleanerData.name || cleanerData.go_by || session.name,
+        employeeId: cleanerData.employee_id || '',
         currentLocation: 'On Site',
         todayHours: 0,
         todayTasks: 0,
@@ -536,6 +545,9 @@ export default function CleanerDashboard() {
           <View style={styles.headerTop}>
             <View>
               <Text style={styles.greeting}>Hello, {profile.name}!</Text>
+              {profile.employeeId && (
+                <Text style={styles.employeeIdText}>Employee ID: {profile.employeeId}</Text>
+              )}
               <Text style={styles.subGreeting}>Ready to make a difference today?</Text>
             </View>
             <TouchableOpacity onPress={handleLogoutPress}>
