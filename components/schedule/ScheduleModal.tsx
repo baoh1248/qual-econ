@@ -184,16 +184,14 @@ const ScheduleModal = memo(({
   };
 
   // Date field - Initialize with proper date format
+  // Note: Only initialize with selectedEntry date or default. Let useEffect handle selectedDay calculation
+  // to avoid stale closure issues
   const [scheduleDate, setScheduleDate] = useState(() => {
     try {
       if (selectedEntry?.date) {
         // Ensure date is in YYYY-MM-DD format
         const dateStr = selectedEntry.date.split('T')[0];
         return dateStr;
-      }
-      // If selectedDay is provided, calculate the date for that day
-      if (selectedDay && currentDate) {
-        return calculateDateFromDay(selectedDay, currentDate);
       }
       return new Date().toISOString().split('T')[0];
     } catch (error) {
