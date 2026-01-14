@@ -17,6 +17,8 @@ export interface InventoryTransfer {
   transferredBy: string;
   notes?: string;
   totalValue?: number;
+  type: 'outgoing' | 'incoming'; // 'outgoing' = to client, 'incoming' = from supplier
+  source?: string; // For incoming transfers, name of supplier
 }
 
 const STORAGE_KEY = 'inventory_transfer_logs';
@@ -92,15 +94,20 @@ export async function deleteInventoryTransferLog(transferId: string): Promise<vo
 }
 
 export function formatTransferSummary(transfer: InventoryTransfer): string {
-  const itemSummaries = transfer.items.map(item => 
+  const itemSummaries = transfer.items.map(item =>
     `${item.quantity} ${item.name}`
   );
-  
+
   const date = new Date(transfer.timestamp);
   const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const dateString = date.toLocaleDateString([], { month: '2-digit', day: '2-digit' });
-  
-  return `${itemSummaries.join(' and ')} were sent to ${transfer.destination} at ${timeString} on ${dateString}`;
+
+  if (transfer.type === 'incoming') {
+    const source = transfer.source || 'Supplier';
+    return `${itemSummaries.join(' and ')} received from ${source} at ${timeString} on ${dateString}`;
+  } else {
+    return `${itemSummaries.join(' and ')} sent to ${transfer.destination} at ${timeString} on ${dateString}`;
+  }
 }
 
 export function formatCurrency(amount: number): string {
