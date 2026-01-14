@@ -1864,13 +1864,6 @@ export default function ScheduleView() {
             <Icon name="calendar" size={32} style={{ color: '#FFFFFF' }} />
           </View>
           <View style={styles.headerRight}>
-            <View style={styles.syncIndicator}>
-              <View style={styles.syncIndicatorDot} />
-              <Text style={styles.syncIndicatorText}>
-                {isConnected ? 'LIVE' : 'OFFLINE'}
-              </Text>
-            </View>
-
             {isSyncing && (
               <ActivityIndicator size="small" color="#FFFFFF" />
             )}
