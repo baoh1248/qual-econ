@@ -116,6 +116,11 @@ export default function ForgotPasswordScreen() {
     try {
       setIsLoading(true);
 
+      if (!userId) {
+        showToast('Error: User ID is missing. Please start over.', 'error');
+        return;
+      }
+
       // Store password as plain text (trim to remove any whitespace)
       const trimmedPassword = newPassword.trim();
 
@@ -134,7 +139,7 @@ export default function ForgotPasswordScreen() {
       }
 
       if (!data || data.length === 0) {
-        showToast('Failed to update password. User not found.', 'error');
+        showToast(`Failed to update. UserID: ${userId} Phone: ${phoneNumber}`, 'error');
         return;
       }
 
