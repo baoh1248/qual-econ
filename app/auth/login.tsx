@@ -94,9 +94,9 @@ export default function LoginScreen() {
         return;
       }
 
-      // Verify password
-      const passwordHash = await hashPassword(password.trim());
-      const isPasswordValid = passwordHash === userData.password_hash;
+      // Verify password (plain text comparison)
+      const enteredPassword = password.trim();
+      const isPasswordValid = enteredPassword === userData.password_hash;
 
       if (!isPasswordValid) {
         showToast('Invalid phone number or password', 'error');

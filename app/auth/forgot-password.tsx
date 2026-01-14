@@ -116,15 +116,14 @@ export default function ForgotPasswordScreen() {
     try {
       setIsLoading(true);
 
-      // Hash the new password (trim to remove any whitespace)
+      // Store password as plain text (trim to remove any whitespace)
       const trimmedPassword = newPassword.trim();
-      const passwordHash = await hashPassword(trimmedPassword);
 
       // Update password in database
       const { error } = await supabase
         .from('cleaners')
         .update({
-          password_hash: passwordHash,
+          password_hash: trimmedPassword,
         })
         .eq('id', userId);
 
