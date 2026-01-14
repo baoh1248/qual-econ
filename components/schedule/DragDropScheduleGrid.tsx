@@ -279,6 +279,7 @@ const DragDropScheduleGrid = memo(({
           const statusIcon = getStatusIcon(entry.status);
           const isSelected = selectedEntries.includes(entry.id);
           const isProject = entry.isProject || false;
+          const isRecurring = entry.isRecurring || false;
           
           return (
             <TouchableOpacity
@@ -302,6 +303,11 @@ const DragDropScheduleGrid = memo(({
                   <View style={[styles.typeBadge, styles.projectBadge]}>
                     <Icon name="briefcase" size={10} style={{ color: '#FFFFFF' }} />
                     <Text style={styles.typeBadgeText}>PROJECT</Text>
+                  </View>
+                ) : isRecurring ? (
+                  <View style={[styles.typeBadge, styles.recurringBadge]}>
+                    <Icon name="repeat" size={10} style={{ color: '#FFFFFF' }} />
+                    <Text style={styles.typeBadgeText}>RECURRING</Text>
                   </View>
                 ) : (
                   <View style={[styles.typeBadge, styles.regularBadge]}>
@@ -894,6 +900,9 @@ const styles = StyleSheet.create({
   },
   projectBadge: {
     backgroundColor: '#8B5CF6',
+  },
+  recurringBadge: {
+    backgroundColor: '#10B981',
   },
   regularBadge: {
     backgroundColor: '#3B82F6',
