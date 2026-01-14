@@ -325,7 +325,7 @@ export default function CleanerDashboard() {
 
       if (!cleanerId || !cleanerName) {
         console.log('No session found, redirecting to signin');
-        router.replace('/auth/cleaner-signin');
+        router.replace('/auth/login');
         return;
       }
 
@@ -343,7 +343,7 @@ export default function CleanerDashboard() {
       if (!cleanerData) {
         console.log('Cleaner not found in database, clearing session');
         await AsyncStorage.multiRemove(['cleaner_id', 'cleaner_name', 'cleaner_phone']);
-        router.replace('/auth/cleaner-signin');
+        router.replace('/auth/login');
         return;
       }
 
@@ -357,7 +357,7 @@ export default function CleanerDashboard() {
               text: 'OK',
               onPress: async () => {
                 await AsyncStorage.multiRemove(['cleaner_id', 'cleaner_name', 'cleaner_phone']);
-                router.replace('/auth/cleaner-signin');
+                router.replace('/auth/login');
               }
             }
           ]
@@ -377,7 +377,7 @@ export default function CleanerDashboard() {
       });
     } catch (error) {
       console.error('Error in loadProfile:', error);
-      router.replace('/auth/cleaner-signin');
+      router.replace('/auth/login');
     }
   }, []);
 

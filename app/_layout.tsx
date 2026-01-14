@@ -25,8 +25,6 @@ function RootLayoutContent() {
           }}
         >
           <Stack.Screen name="index" />
-          <Stack.Screen name="auth/cleaner-signin" />
-          <Stack.Screen name="auth/cleaner-signup" />
           <Stack.Screen name="supervisor" />
           <Stack.Screen name="cleaner" />
         </Stack>

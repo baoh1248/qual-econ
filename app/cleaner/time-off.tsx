@@ -83,7 +83,7 @@ export default function CleanerTimeOffScreen() {
           [
             {
               text: 'OK',
-              onPress: () => router.replace('/auth/cleaner-signin'),
+              onPress: () => router.replace('/auth/login'),
             },
           ]
         );
