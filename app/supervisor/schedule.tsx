@@ -878,8 +878,11 @@ export default function ScheduleView() {
     if (viewType === 'daily') {
       return currentDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
     } else if (viewType === 'weekly') {
+      // Calculate Monday as start of week (not Sunday)
       const startOfWeek = new Date(currentDate);
-      startOfWeek.setDate(currentDate.getDate() - currentDate.getDay());
+      const dayOfWeek = currentDate.getDay();
+      const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+      startOfWeek.setDate(currentDate.getDate() + diff);
       const endOfWeek = new Date(startOfWeek);
       endOfWeek.setDate(startOfWeek.getDate() + 6);
       return `${startOfWeek.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${endOfWeek.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
@@ -893,8 +896,11 @@ export default function ScheduleView() {
     if (viewType === 'daily') {
       return currentDate.toDateString() === today.toDateString();
     } else if (viewType === 'weekly') {
+      // Calculate Monday as start of week (not Sunday)
       const startOfWeek = new Date(currentDate);
-      startOfWeek.setDate(currentDate.getDate() - currentDate.getDay());
+      const dayOfWeek = currentDate.getDay();
+      const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+      startOfWeek.setDate(currentDate.getDate() + diff);
       const endOfWeek = new Date(startOfWeek);
       endOfWeek.setDate(startOfWeek.getDate() + 6);
       return today >= startOfWeek && today <= endOfWeek;
