@@ -149,6 +149,23 @@ const ScheduleModal = memo(({
   const [selectedClientName, setSelectedClientName] = useState<string>('');
   const [showClientSelectorDropdown, setShowClientSelectorDropdown] = useState(false);
 
+  // Local state for hours and start time dropdowns
+  const [showHoursDropdown, setShowHoursDropdown] = useState(false);
+  const [showStartTimeDropdown, setShowStartTimeDropdown] = useState(false);
+
+  // Generate hours options (1-12)
+  const hoursOptions = Array.from({ length: 12 }, (_, i) => (i + 1).toString());
+
+  // Generate start time options (6 AM to 11:30 PM in 30-minute intervals)
+  const startTimeOptions = useMemo(() => {
+    const times: string[] = [];
+    for (let hour = 6; hour < 24; hour++) {
+      times.push(`${hour.toString().padStart(2, '0')}:00`);
+      times.push(`${hour.toString().padStart(2, '0')}:30`);
+    }
+    return times;
+  }, []);
+
   // Helper function to calculate date from selected day
   const calculateDateFromDay = (dayName: string, baseDate: Date): string => {
     try {
@@ -1014,21 +1031,78 @@ const ScheduleModal = memo(({
               )}
               
               <Text style={styles.inputLabel}>Hours *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="8"
-                value={hours}
-                onChangeText={setHours}
-                keyboardType="numeric"
-              />
-              
+              <TouchableOpacity
+                style={[styles.input, styles.dropdownSelector]}
+                onPress={() => setShowHoursDropdown(!showHoursDropdown)}
+              >
+                <Text style={[styles.inputText, !hours && styles.placeholderText]}>
+                  {hours || '8'}
+                </Text>
+                <Icon name="chevron-down" size={20} style={{ color: colors.textSecondary }} />
+              </TouchableOpacity>
+              {showHoursDropdown && (
+                <View style={styles.dropdownContainer}>
+                  <ScrollView style={styles.dropdown} nestedScrollEnabled>
+                    {hoursOptions.map((hour) => (
+                      <TouchableOpacity
+                        key={hour}
+                        style={[styles.dropdownItem, hours === hour && { backgroundColor: themeColor }]}
+                        onPress={() => {
+                          setHours(hour);
+                          setShowHoursDropdown(false);
+                        }}
+                      >
+                        <Text style={[styles.dropdownText, hours === hour && styles.dropdownTextSelected]}>
+                          {hour} {hour === '1' ? 'hour' : 'hours'}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                  <TouchableOpacity
+                    style={[styles.closeDropdownButton, { backgroundColor: themeColor }]}
+                    onPress={() => setShowHoursDropdown(false)}
+                  >
+                    <Text style={styles.closeDropdownText}>Close</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
               <Text style={styles.inputLabel}>Start Time</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="09:00"
-                value={startTime}
-                onChangeText={setStartTime}
-              />
+              <TouchableOpacity
+                style={[styles.input, styles.dropdownSelector]}
+                onPress={() => setShowStartTimeDropdown(!showStartTimeDropdown)}
+              >
+                <Text style={[styles.inputText, !startTime && styles.placeholderText]}>
+                  {startTime || '09:00'}
+                </Text>
+                <Icon name="chevron-down" size={20} style={{ color: colors.textSecondary }} />
+              </TouchableOpacity>
+              {showStartTimeDropdown && (
+                <View style={styles.dropdownContainer}>
+                  <ScrollView style={styles.dropdown} nestedScrollEnabled>
+                    {startTimeOptions.map((time) => (
+                      <TouchableOpacity
+                        key={time}
+                        style={[styles.dropdownItem, startTime === time && { backgroundColor: themeColor }]}
+                        onPress={() => {
+                          setStartTime(time);
+                          setShowStartTimeDropdown(false);
+                        }}
+                      >
+                        <Text style={[styles.dropdownText, startTime === time && styles.dropdownTextSelected]}>
+                          {time}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                  <TouchableOpacity
+                    style={[styles.closeDropdownButton, { backgroundColor: themeColor }]}
+                    onPress={() => setShowStartTimeDropdown(false)}
+                  >
+                    <Text style={styles.closeDropdownText}>Close</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
 
               {/* Payment Configuration Section */}
               <View style={styles.paymentSection}>
