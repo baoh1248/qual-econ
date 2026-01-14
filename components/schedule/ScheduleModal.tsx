@@ -202,18 +202,22 @@ const ScheduleModal = memo(({
     }
   });
 
-  // Update scheduleDate when selectedEntry or selectedDay changes
+  // Update scheduleDate when modal opens or selectedEntry/selectedDay changes
   useEffect(() => {
+    if (!visible) return;
+
     if (selectedEntry?.date) {
       const dateStr = selectedEntry.date.split('T')[0];
       setScheduleDate(dateStr);
     } else if (selectedDay && currentDate) {
       // Calculate date from selected day
-      setScheduleDate(calculateDateFromDay(selectedDay, currentDate));
+      const calculatedDate = calculateDateFromDay(selectedDay, currentDate);
+      console.log('📅 Calculating date for day:', selectedDay, '→', calculatedDate);
+      setScheduleDate(calculatedDate);
     } else {
       setScheduleDate(new Date().toISOString().split('T')[0]);
     }
-  }, [selectedEntry, selectedDay, currentDate]);
+  }, [visible, selectedEntry, selectedDay, currentDate]);
 
   // Reset client selection when modal opens/closes
   useEffect(() => {
