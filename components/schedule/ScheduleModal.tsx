@@ -21,6 +21,8 @@ interface ScheduleModalProps {
   cleaners: Cleaner[];
   clients: Client[];
   clientBuildings: ClientBuilding[];
+  selectedDay?: string;
+  currentDate?: Date;
   
   // Form states
   cleanerName: string;
@@ -82,6 +84,8 @@ const ScheduleModal = memo(({
   cleaners,
   clients,
   clientBuildings = [],
+  selectedDay,
+  currentDate,
   cleanerName,
   selectedCleaners = [],
   hours,
@@ -145,6 +149,40 @@ const ScheduleModal = memo(({
   const [selectedClientName, setSelectedClientName] = useState<string>('');
   const [showClientSelectorDropdown, setShowClientSelectorDropdown] = useState(false);
 
+  // Helper function to calculate date from selected day
+  const calculateDateFromDay = (dayName: string, baseDate: Date): string => {
+    try {
+      const dayMap: { [key: string]: number } = {
+        'monday': 0,
+        'tuesday': 1,
+        'wednesday': 2,
+        'thursday': 3,
+        'friday': 4,
+        'saturday': 5,
+        'sunday': 6,
+      };
+
+      const targetDayIndex = dayMap[dayName.toLowerCase()];
+      if (targetDayIndex === undefined) {
+        return new Date().toISOString().split('T')[0];
+      }
+
+      // Calculate Monday of the current week
+      const weekStart = new Date(baseDate);
+      const dayOfWeek = weekStart.getDay();
+      const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+      weekStart.setDate(weekStart.getDate() + diff);
+
+      // Add days to get to the target day
+      weekStart.setDate(weekStart.getDate() + targetDayIndex);
+
+      return weekStart.toISOString().split('T')[0];
+    } catch (error) {
+      console.error('Error calculating date from day:', error);
+      return new Date().toISOString().split('T')[0];
+    }
+  };
+
   // Date field - Initialize with proper date format
   const [scheduleDate, setScheduleDate] = useState(() => {
     try {
@@ -153,6 +191,10 @@ const ScheduleModal = memo(({
         const dateStr = selectedEntry.date.split('T')[0];
         return dateStr;
       }
+      // If selectedDay is provided, calculate the date for that day
+      if (selectedDay && currentDate) {
+        return calculateDateFromDay(selectedDay, currentDate);
+      }
       return new Date().toISOString().split('T')[0];
     } catch (error) {
       console.error('Error initializing schedule date:', error);
@@ -160,15 +202,18 @@ const ScheduleModal = memo(({
     }
   });
 
-  // Update scheduleDate when selectedEntry changes
+  // Update scheduleDate when selectedEntry or selectedDay changes
   useEffect(() => {
     if (selectedEntry?.date) {
       const dateStr = selectedEntry.date.split('T')[0];
       setScheduleDate(dateStr);
+    } else if (selectedDay && currentDate) {
+      // Calculate date from selected day
+      setScheduleDate(calculateDateFromDay(selectedDay, currentDate));
     } else {
       setScheduleDate(new Date().toISOString().split('T')[0]);
     }
-  }, [selectedEntry]);
+  }, [selectedEntry, selectedDay, currentDate]);
 
   // Reset client selection when modal opens/closes
   useEffect(() => {

@@ -2056,6 +2056,8 @@ export default function ScheduleView() {
         cleaners={cleaners}
         clients={clients}
         clientBuildings={clientBuildings}
+        selectedDay={selectedDay}
+        currentDate={currentDate}
         cleanerName={cleanerName}
         selectedCleaners={selectedCleaners}
         hours={hours}
