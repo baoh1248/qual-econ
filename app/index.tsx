@@ -45,7 +45,7 @@ export default function Index() {
   return (
     <View style={commonStyles.container}>
       <View style={styles.content}>
-        <CompanyLogo size="large" showText={true} />
+        <CompanyLogo size="large" showText={false} />
 
         <Text style={styles.title}>Qual-Econ USA</Text>
         <Text style={styles.subtitle}>
