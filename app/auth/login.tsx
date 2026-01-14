@@ -37,7 +37,6 @@ export default function LoginScreen() {
     }
 
     const cleanedPhone = cleanPhoneNumber(phoneNumber);
-    console.log('🔍 Login Debug - Phone:', { original: phoneNumber, cleaned: cleanedPhone });
 
     if (!isValidPhoneNumber(cleanedPhone)) {
       showToast('Please enter a valid 10-digit phone number', 'error');
@@ -47,38 +46,19 @@ export default function LoginScreen() {
     try {
       setIsLoading(true);
 
-      // Look up user by phone number
+      // Look up user by phone number (simple query without roles)
       const { data: userData, error: lookupError } = await supabase
         .from('cleaners')
-        .select(`
-          id,
-          name,
-          phone_number,
-          is_active,
-          employment_status,
-          password_hash,
-          role_id,
-          roles(id, name, display_name, level)
-        `)
+        .select('id, name, phone_number, is_active, employment_status, password_hash, role_id')
         .eq('phone_number', cleanedPhone)
         .maybeSingle();
 
-      console.log('🔍 Login Debug - User Found:', {
-        found: !!userData,
-        name: userData?.name,
-        phone: userData?.phone_number,
-        hasPassword: !!userData?.password_hash,
-        passwordHashPreview: userData?.password_hash?.substring(0, 10) + '...',
-      });
-
       if (lookupError) {
-        console.error('User lookup error:', lookupError);
         showToast('Failed to look up account. Please try again.', 'error');
         return;
       }
 
       if (!userData) {
-        console.log('❌ No user found with phone:', cleanedPhone);
         showToast('Invalid phone number or password', 'error');
         return;
       }
@@ -87,31 +67,20 @@ export default function LoginScreen() {
       if (!userData.password_hash) {
         Alert.alert(
           'Password Not Set',
-          'Your account does not have a password set. Please contact your administrator to set up your password.',
+          'Your account does not have a password set. Please use the "Forgot Password" feature to set one.',
           [{ text: 'OK' }]
         );
         return;
       }
 
-      // Verify password (trim to remove any whitespace)
+      // Verify password
       const passwordHash = await hashPassword(password.trim());
       const isPasswordValid = passwordHash === userData.password_hash;
 
-      console.log('🔍 Login Debug - Password Check:', {
-        enteredHash: passwordHash?.substring(0, 15) + '...',
-        storedHash: userData.password_hash?.substring(0, 15) + '...',
-        match: isPasswordValid,
-        enteredLength: password.length,
-        trimmedLength: password.trim().length,
-      });
-
       if (!isPasswordValid) {
-        console.log('❌ Password mismatch!');
         showToast('Invalid phone number or password', 'error');
         return;
       }
-
-      console.log('✅ Password verified successfully!');
 
       // Check if account is active
       if (!userData.is_active || userData.employment_status !== 'active') {
@@ -123,42 +92,46 @@ export default function LoginScreen() {
         return;
       }
 
-      // Check if role is set
-      if (!userData.role_id || !userData.roles) {
-        Alert.alert(
-          'Role Not Assigned',
-          'Your account does not have a role assigned. Please contact your administrator.',
-          [{ text: 'OK' }]
-        );
-        return;
+      // Get role information if role_id exists
+      let roleInfo = null;
+      if (userData.role_id) {
+        const { data: roleData } = await supabase
+          .from('roles')
+          .select('id, name, display_name, level')
+          .eq('id', userData.role_id)
+          .maybeSingle();
+
+        roleInfo = roleData;
       }
+
+      // Use role info if available, otherwise default to cleaner
+      const roleName = roleInfo?.name || 'cleaner';
+      const roleLevel = roleInfo?.level || ROLE_LEVELS.CLEANER;
+      const roleId = userData.role_id || '';
 
       // Save session
       await saveSession({
         id: userData.id,
         name: userData.name,
         phone: userData.phone_number,
-        role: userData.roles.name,
-        roleLevel: userData.roles.level,
-        roleId: userData.role_id,
+        role: roleName,
+        roleLevel: roleLevel,
+        roleId: roleId,
         lastLogin: new Date().toISOString(),
       });
 
       showToast(`Welcome back, ${userData.name}!`, 'success');
 
-      // Route based on role
+      // Route based on role level
       setTimeout(() => {
-        if (userData.roles.level === ROLE_LEVELS.CLEANER) {
-          // Cleaners go to cleaner interface
+        if (roleLevel === ROLE_LEVELS.CLEANER) {
           router.replace('/cleaner');
         } else {
-          // Supervisors, Managers, Admins go to management interface
           router.replace('/supervisor');
         }
       }, 500);
 
     } catch (error: any) {
-      console.error('Unexpected login error:', error);
       showToast(error?.message || 'An unexpected error occurred. Please try again.', 'error');
     } finally {
       setIsLoading(false);
