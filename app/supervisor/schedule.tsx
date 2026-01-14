@@ -95,6 +95,8 @@ export default function ScheduleView() {
   const [selectedCleaners, setSelectedCleaners] = useState<string[]>([]);
   const [hours, setHours] = useState('');
   const [startTime, setStartTime] = useState('09:00');
+  const [paymentType, setPaymentType] = useState<'hourly' | 'flat_rate'>('hourly');
+  const [flatRateAmount, setFlatRateAmount] = useState('100');
   const [newClientName, setNewClientName] = useState('');
   const [newClientSecurity, setNewClientSecurity] = useState('');
   const [newClientSecurityLevel, setNewClientSecurityLevel] = useState<'low' | 'medium' | 'high'>('low');
@@ -986,6 +988,8 @@ export default function ScheduleView() {
     setSelectedCleaners(entry.cleanerNames || [entry.cleanerName]);
     setHours(entry.hours.toString());
     setStartTime(entry.startTime || '09:00');
+    setPaymentType(entry.paymentType || 'hourly');
+    setFlatRateAmount(entry.flatRateAmount?.toString() || '100');
     setSelectedDay(entry.day);
     setIsAddingFromGrid(false);
     setModalType('details');
@@ -1004,6 +1008,8 @@ export default function ScheduleView() {
     setSelectedCleaners([]);
     setHours('');
     setStartTime('09:00');
+    setPaymentType('hourly');
+    setFlatRateAmount('100');
     // Don't reset selectedDay here - let it persist for proper key prop behavior
     setNewClientName('');
     setNewClientSecurity('');
@@ -1079,8 +1085,9 @@ export default function ScheduleView() {
           endTime,
           status: 'scheduled',
           weekId: currentWeekId,
-          paymentType: 'hourly',
-          hourlyRate: 15,
+          paymentType: paymentType,
+          flatRateAmount: paymentType === 'flat_rate' ? parseFloat(flatRateAmount) : undefined,
+          hourlyRate: paymentType === 'hourly' ? 15 : undefined,
           priority: 'medium',
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -1154,6 +1161,9 @@ export default function ScheduleView() {
           hours: parseFloat(hours),
           startTime,
           endTime,
+          paymentType: paymentType,
+          flatRateAmount: paymentType === 'flat_rate' ? parseFloat(flatRateAmount) : undefined,
+          hourlyRate: paymentType === 'hourly' ? 15 : undefined,
         };
 
         console.log('📝 Updating schedule entry:', selectedEntry.id);
@@ -2064,6 +2074,8 @@ export default function ScheduleView() {
         selectedCleaners={selectedCleaners}
         hours={hours}
         startTime={startTime}
+        paymentType={paymentType}
+        flatRateAmount={flatRateAmount}
         newClientName={newClientName}
         newClientSecurity={newClientSecurity}
         newClientSecurityLevel={newClientSecurityLevel}
@@ -2081,6 +2093,8 @@ export default function ScheduleView() {
         setSelectedCleaners={setSelectedCleaners}
         setHours={setHours}
         setStartTime={setStartTime}
+        setPaymentType={setPaymentType}
+        setFlatRateAmount={setFlatRateAmount}
         setNewClientName={setNewClientName}
         setNewClientSecurity={setNewClientSecurity}
         setNewClientSecurityLevel={setNewClientSecurityLevel}

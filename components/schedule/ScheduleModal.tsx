@@ -29,6 +29,8 @@ interface ScheduleModalProps {
   selectedCleaners: string[];
   hours: string;
   startTime: string;
+  paymentType: 'hourly' | 'flat_rate';
+  flatRateAmount: string;
   newClientName: string;
   newClientSecurity: string;
   newClientSecurityLevel: 'low' | 'medium' | 'high';
@@ -48,6 +50,8 @@ interface ScheduleModalProps {
   setSelectedCleaners: (value: string[]) => void;
   setHours: (value: string) => void;
   setStartTime: (value: string) => void;
+  setPaymentType: (value: 'hourly' | 'flat_rate') => void;
+  setFlatRateAmount: (value: string) => void;
   setNewClientName: (value: string) => void;
   setNewClientSecurity: (value: string) => void;
   setNewClientSecurityLevel: (value: 'low' | 'medium' | 'high') => void;
@@ -90,6 +94,8 @@ const ScheduleModal = memo(({
   selectedCleaners = [],
   hours,
   startTime,
+  paymentType: propPaymentType,
+  flatRateAmount: propFlatRateAmount,
   newClientName,
   newClientSecurity,
   newClientSecurityLevel,
@@ -107,6 +113,8 @@ const ScheduleModal = memo(({
   setSelectedCleaners,
   setHours,
   setStartTime,
+  setPaymentType: setPropPaymentType,
+  setFlatRateAmount: setPropFlatRateAmount,
   setNewClientName,
   setNewClientSecurity,
   setNewClientSecurityLevel,
@@ -280,23 +288,11 @@ const ScheduleModal = memo(({
     return clientBuildings.filter(building => building.clientName === selectedClientName);
   }, [selectedClientName, clientBuildings]);
 
-  // Payment-related state
-  const [paymentType, setPaymentType] = useState<'hourly' | 'flat_rate'>(() => {
-    try {
-      return selectedEntry?.paymentType || 'hourly';
-    } catch (error) {
-      console.error('Error initializing payment type:', error);
-      return 'hourly';
-    }
-  });
-  const [flatRateAmount, setFlatRateAmount] = useState(() => {
-    try {
-      return selectedEntry?.flatRateAmount?.toString() || '100';
-    } catch (error) {
-      console.error('Error initializing flat rate amount:', error);
-      return '100';
-    }
-  });
+  // Use payment props directly (managed by parent)
+  const paymentType = propPaymentType;
+  const setPaymentType = setPropPaymentType;
+  const flatRateAmount = propFlatRateAmount;
+  const setFlatRateAmount = setPropFlatRateAmount;
 
   // Calculate estimated payment based on selected cleaners and their hourly rates
   const estimatedPayment = useMemo(() => {
