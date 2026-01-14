@@ -120,14 +120,23 @@ export default function ForgotPasswordScreen() {
       const trimmedPassword = newPassword.trim();
 
       // Update password in database
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('cleaners')
         .update({
           password_hash: trimmedPassword,
         })
-        .eq('id', userId);
+        .eq('id', userId)
+        .select();
 
-      if (error) throw error;
+      if (error) {
+        showToast(`Database error: ${error.message}`, 'error');
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        showToast('Failed to update password. User not found.', 'error');
+        return;
+      }
 
       showToast(`Password set! Use: "${trimmedPassword}" to log in`, 'success');
 
@@ -137,7 +146,6 @@ export default function ForgotPasswordScreen() {
       }, 2000);
 
     } catch (error: any) {
-      console.error('Error resetting password:', error);
       showToast(error?.message || 'Failed to reset password. Please try again.', 'error');
     } finally {
       setIsLoading(false);
