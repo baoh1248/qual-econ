@@ -1004,6 +1004,7 @@ export default function ScheduleView() {
     setSelectedCleaners([]);
     setHours('');
     setStartTime('09:00');
+    setSelectedDay('');
     setNewClientName('');
     setNewClientSecurity('');
     setNewClientSecurityLevel('low');
