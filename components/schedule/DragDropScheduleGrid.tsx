@@ -353,6 +353,16 @@ const DragDropScheduleGrid = memo(({
                   <View style={styles.entryHoursContainer}>
                     <Icon name="hourglass-outline" size={12} style={{ color: colors.textSecondary }} />
                     <Text style={styles.entryHours}>{entry.hours}h</Text>
+                    {entry.paymentType && (
+                      <View style={[
+                        styles.paymentTypeBadge,
+                        { backgroundColor: entry.paymentType === 'hourly' ? '#3B82F6' : '#10B981' }
+                      ]}>
+                        <Text style={styles.paymentTypeText}>
+                          {entry.paymentType === 'hourly' ? 'Hourly' : 'Flat'}
+                        </Text>
+                      </View>
+                    )}
                   </View>
                   {entry.notes && !isProject && (
                     <Icon name="document-text-outline" size={12} style={{ color: colors.textSecondary }} />
@@ -985,6 +995,19 @@ const styles = StyleSheet.create({
     color: '#64748B',
     fontSize: 11,
     fontWeight: '600',
+  },
+  paymentTypeBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 4,
+  },
+  paymentTypeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   addMoreButton: {
     flexDirection: 'row',
