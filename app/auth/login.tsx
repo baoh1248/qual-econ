@@ -57,8 +57,6 @@ export default function LoginScreen() {
           employment_status,
           password_hash,
           role_id,
-          failed_login_attempts,
-          locked_until,
           roles!inner(id, name, display_name, level)
         `)
         .eq('phone_number', cleanedPhone)
@@ -72,18 +70,6 @@ export default function LoginScreen() {
 
       if (!userData) {
         showToast('Invalid phone number or password', 'error');
-        return;
-      }
-
-      // Check if account is locked
-      if (userData.locked_until && new Date(userData.locked_until) > new Date()) {
-        const lockTime = new Date(userData.locked_until);
-        const minutesLeft = Math.ceil((lockTime.getTime() - Date.now()) / 60000);
-        Alert.alert(
-          'Account Locked',
-          `Your account is temporarily locked due to multiple failed login attempts. Please try again in ${minutesLeft} minute(s).`,
-          [{ text: 'OK' }]
-        );
         return;
       }
 
@@ -102,27 +88,7 @@ export default function LoginScreen() {
       const isPasswordValid = passwordHash === userData.password_hash;
 
       if (!isPasswordValid) {
-        // Increment failed login attempts
-        const newAttempts = (userData.failed_login_attempts || 0) + 1;
-        const shouldLock = newAttempts >= 5;
-
-        await supabase
-          .from('cleaners')
-          .update({
-            failed_login_attempts: newAttempts,
-            locked_until: shouldLock ? new Date(Date.now() + 15 * 60000).toISOString() : null,
-          })
-          .eq('id', userData.id);
-
-        if (shouldLock) {
-          Alert.alert(
-            'Account Locked',
-            'Your account has been locked for 15 minutes due to multiple failed login attempts.',
-            [{ text: 'OK' }]
-          );
-        } else {
-          showToast(`Invalid password. ${5 - newAttempts} attempt(s) remaining.`, 'error');
-        }
+        showToast('Invalid phone number or password', 'error');
         return;
       }
 
@@ -145,16 +111,6 @@ export default function LoginScreen() {
         );
         return;
       }
-
-      // Login successful - reset failed attempts and update last login
-      await supabase
-        .from('cleaners')
-        .update({
-          failed_login_attempts: 0,
-          locked_until: null,
-          last_login: new Date().toISOString(),
-        })
-        .eq('id', userData.id);
 
       // Save session
       await saveSession({

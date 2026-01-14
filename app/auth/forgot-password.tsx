@@ -124,8 +124,6 @@ export default function ForgotPasswordScreen() {
         .from('cleaners')
         .update({
           password_hash: passwordHash,
-          failed_login_attempts: 0,
-          locked_until: null,
         })
         .eq('id', userId);
 
