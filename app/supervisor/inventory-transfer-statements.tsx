@@ -267,6 +267,7 @@ export default function InventoryTransferStatementsScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [monthlyStatements, setMonthlyStatements] = useState<MonthlyInventoryStatement[]>([]);
+  const [expandedMonths, setExpandedMonths] = useState<Set<number>>(new Set());
 
   const loadTransfers = useCallback(async () => {
     try {
@@ -399,6 +400,16 @@ export default function InventoryTransferStatementsScreen() {
     new Set(transfers.map(t => new Date(t.timestamp).getFullYear()))
   ).sort((a, b) => b - a);
 
+  const toggleMonth = (index: number) => {
+    const newExpanded = new Set(expandedMonths);
+    if (newExpanded.has(index)) {
+      newExpanded.delete(index);
+    } else {
+      newExpanded.add(index);
+    }
+    setExpandedMonths(newExpanded);
+  };
+
   if (isLoading) {
     return <LoadingSpinner />;
   }
@@ -467,21 +478,29 @@ export default function InventoryTransferStatementsScreen() {
             </Text>
           </View>
         ) : (
-          monthlyStatements.map((statement, index) => (
-            <AnimatedCard key={index} style={styles.monthCard}>
-              <View style={styles.monthHeader}>
-                <View>
-                  <Text style={styles.monthTitle}>
-                    {statement.month} {statement.year}
-                  </Text>
-                  <Text style={{ fontSize: typography.sizes.sm, color: colors.textSecondary, marginTop: 4 }}>
-                    {statement.itemLedgers.length} {statement.itemLedgers.length === 1 ? 'item' : 'items'}
-                  </Text>
-                </View>
-                <Icon name="receipt-outline" size={32} color={colors.primary} />
-              </View>
+          monthlyStatements.map((statement, index) => {
+            const isExpanded = expandedMonths.has(index);
+            return (
+              <AnimatedCard key={index} style={styles.monthCard}>
+                <TouchableOpacity onPress={() => toggleMonth(index)}>
+                  <View style={styles.monthHeader}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.monthTitle}>
+                        {statement.month} {statement.year}
+                      </Text>
+                      <Text style={{ fontSize: typography.sizes.sm, color: colors.textSecondary, marginTop: 4 }}>
+                        {statement.itemLedgers.length} {statement.itemLedgers.length === 1 ? 'item' : 'items'}
+                      </Text>
+                    </View>
+                    <Icon
+                      name={isExpanded ? "chevron-up" : "chevron-down"}
+                      size={28}
+                      color={colors.primary}
+                    />
+                  </View>
+                </TouchableOpacity>
 
-              {statement.itemLedgers.map((ledger, ledgerIndex) => (
+              {isExpanded && statement.itemLedgers.map((ledger, ledgerIndex) => (
                 <View key={ledgerIndex} style={styles.itemLedgerCard}>
                   <View style={styles.itemHeader}>
                     <View>
@@ -553,7 +572,8 @@ export default function InventoryTransferStatementsScreen() {
                 </View>
               ))}
             </AnimatedCard>
-          ))
+            );
+          })
         )}
       </ScrollView>
 
