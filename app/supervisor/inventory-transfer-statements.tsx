@@ -13,18 +13,27 @@ import Icon from '../../components/Icon';
 import { commonStyles, colors, spacing, typography } from '../../styles/commonStyles';
 import { getInventoryTransferLogs, type InventoryTransfer } from '../../utils/inventoryTracking';
 
+interface ItemTransaction {
+  date: string;
+  destination: string;
+  quantity: number;
+  timestamp: string;
+}
+
+interface ItemLedger {
+  itemName: string;
+  unit: string;
+  beginningBalance: number;
+  transactions: ItemTransaction[];
+  totalReceived: number;
+  totalSent: number;
+  endingBalance: number;
+}
+
 interface MonthlyStatement {
   month: string;
   year: number;
-  transfers: InventoryTransfer[];
-  locationSummary: {
-    [location: string]: {
-      totalValue: number;
-      transferCount: number;
-    };
-  };
-  totalValue: number;
-  totalTransfers: number;
+  itemLedgers: ItemLedger[];
 }
 
 const styles = StyleSheet.create({
@@ -85,48 +94,128 @@ const styles = StyleSheet.create({
     fontWeight: typography.weights.semibold as any,
     color: colors.primary,
   },
-  locationList: {
-    gap: spacing.sm,
-  },
-  locationRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+  itemLedgerCard: {
     backgroundColor: colors.background,
     borderRadius: 8,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  locationName: {
+  itemHeader: {
+    marginBottom: spacing.sm,
+  },
+  itemName: {
     fontSize: typography.sizes.md,
-    color: colors.text,
-    flex: 1,
-  },
-  locationValue: {
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.semibold as any,
-    color: colors.primary,
-    marginLeft: spacing.md,
-  },
-  totalRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-    backgroundColor: colors.primary + '10',
-    borderRadius: 8,
-    marginTop: spacing.md,
-    borderWidth: 2,
-    borderColor: colors.primary,
-  },
-  totalLabel: {
-    fontSize: typography.sizes.lg,
     fontWeight: typography.weights.bold as any,
     color: colors.text,
   },
-  totalValue: {
-    fontSize: typography.sizes.lg,
+  itemUnit: {
+    fontSize: typography.sizes.sm,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  balanceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    backgroundColor: colors.surface,
+    marginVertical: spacing.xs,
+    borderRadius: 4,
+  },
+  balanceLabel: {
+    fontSize: typography.sizes.sm,
+    color: colors.textSecondary,
+  },
+  balanceValue: {
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.semibold as any,
+    color: colors.text,
+  },
+  tableContainer: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    overflow: 'hidden',
+    marginVertical: spacing.sm,
+  },
+  tableHeader: {
+    flexDirection: 'row',
+    backgroundColor: colors.primary + '20',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  tableHeaderText: {
+    fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.bold as any,
+    color: colors.text,
+    textTransform: 'uppercase',
+  },
+  tableRow: {
+    flexDirection: 'row',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border + '40',
+  },
+  tableCell: {
+    fontSize: typography.sizes.sm,
+    color: colors.text,
+  },
+  tableCellDate: {
+    flex: 1.5,
+  },
+  tableCellDestination: {
+    flex: 3,
+  },
+  tableCellQuantity: {
+    flex: 1.5,
+    textAlign: 'right',
+  },
+  totalsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    backgroundColor: colors.surface,
+    marginTop: spacing.xs,
+    borderRadius: 4,
+  },
+  totalsLabel: {
+    fontSize: typography.sizes.sm,
+    color: colors.textSecondary,
+  },
+  totalsValue: {
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.semibold as any,
+  },
+  positiveValue: {
+    color: colors.success || '#10b981',
+  },
+  negativeValue: {
+    color: colors.error || '#ef4444',
+  },
+  endingBalanceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    backgroundColor: colors.primary + '15',
+    marginTop: spacing.sm,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.primary + '40',
+  },
+  endingBalanceLabel: {
+    fontSize: typography.sizes.md,
+    fontWeight: typography.weights.bold as any,
+    color: colors.text,
+  },
+  endingBalanceValue: {
+    fontSize: typography.sizes.md,
     fontWeight: typography.weights.bold as any,
     color: colors.primary,
   },
@@ -191,9 +280,10 @@ export default function InventoryTransferStatementsScreen() {
   }, [loadTransfers]);
 
   useEffect(() => {
-    // Process transfers into monthly statements
+    // Process transfers into monthly statements with item ledgers
     const statements: { [key: string]: MonthlyStatement } = {};
 
+    // First pass: organize transfers by month
     transfers.forEach(transfer => {
       const date = new Date(transfer.timestamp);
       const year = date.getFullYear();
@@ -206,27 +296,56 @@ export default function InventoryTransferStatementsScreen() {
         statements[key] = {
           month,
           year,
-          transfers: [],
-          locationSummary: {},
-          totalValue: 0,
-          totalTransfers: 0,
+          itemLedgers: [],
         };
       }
 
-      statements[key].transfers.push(transfer);
-      statements[key].totalTransfers++;
-      statements[key].totalValue += transfer.totalValue || 0;
-
-      // Group by location
-      const location = transfer.destination;
-      if (!statements[key].locationSummary[location]) {
-        statements[key].locationSummary[location] = {
-          totalValue: 0,
-          transferCount: 0,
+      // Process each item in the transfer
+      transfer.items.forEach(item => {
+        const transaction: ItemTransaction = {
+          date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+          destination: transfer.destination,
+          quantity: -item.quantity, // Negative because it's being sent out
+          timestamp: transfer.timestamp,
         };
-      }
-      statements[key].locationSummary[location].totalValue += transfer.totalValue || 0;
-      statements[key].locationSummary[location].transferCount++;
+
+        // Find or create item ledger
+        let itemLedger = statements[key].itemLedgers.find(
+          ledger => ledger.itemName === item.name && ledger.unit === item.unit
+        );
+
+        if (!itemLedger) {
+          itemLedger = {
+            itemName: item.name,
+            unit: item.unit,
+            beginningBalance: 0,
+            transactions: [],
+            totalReceived: 0,
+            totalSent: 0,
+            endingBalance: 0,
+          };
+          statements[key].itemLedgers.push(itemLedger);
+        }
+
+        itemLedger.transactions.push(transaction);
+        itemLedger.totalSent += item.quantity;
+      });
+    });
+
+    // Second pass: calculate balances for each item ledger
+    Object.values(statements).forEach(statement => {
+      statement.itemLedgers.forEach(ledger => {
+        // Sort transactions by timestamp
+        ledger.transactions.sort((a, b) =>
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        );
+
+        // Calculate ending balance
+        ledger.endingBalance = ledger.beginningBalance + ledger.totalReceived - ledger.totalSent;
+      });
+
+      // Sort item ledgers alphabetically by name
+      statement.itemLedgers.sort((a, b) => a.itemName.localeCompare(b.itemName));
     });
 
     // Convert to array and sort by month (most recent first)
@@ -241,8 +360,6 @@ export default function InventoryTransferStatementsScreen() {
 
     setMonthlyStatements(sortedStatements);
   }, [transfers, selectedYear]);
-
-  const formatCurrency = (amount: number) => `$${amount.toFixed(2)}`;
 
   const availableYears = Array.from(
     new Set(transfers.map(t => new Date(t.timestamp).getFullYear()))
@@ -316,8 +433,8 @@ export default function InventoryTransferStatementsScreen() {
             </Text>
           </View>
         ) : (
-          monthlyStatements.map((statement, index) => (
-            <AnimatedCard key={index} style={styles.monthCard}>
+          monthlyStatements.map((statement, statementIndex) => (
+            <AnimatedCard key={statementIndex} style={styles.monthCard}>
               <View style={styles.monthHeader}>
                 <Text style={styles.monthTitle}>
                   {statement.month} {statement.year}
@@ -325,31 +442,84 @@ export default function InventoryTransferStatementsScreen() {
                 <View style={styles.monthStats}>
                   <View style={styles.statBadge}>
                     <Text style={styles.statBadgeText}>
-                      {statement.totalTransfers} {statement.totalTransfers === 1 ? 'Transfer' : 'Transfers'}
+                      {statement.itemLedgers.length} {statement.itemLedgers.length === 1 ? 'Item' : 'Items'}
                     </Text>
                   </View>
                 </View>
               </View>
 
-              <View style={styles.locationList}>
-                {Object.entries(statement.locationSummary)
-                  .sort((a, b) => b[1].totalValue - a[1].totalValue)
-                  .map(([location, summary], locationIndex) => (
-                    <View key={locationIndex} style={styles.locationRow}>
-                      <Text style={styles.locationName}>{location}:</Text>
-                      <Text style={styles.locationValue}>
-                        {formatCurrency(summary.totalValue)}
-                      </Text>
-                    </View>
-                  ))}
-              </View>
+              {/* Item Ledgers */}
+              {statement.itemLedgers.map((ledger, ledgerIndex) => (
+                <View key={ledgerIndex} style={styles.itemLedgerCard}>
+                  {/* Item Header */}
+                  <View style={styles.itemHeader}>
+                    <Text style={styles.itemName}>{ledger.itemName}</Text>
+                    <Text style={styles.itemUnit}>Unit: {ledger.unit}</Text>
+                  </View>
 
-              <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>Total:</Text>
-                <Text style={styles.totalValue}>
-                  {formatCurrency(statement.totalValue)}
-                </Text>
-              </View>
+                  {/* Beginning Balance */}
+                  <View style={styles.balanceRow}>
+                    <Text style={styles.balanceLabel}>Beginning Balance</Text>
+                    <Text style={styles.balanceValue}>
+                      {ledger.beginningBalance} {ledger.unit}
+                    </Text>
+                  </View>
+
+                  {/* Transactions Table */}
+                  {ledger.transactions.length > 0 && (
+                    <View style={styles.tableContainer}>
+                      {/* Table Header */}
+                      <View style={styles.tableHeader}>
+                        <Text style={[styles.tableHeaderText, styles.tableCellDate]}>DATE</Text>
+                        <Text style={[styles.tableHeaderText, styles.tableCellDestination]}>TRANSACTION</Text>
+                        <Text style={[styles.tableHeaderText, styles.tableCellQuantity]}>QTY</Text>
+                      </View>
+
+                      {/* Table Rows */}
+                      {ledger.transactions.map((transaction, transactionIndex) => (
+                        <View key={transactionIndex} style={styles.tableRow}>
+                          <Text style={[styles.tableCell, styles.tableCellDate]}>{transaction.date}</Text>
+                          <Text style={[styles.tableCell, styles.tableCellDestination]}>
+                            {transaction.destination}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.tableCell,
+                              styles.tableCellQuantity,
+                              transaction.quantity < 0 ? styles.negativeValue : styles.positiveValue,
+                            ]}
+                          >
+                            {transaction.quantity > 0 ? '+' : ''}{transaction.quantity}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  {/* Totals */}
+                  <View style={styles.totalsRow}>
+                    <Text style={styles.totalsLabel}>Total Received:</Text>
+                    <Text style={[styles.totalsValue, styles.positiveValue]}>
+                      +{ledger.totalReceived} {ledger.unit}
+                    </Text>
+                  </View>
+
+                  <View style={styles.totalsRow}>
+                    <Text style={styles.totalsLabel}>Total Sent:</Text>
+                    <Text style={[styles.totalsValue, styles.negativeValue]}>
+                      -{ledger.totalSent} {ledger.unit}
+                    </Text>
+                  </View>
+
+                  {/* Ending Balance */}
+                  <View style={styles.endingBalanceRow}>
+                    <Text style={styles.endingBalanceLabel}>Ending Balance</Text>
+                    <Text style={styles.endingBalanceValue}>
+                      {ledger.endingBalance} {ledger.unit}
+                    </Text>
+                  </View>
+                </View>
+              ))}
             </AnimatedCard>
           ))
         )}
