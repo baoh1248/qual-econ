@@ -127,38 +127,53 @@ const styles = StyleSheet.create({
   },
   transactionsTable: {
     marginVertical: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
+  tableHeader: {
+    flexDirection: 'row',
+    backgroundColor: colors.primary + '20',
+    borderBottomWidth: 2,
+    borderBottomColor: colors.primary,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+  },
+  tableHeaderText: {
+    fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.bold as any,
+    color: colors.text,
+    textTransform: 'uppercase',
   },
   transactionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.xs,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border + '40',
+    borderBottomColor: colors.border + '30',
   },
   transactionDate: {
-    fontSize: typography.sizes.sm,
+    fontSize: typography.sizes.xs,
     color: colors.textSecondary,
-    width: 70,
-  },
-  transactionDescription: {
-    flex: 1,
-    marginHorizontal: spacing.sm,
+    width: 55,
   },
   transactionLocation: {
-    fontSize: typography.sizes.sm,
+    fontSize: typography.sizes.xs,
     color: colors.text,
     fontWeight: typography.weights.semibold as any,
+    flex: 1,
   },
   transactionType: {
     fontSize: typography.sizes.xs,
     color: colors.textSecondary,
-    marginTop: 2,
+    width: 75,
   },
   transactionQuantity: {
-    fontSize: typography.sizes.md,
+    fontSize: typography.sizes.xs,
     fontWeight: typography.weights.bold as any,
-    minWidth: 60,
+    width: 50,
     textAlign: 'right',
   },
   quantityIncoming: {
@@ -486,18 +501,23 @@ export default function InventoryTransferStatementsScreen() {
                   {/* Transactions */}
                   {ledger.transactions.length > 0 ? (
                     <View style={styles.transactionsTable}>
-                      <Text style={{ fontSize: typography.sizes.xs, color: colors.textSecondary, marginBottom: spacing.xs, textTransform: 'uppercase', fontWeight: typography.weights.bold as any }}>
-                        Transactions
-                      </Text>
+                      {/* Table Header */}
+                      <View style={styles.tableHeader}>
+                        <Text style={[styles.tableHeaderText, { width: 55 }]}>Date</Text>
+                        <Text style={[styles.tableHeaderText, { flex: 1 }]}>Location</Text>
+                        <Text style={[styles.tableHeaderText, { width: 75 }]}>Type</Text>
+                        <Text style={[styles.tableHeaderText, { width: 50, textAlign: 'right' }]}>Qty</Text>
+                      </View>
+                      {/* Table Rows */}
                       {ledger.transactions.map((transaction, txIndex) => (
                         <View key={txIndex} style={styles.transactionRow}>
                           <Text style={styles.transactionDate}>{transaction.date}</Text>
-                          <View style={styles.transactionDescription}>
-                            <Text style={styles.transactionLocation}>{transaction.location}</Text>
-                            <Text style={styles.transactionType}>
-                              {transaction.type === 'incoming' ? 'Received from supplier' : 'Sent to client'}
-                            </Text>
-                          </View>
+                          <Text style={styles.transactionLocation} numberOfLines={1}>
+                            {transaction.location}
+                          </Text>
+                          <Text style={styles.transactionType}>
+                            {transaction.type === 'incoming' ? 'Received' : 'Sent'}
+                          </Text>
                           <Text style={[
                             styles.transactionQuantity,
                             transaction.type === 'incoming' ? styles.quantityIncoming : styles.quantityOutgoing
