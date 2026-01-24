@@ -1689,7 +1689,7 @@ export default function ScheduleView() {
 
     try {
       const patternId = `recurring-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      
+
       const recurringPattern: RecurringShiftPattern = {
         id: patternId,
         building_id: taskData.clientBuilding.id,
@@ -1711,8 +1711,87 @@ export default function ScheduleView() {
         payment_type: 'hourly',
         hourly_rate: 15,
       };
-      
+
       console.log('📝 Inserting recurring pattern to database:', recurringPattern);
+
+      // First, check if there are any active patterns to avoid conflicts
+      const existingPatterns = await executeQuery<RecurringShiftPattern>('select', 'recurring_shifts');
+      const activePatternsCount = existingPatterns.filter(p => p.is_active).length;
+
+      if (activePatternsCount > 0) {
+        Alert.alert(
+          'Existing Recurring Patterns',
+          `You have ${activePatternsCount} active recurring pattern(s). Creating a new pattern will regenerate all active patterns. Do you want to continue?`,
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel',
+              onPress: () => {
+                console.log('User cancelled recurring pattern creation');
+              }
+            },
+            {
+              text: 'Clear Old Patterns',
+              style: 'destructive',
+              onPress: async () => {
+                try {
+                  // Mark all old patterns as inactive
+                  await supabase
+                    .from('recurring_shifts')
+                    .update({ is_active: false })
+                    .neq('id', patternId);
+
+                  // Now create the new pattern
+                  await executeQuery('insert', 'recurring_shifts', recurringPattern);
+                  console.log('✅ Recurring pattern saved to database');
+
+                  showToast('Old patterns cleared, new recurring shift created!', 'success');
+
+                  console.log('🔄 Generating shifts from new pattern...');
+                  await generateRecurringShifts();
+
+                  const freshEntries = await fetchWeekSchedule(currentWeekId);
+                  setCurrentWeekSchedule(freshEntries);
+                  setScheduleKey(prev => prev + 1);
+                  console.log('✅ Schedule display refreshed with', freshEntries.length, 'entries');
+
+                  setRecurringModalVisible(false);
+                } catch (error) {
+                  console.error('❌ Error creating recurring task:', error);
+                  showToast('Failed to create recurring shift', 'error');
+                }
+              }
+            },
+            {
+              text: 'Keep All Patterns',
+              onPress: async () => {
+                try {
+                  await executeQuery('insert', 'recurring_shifts', recurringPattern);
+                  console.log('✅ Recurring pattern saved to database');
+
+                  showToast('Recurring shift created successfully!', 'success');
+
+                  console.log('🔄 Generating shifts from all patterns...');
+                  await generateRecurringShifts();
+
+                  const freshEntries = await fetchWeekSchedule(currentWeekId);
+                  setCurrentWeekSchedule(freshEntries);
+                  setScheduleKey(prev => prev + 1);
+                  console.log('✅ Schedule display refreshed with', freshEntries.length, 'entries');
+
+                  setRecurringModalVisible(false);
+                } catch (error) {
+                  console.error('❌ Error creating recurring task:', error);
+                  showToast('Failed to create recurring shift', 'error');
+                }
+              }
+            }
+          ]
+        );
+        return; // Exit early - the alert handlers will do the save
+      }
+
+      // No existing patterns, just create the new one
       await executeQuery('insert', 'recurring_shifts', recurringPattern);
       console.log('✅ Recurring pattern saved to database');
 
@@ -2115,6 +2194,51 @@ export default function ScheduleView() {
               style={[buttonStyles.backButton, { backgroundColor: 'rgba(255,255,255,0.2)' }]}
             >
               <Icon name="time" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={async () => {
+                // Show recurring patterns management
+                const patterns = await executeQuery<RecurringShiftPattern>('select', 'recurring_shifts');
+                const activePatterns = patterns.filter(p => p.is_active);
+
+                if (activePatterns.length === 0) {
+                  Alert.alert('No Active Patterns', 'You have no active recurring patterns.');
+                  return;
+                }
+
+                const patternList = activePatterns.map((p, i) =>
+                  `${i + 1}. ${p.client_name} - ${p.building_name} (${p.pattern_type}, ${p.cleaner_names.join(', ')})`
+                ).join('\n\n');
+
+                Alert.alert(
+                  `Active Recurring Patterns (${activePatterns.length})`,
+                  patternList + '\n\nDo you want to clear all patterns?',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Clear All',
+                      style: 'destructive',
+                      onPress: async () => {
+                        try {
+                          await supabase
+                            .from('recurring_shifts')
+                            .update({ is_active: false })
+                            .eq('is_active', true);
+
+                          showToast(`Cleared ${activePatterns.length} recurring patterns`, 'success');
+                        } catch (error) {
+                          console.error('Error clearing patterns:', error);
+                          showToast('Failed to clear patterns', 'error');
+                        }
+                      }
+                    }
+                  ]
+                );
+              }}
+              style={[buttonStyles.backButton, { backgroundColor: 'rgba(255,255,255,0.2)' }]}
+            >
+              <Icon name="repeat" size={24} color="#FFFFFF" />
             </TouchableOpacity>
 
             <TouchableOpacity
