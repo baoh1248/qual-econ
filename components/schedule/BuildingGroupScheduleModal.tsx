@@ -943,9 +943,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.backgroundAlt,
     borderRadius: 12,
     padding: spacing.lg,
-    marginBottom: spacing.md,
+    marginBottom: spacing.xl,
     borderWidth: 1,
     borderColor: colors.border,
+    overflow: 'visible',
+    zIndex: 10,
   },
   sectionTitle: {
     ...typography.body,
@@ -957,7 +959,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: spacing.md,
+    marginBottom: spacing.xl,
     zIndex: 5,
   },
   cleanerHoursName: {
