@@ -274,6 +274,117 @@ export default function ScheduleView() {
     }
   }, [executeQuery, currentWeekSchedule, currentWeekId, addScheduleEntry, showToast]);
 
+  // Generate shifts for a SINGLE specific pattern only
+  const generateShiftsForPattern = useCallback(async (patternId: string) => {
+    try {
+      console.log('=== GENERATING SHIFTS FOR PATTERN:', patternId, '===');
+
+      // Fetch just this one pattern
+      const { data: patternData, error: fetchError } = await supabase
+        .from('recurring_shifts')
+        .select('*')
+        .eq('id', patternId)
+        .single();
+
+      if (fetchError || !patternData) {
+        console.error('Error fetching pattern:', fetchError);
+        return 0;
+      }
+
+      const pattern: RecurringShiftPattern = {
+        id: patternData.id,
+        building_id: patternData.building_id,
+        building_name: patternData.building_name,
+        client_name: patternData.client_name,
+        cleaner_names: patternData.cleaner_names || [],
+        cleaner_ids: patternData.cleaner_ids || [],
+        hours: patternData.hours,
+        start_time: patternData.start_time,
+        notes: patternData.notes,
+        pattern_type: patternData.pattern_type,
+        interval: patternData.interval,
+        days_of_week: patternData.days_of_week,
+        day_of_month: patternData.day_of_month,
+        custom_days: patternData.custom_days,
+        start_date: patternData.start_date,
+        end_date: patternData.end_date,
+        max_occurrences: patternData.max_occurrences,
+        is_active: patternData.is_active,
+        last_generated_date: patternData.last_generated_date,
+        next_occurrence_date: patternData.next_occurrence_date,
+        occurrence_count: patternData.occurrence_count,
+        payment_type: patternData.payment_type,
+        flat_rate_amount: patternData.flat_rate_amount,
+        hourly_rate: patternData.hourly_rate,
+      };
+
+      console.log('Pattern loaded:', pattern);
+
+      // Validate pattern
+      const validation = validateRecurringPattern(pattern);
+      if (!validation.valid) {
+        console.warn(`⚠️ Invalid pattern ${pattern.id}:`, validation.errors);
+        return 0;
+      }
+
+      // Generate occurrences for next 8 weeks
+      const today = new Date();
+      const futureDate = new Date(today);
+      futureDate.setDate(today.getDate() + 56); // 8 weeks
+      const futureDateStr = futureDate.toISOString().split('T')[0];
+
+      const startDate = pattern.start_date; // Always start from pattern start date for new patterns
+      const occurrences = generateOccurrences(pattern, startDate, futureDateStr, 100);
+      console.log('Generated', occurrences.length, 'occurrences');
+
+      const entries = patternToScheduleEntries(pattern, occurrences, getWeekIdFromDate);
+      console.log('Created', entries.length, 'schedule entries');
+
+      let totalGenerated = 0;
+
+      for (const entry of entries) {
+        try {
+          // Check if entry already exists
+          const { data: existingEntries, error: checkError } = await supabase
+            .from('schedule_entries')
+            .select('id')
+            .eq('recurring_id', pattern.id)
+            .eq('date', entry.date)
+            .eq('building_name', entry.buildingName)
+            .limit(1);
+
+          if (checkError) {
+            console.error('Error checking existing entry:', checkError);
+            continue;
+          }
+
+          const exists = existingEntries && existingEntries.length > 0;
+
+          if (!exists) {
+            await addScheduleEntry(entry);
+            totalGenerated++;
+          }
+        } catch (entryError) {
+          console.error(`❌ Error adding entry for ${entry.date}:`, entryError);
+        }
+      }
+
+      // Update pattern metadata
+      await executeQuery('update', 'recurring_shifts', {
+        id: pattern.id,
+        last_generated_date: futureDateStr,
+        occurrence_count: (pattern.occurrence_count || 0) + occurrences.length,
+        next_occurrence_date: occurrences.length > 0 ? occurrences[occurrences.length - 1].date : pattern.next_occurrence_date,
+      });
+
+      console.log('✅ Generated', totalGenerated, 'new shift entries for pattern', pattern.id);
+      return totalGenerated;
+    } catch (error) {
+      console.error('❌ Error generating shifts for pattern:', error);
+      return 0;
+    }
+  }, [executeQuery, getWeekIdFromDate, addScheduleEntry]);
+
   const generateRecurringShifts = useCallback(async () => {
     try {
       console.log('=== GENERATING RECURRING SHIFTS ===');
@@ -390,7 +501,8 @@ export default function ScheduleView() {
       if (!initialLoadCompleteRef.current) {
         // Run initial sync tasks after loading schedule
         await syncProjectsToSchedule();
-        await generateRecurringShifts();
+        // DON'T auto-generate recurring shifts on load - only generate when pattern is created
+        // This prevents old deleted patterns from regenerating
         initialLoadCompleteRef.current = true;
       }
     } catch (error) {
@@ -1718,12 +1830,18 @@ export default function ScheduleView() {
       await executeQuery('insert', 'recurring_shifts', recurringPattern);
       console.log('✅ Recurring pattern saved to database');
 
-      showToast('Recurring shift created successfully!', 'success');
+      // Generate shifts for ONLY this new pattern (not all patterns)
+      console.log('🔄 Generating shifts from new pattern only...');
+      const generatedCount = await generateShiftsForPattern(patternId);
+      console.log('✅ Generated', generatedCount, 'shifts from new pattern');
 
-      console.log('🔄 Generating shifts from new pattern...');
-      await generateRecurringShifts();
+      if (generatedCount > 0) {
+        showToast(`Recurring shift created! Generated ${generatedCount} shifts`, 'success');
+      } else {
+        showToast('Recurring shift pattern created', 'success');
+      }
 
-      // generateRecurringShifts already handles the refresh, but let's ensure UI is updated
+      // Refresh schedule display
       console.log('🔄 Refreshing schedule display...');
       const freshEntries = await fetchWeekSchedule(currentWeekId);
       setCurrentWeekSchedule(freshEntries);
@@ -1735,7 +1853,7 @@ export default function ScheduleView() {
       console.error('❌ Error creating recurring task:', error);
       showToast('Failed to create recurring shift', 'error');
     }
-  }, [executeQuery, generateRecurringShifts, fetchWeekSchedule, currentWeekId, showToast]);
+  }, [executeQuery, generateShiftsForPattern, fetchWeekSchedule, currentWeekId, showToast]);
 
   const renderDailyView = () => {
     const daySchedule = filteredSchedule.filter(entry => {
