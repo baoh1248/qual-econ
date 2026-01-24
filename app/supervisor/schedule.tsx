@@ -1333,150 +1333,82 @@ export default function ScheduleView() {
           hourlyRate: paymentType === 'hourly' ? 15 : undefined,
         };
 
-        console.log('📝 Updating schedule entry:', selectedEntry.id);
-        console.log('Edit all recurring:', editAllRecurring);
-        console.log('Is recurring:', selectedEntry.isRecurring);
-        console.log('Recurring ID:', selectedEntry.recurringId);
-        console.log('Selected cleaners:', selectedCleaners);
-        console.log('Cleaner hours obj:', cleanerHoursObj);
-        console.log('Max hours:', maxHours);
-        console.log('Payment type:', paymentType);
-
-        // If edit all recurring is enabled, update ALL entries directly via Supabase
+        // If edit all recurring is enabled, update ALL entries one by one
         if (editAllRecurring && selectedEntry.isRecurring && selectedEntry.recurringId) {
-          console.log('📝 ENTERING BULK UPDATE PATH - Updating all recurring shifts with recurringId:', selectedEntry.recurringId);
-
           try {
-            // Fetch ALL entries with the same recurringId (including current one)
-            console.log('Fetching all recurring entries from database...');
-            const { data: allRecurringEntries, error: fetchError } = await supabase
+            // Fetch ALL entries with the same recurringId
+            const { data: allRecurringEntries } = await supabase
               .from('schedule_entries')
-              .select('*')
+              .select('id')
               .eq('recurring_id', selectedEntry.recurringId);
 
-            if (fetchError) {
-              console.error('❌ Error fetching recurring entries:', fetchError);
-              console.error('Error details:', JSON.stringify(fetchError, null, 2));
-              throw fetchError;
-            }
-
-            console.log('Fetched entries:', allRecurringEntries?.length || 0);
-
             if (allRecurringEntries && allRecurringEntries.length > 0) {
-              console.log(`Found ${allRecurringEntries.length} recurring shifts to update`);
+              let successCount = 0;
 
-              // Create database update object with proper column names
-              const dbUpdates = {
-                cleaner_name: selectedCleaners[0],
-                cleaner_names: selectedCleaners,
-                hours: maxHours,
-                cleaner_hours: cleanerHoursObj,
-                start_time: startTime,
-                end_time: endTime,
-                payment_type: paymentType,
-                flat_rate_amount: paymentType === 'flat_rate' ? parseFloat(flatRateAmount) : 0,
-                hourly_rate: paymentType === 'hourly' ? 15 : 0,
-                updated_at: new Date().toISOString(),
-              };
+              // Update each entry one by one
+              for (const entry of allRecurringEntries) {
+                const { error: updateError } = await supabase
+                  .from('schedule_entries')
+                  .update({
+                    cleaner_name: selectedCleaners[0],
+                    cleaner_names: selectedCleaners,
+                    hours: maxHours,
+                    cleaner_hours: cleanerHoursObj,
+                    start_time: startTime,
+                    end_time: endTime,
+                    payment_type: paymentType,
+                    flat_rate_amount: paymentType === 'flat_rate' ? parseFloat(flatRateAmount) : 0,
+                    hourly_rate: paymentType === 'hourly' ? 15 : 0,
+                  })
+                  .eq('id', entry.id);
 
-              console.log('📤 Database updates object:', JSON.stringify(dbUpdates, null, 2));
-
-              // Update all entries at once using Supabase
-              console.log('Executing Supabase update...');
-              const { data: updatedData, error: updateError } = await supabase
-                .from('schedule_entries')
-                .update(dbUpdates)
-                .eq('recurring_id', selectedEntry.recurringId)
-                .select();
-
-              if (updateError) {
-                console.error(`❌ FAILED to update recurring entries`);
-                console.error('Error object:', JSON.stringify(updateError, null, 2));
-                console.error('Error message:', updateError.message);
-                console.error('Error details:', updateError.details);
-                console.error('Error hint:', updateError.hint);
-                console.error('Error code:', updateError.code);
-                showToast(`Update failed: ${updateError.message}`, 'error');
-                throw updateError;
+                if (!updateError) {
+                  successCount++;
+                }
               }
 
-              console.log(`✅ Successfully updated ${updatedData?.length || 0} recurring shifts`);
-              console.log('Updated data:', updatedData);
-              showToast(`Updated ${updatedData?.length || 0} recurring shifts`, 'success');
+              showToast(`Updated ${successCount} recurring shifts`, 'success');
 
-              // Log the shift edit
+              // Log the edit
               try {
-                const changes: string[] = [];
-                if (JSON.stringify(selectedEntry.cleanerNames) !== JSON.stringify(selectedCleaners)) {
-                  changes.push('cleaners updated');
-                }
-                if (selectedEntry.hours !== maxHours) {
-                  changes.push(`hours changed from ${selectedEntry.hours} to ${maxHours}`);
-                }
-                if (selectedEntry.startTime !== startTime) {
-                  changes.push('start time updated');
-                }
-
                 await logShiftEdited({
                   clientName: selectedEntry.clientName,
                   buildingName: selectedEntry.buildingName,
                   cleanerNames: selectedCleaners,
                   shiftDate: selectedEntry.date,
                   shiftId: selectedEntry.id,
-                  changes: changes.length > 0 ? changes : ['shift details updated'],
+                  changes: ['shift details updated'],
                 });
-
-                console.log('✅ Shift edit logged successfully');
-              } catch (logError: any) {
-                console.error('❌ Failed to log shift edit:', logError);
+              } catch {
+                // Ignore logging errors
               }
             }
           } catch (recurringError) {
-            console.error('❌ Error updating recurring shifts:', recurringError);
             showToast('Failed to update recurring shifts', 'error');
-            return; // Don't close modal on error
+            return;
           }
         } else {
-          // Single entry update - use the hook
-          console.log('📝 ENTERING SINGLE UPDATE PATH');
-          console.log('Updates object:', JSON.stringify(updates, null, 2));
-
+          // Single entry update
           const updatedEntry = await updateScheduleEntry(selectedEntry.id, updates);
 
           if (!updatedEntry) {
-            console.error('❌ updateScheduleEntry returned null/undefined');
-            throw new Error('Failed to update entry - hook returned null');
+            throw new Error('Failed to update entry');
           }
 
-          console.log('✅ Entry updated successfully');
-          console.log('Updated entry:', updatedEntry);
           showToast('Shift updated successfully', 'success');
 
-          // Log the shift edit
+          // Log the edit
           try {
-            const changes: string[] = [];
-            if (JSON.stringify(selectedEntry.cleanerNames) !== JSON.stringify(selectedCleaners)) {
-              changes.push('cleaners updated');
-            }
-            if (selectedEntry.hours !== maxHours) {
-              changes.push(`hours changed from ${selectedEntry.hours} to ${maxHours}`);
-            }
-            if (selectedEntry.startTime !== startTime) {
-              changes.push('start time updated');
-            }
-
             await logShiftEdited({
               clientName: updatedEntry.clientName,
               buildingName: updatedEntry.buildingName,
               cleanerNames: updatedEntry.cleanerNames || [updatedEntry.cleanerName],
               shiftDate: updatedEntry.date,
               shiftId: updatedEntry.id,
-              changes: changes.length > 0 ? changes : ['shift details updated'],
+              changes: ['shift details updated'],
             });
-
-            console.log('✅ Shift edit logged successfully');
-          } catch (logError: any) {
-            console.error('❌ Failed to log shift edit:', logError);
+          } catch {
+            // Ignore logging errors
           }
         }
 
