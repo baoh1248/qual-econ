@@ -15,6 +15,7 @@ import Icon from '../../components/Icon';
 import IconButton from '../../components/IconButton';
 import SendItemsModal from '../../components/inventory/SendItemsModal';
 import TransferHistoryModal from '../../components/inventory/TransferHistoryModal';
+import ReceiveSupplyModal from '../../components/inventory/ReceiveSupplyModal';
 import uuid from 'react-native-uuid';
 import { commonStyles, colors, spacing, typography, buttonStyles, getContrastColor } from '../../styles/commonStyles';
 
@@ -410,6 +411,7 @@ export default function SupervisorInventoryScreen() {
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [showSendItemsModal, setShowSendItemsModal] = useState(false);
   const [showTransferHistoryModal, setShowTransferHistoryModal] = useState(false);
+  const [showReceiveSupplyModal, setShowReceiveSupplyModal] = useState(false);
   const [showAddStockModal, setShowAddStockModal] = useState(false);
   const [addStockQuantity, setAddStockQuantity] = useState('');
 
@@ -785,6 +787,71 @@ export default function SupervisorInventoryScreen() {
     }
   };
 
+  const handleReceiveSupply = async (itemIds: string[], quantities: number[], costs: number[]) => {
+    try {
+      console.log('🔄 Receiving supply:', itemIds, quantities, costs);
+
+      // Update inventory quantities and costs
+      for (let i = 0; i < itemIds.length; i++) {
+        const itemId = itemIds[i];
+        const quantity = quantities[i];
+        const cost = costs[i];
+        const item = items.find(item => item.id === itemId);
+
+        if (item) {
+          const newStock = item.current_stock + quantity;
+
+          // Update stock and optionally update cost if provided
+          const updateData: any = {
+            current_stock: newStock,
+            updated_at: new Date().toISOString()
+          };
+
+          // Update cost if a new cost was provided
+          if (cost > 0) {
+            updateData.cost = cost;
+          }
+
+          const { error } = await supabase
+            .from('inventory_items')
+            .update(updateData)
+            .eq('id', itemId);
+
+          if (error) {
+            console.error('❌ Error updating inventory item:', error);
+            throw error;
+          }
+
+          // Log the transaction
+          const { error: transactionError } = await supabase
+            .from('inventory_transactions')
+            .insert({
+              id: uuid.v4() as string,
+              item_id: itemId,
+              item_name: item.name,
+              transaction_type: 'in',
+              quantity: quantity,
+              previous_stock: item.current_stock,
+              new_stock: newStock,
+              reason: 'Supply received',
+              performed_by: 'Supervisor',
+              created_at: new Date().toISOString(),
+            });
+
+          if (transactionError) {
+            console.error('❌ Error logging transaction:', transactionError);
+          }
+        }
+      }
+
+      console.log('✅ Supply received successfully');
+      await loadInventoryData();
+    } catch (error) {
+      console.error('❌ Failed to receive supply:', error);
+      throw error;
+    }
+  };
+
   const handleApproveRequest = async (requestId: string) => {
     try {
       console.log('🔄 Approving restock request:', requestId);
@@ -973,6 +1040,14 @@ export default function SupervisorInventoryScreen() {
         </TouchableOpacity>
 
         <TouchableOpacity
+          style={[styles.actionButton, { borderColor: colors.success }]}
+          onPress={() => setShowReceiveSupplyModal(true)}
+        >
+          <Icon name="download" size={20} color={colors.success} />
+          <Text style={[styles.actionButtonText, { color: colors.success }]}>Supply Received</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
           style={styles.actionButton}
           onPress={() => router.push('/supervisor/inventory-transfer-statements')}
         >
@@ -1157,6 +1232,15 @@ export default function SupervisorInventoryScreen() {
         visible={showTransferHistoryModal}
         onClose={() => setShowTransferHistoryModal(false)}
         onRefresh={() => loadInventoryData()}
+      />
+
+      {/* Receive Supply Modal */}
+      <ReceiveSupplyModal
+        visible={showReceiveSupplyModal}
+        onClose={() => setShowReceiveSupplyModal(false)}
+        inventory={items}
+        onReceive={handleReceiveSupply}
+        onSuccess={() => loadInventoryData()}
       />
 
       {/* Add Item Modal */}

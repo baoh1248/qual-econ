@@ -19,6 +19,7 @@ export interface InventoryTransfer {
   totalValue?: number;
   type: 'outgoing' | 'incoming'; // 'outgoing' = to client, 'incoming' = from supplier
   source?: string; // For incoming transfers, name of supplier
+  orderNumber?: string; // For incoming transfers, order/invoice number
 }
 
 const STORAGE_KEY = 'inventory_transfer_logs';
