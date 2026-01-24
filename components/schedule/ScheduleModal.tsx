@@ -1032,7 +1032,7 @@ const ScheduleModal = memo(({
                 onPress={() => setShowHoursDropdown(!showHoursDropdown)}
               >
                 <Text style={[styles.inputText, !hours && styles.placeholderText]}>
-                  {hours || '8'}
+                  {hours || '3'}
                 </Text>
                 <Icon name="chevron-down" size={20} style={{ color: colors.textSecondary }} />
               </TouchableOpacity>
@@ -1069,7 +1069,7 @@ const ScheduleModal = memo(({
                 onPress={() => setShowStartTimeDropdown(!showStartTimeDropdown)}
               >
                 <Text style={[styles.inputText, !startTime && styles.placeholderText]}>
-                  {startTime || '09:00'}
+                  {startTime || '17:00'}
                 </Text>
                 <Icon name="chevron-down" size={20} style={{ color: colors.textSecondary }} />
               </TouchableOpacity>

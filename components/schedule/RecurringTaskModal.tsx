@@ -431,7 +431,7 @@ const RecurringTaskModal = memo(({
                 <Text style={styles.inputLabel}>Hours *</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="8"
+                  placeholder="3"
                   value={hours}
                   onChangeText={setHours}
                   keyboardType="numeric"
@@ -440,7 +440,7 @@ const RecurringTaskModal = memo(({
                 <Text style={styles.inputLabel}>Start Time</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="09:00"
+                  placeholder="17:00"
                   value={startTime}
                   onChangeText={setStartTime}
                 />
