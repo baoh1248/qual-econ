@@ -1335,22 +1335,32 @@ export default function ScheduleView() {
 
         console.log('📝 Updating schedule entry:', selectedEntry.id);
         console.log('Edit all recurring:', editAllRecurring);
+        console.log('Is recurring:', selectedEntry.isRecurring);
+        console.log('Recurring ID:', selectedEntry.recurringId);
+        console.log('Selected cleaners:', selectedCleaners);
+        console.log('Cleaner hours obj:', cleanerHoursObj);
+        console.log('Max hours:', maxHours);
+        console.log('Payment type:', paymentType);
 
         // If edit all recurring is enabled, update ALL entries directly via Supabase
         if (editAllRecurring && selectedEntry.isRecurring && selectedEntry.recurringId) {
-          console.log('📝 Updating all recurring shifts with recurringId:', selectedEntry.recurringId);
+          console.log('📝 ENTERING BULK UPDATE PATH - Updating all recurring shifts with recurringId:', selectedEntry.recurringId);
 
           try {
             // Fetch ALL entries with the same recurringId (including current one)
+            console.log('Fetching all recurring entries from database...');
             const { data: allRecurringEntries, error: fetchError } = await supabase
               .from('schedule_entries')
               .select('*')
               .eq('recurring_id', selectedEntry.recurringId);
 
             if (fetchError) {
-              console.error('Error fetching recurring entries:', fetchError);
+              console.error('❌ Error fetching recurring entries:', fetchError);
+              console.error('Error details:', JSON.stringify(fetchError, null, 2));
               throw fetchError;
             }
+
+            console.log('Fetched entries:', allRecurringEntries?.length || 0);
 
             if (allRecurringEntries && allRecurringEntries.length > 0) {
               console.log(`Found ${allRecurringEntries.length} recurring shifts to update`);
@@ -1369,9 +1379,10 @@ export default function ScheduleView() {
                 updated_at: new Date().toISOString(),
               };
 
-              console.log('Database updates:', dbUpdates);
+              console.log('📤 Database updates object:', JSON.stringify(dbUpdates, null, 2));
 
               // Update all entries at once using Supabase
+              console.log('Executing Supabase update...');
               const { data: updatedData, error: updateError } = await supabase
                 .from('schedule_entries')
                 .update(dbUpdates)
@@ -1379,11 +1390,18 @@ export default function ScheduleView() {
                 .select();
 
               if (updateError) {
-                console.error(`❌ Failed to update recurring entries:`, updateError);
+                console.error(`❌ FAILED to update recurring entries`);
+                console.error('Error object:', JSON.stringify(updateError, null, 2));
+                console.error('Error message:', updateError.message);
+                console.error('Error details:', updateError.details);
+                console.error('Error hint:', updateError.hint);
+                console.error('Error code:', updateError.code);
+                showToast(`Update failed: ${updateError.message}`, 'error');
                 throw updateError;
               }
 
               console.log(`✅ Successfully updated ${updatedData?.length || 0} recurring shifts`);
+              console.log('Updated data:', updatedData);
               showToast(`Updated ${updatedData?.length || 0} recurring shifts`, 'success');
 
               // Log the shift edit
@@ -1420,13 +1438,18 @@ export default function ScheduleView() {
           }
         } else {
           // Single entry update - use the hook
+          console.log('📝 ENTERING SINGLE UPDATE PATH');
+          console.log('Updates object:', JSON.stringify(updates, null, 2));
+
           const updatedEntry = await updateScheduleEntry(selectedEntry.id, updates);
 
           if (!updatedEntry) {
-            throw new Error('Failed to update entry');
+            console.error('❌ updateScheduleEntry returned null/undefined');
+            throw new Error('Failed to update entry - hook returned null');
           }
 
           console.log('✅ Entry updated successfully');
+          console.log('Updated entry:', updatedEntry);
           showToast('Shift updated successfully', 'success');
 
           // Log the shift edit
