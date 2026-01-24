@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Text, View, ScrollView, TouchableOpacity, StyleSheet, Modal, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { useToast } from '../../hooks/useToast';
@@ -13,6 +13,8 @@ import Icon from '../../components/Icon';
 import IconButton from '../../components/IconButton';
 import { commonStyles, colors, spacing, typography } from '../../styles/commonStyles';
 import { getInventoryTransferLogs, formatCurrency, type InventoryTransfer } from '../../utils/inventoryTracking';
+
+type ViewMode = 'item' | 'building';
 
 interface ItemTransaction {
   date: string;
@@ -38,6 +40,23 @@ interface MonthlyInventoryStatement {
   month: string;
   year: number;
   itemLedgers: ItemLedger[];
+}
+
+interface BuildingTransfer {
+  id: string;
+  date: string;
+  timestamp: string;
+  items: { name: string; quantity: number; unit: string }[];
+  transferredBy: string;
+  notes?: string;
+  type: 'incoming' | 'outgoing';
+}
+
+interface BuildingLedger {
+  buildingName: string;
+  clientName: string;
+  transfers: BuildingTransfer[];
+  totalTransfers: number;
 }
 
 const styles = StyleSheet.create({
@@ -256,6 +275,166 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontStyle: 'italic',
   },
+  viewToggleContainer: {
+    flexDirection: 'row',
+    backgroundColor: colors.surface,
+    borderRadius: 10,
+    padding: 4,
+    marginBottom: spacing.md,
+  },
+  viewToggleButton: {
+    flex: 1,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewToggleButtonActive: {
+    backgroundColor: colors.primary,
+  },
+  viewToggleText: {
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.semibold as any,
+    color: colors.textSecondary,
+  },
+  viewToggleTextActive: {
+    color: colors.background,
+  },
+  filterContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+    gap: spacing.sm,
+  },
+  filterDropdown: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface,
+    borderRadius: 10,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  filterDropdownText: {
+    fontSize: typography.sizes.md,
+    color: colors.text,
+    flex: 1,
+  },
+  filterLabel: {
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.semibold as any,
+    color: colors.textSecondary,
+  },
+  buildingCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  buildingHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  buildingName: {
+    fontSize: typography.sizes.lg,
+    fontWeight: typography.weights.bold as any,
+    color: colors.text,
+    flex: 1,
+  },
+  buildingClient: {
+    fontSize: typography.sizes.sm,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  transferCount: {
+    fontSize: typography.sizes.sm,
+    color: colors.primary,
+    fontWeight: typography.weights.semibold as any,
+    backgroundColor: colors.primary + '15',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: 12,
+  },
+  transferCard: {
+    backgroundColor: colors.background,
+    borderRadius: 8,
+    padding: spacing.sm,
+    marginBottom: spacing.xs,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.error,
+  },
+  transferCardIncoming: {
+    borderLeftColor: colors.success,
+  },
+  transferDate: {
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.semibold as any,
+    color: colors.text,
+    marginBottom: 4,
+  },
+  transferItems: {
+    fontSize: typography.sizes.sm,
+    color: colors.textSecondary,
+  },
+  transferBy: {
+    fontSize: typography.sizes.xs,
+    color: colors.textSecondary,
+    marginTop: 4,
+    fontStyle: 'italic',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '70%',
+    padding: spacing.lg,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+    paddingBottom: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  modalTitle: {
+    fontSize: typography.sizes.lg,
+    fontWeight: typography.weights.bold as any,
+    color: colors.text,
+  },
+  modalOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border + '30',
+  },
+  modalOptionText: {
+    fontSize: typography.sizes.md,
+    color: colors.text,
+  },
+  modalOptionSelected: {
+    color: colors.primary,
+    fontWeight: typography.weights.semibold as any,
+  },
 });
 
 export default function InventoryTransferStatementsScreen() {
@@ -268,6 +447,10 @@ export default function InventoryTransferStatementsScreen() {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [monthlyStatements, setMonthlyStatements] = useState<MonthlyInventoryStatement[]>([]);
   const [expandedMonths, setExpandedMonths] = useState<Set<number>>(new Set());
+  const [viewMode, setViewMode] = useState<ViewMode>('item');
+  const [selectedBuilding, setSelectedBuilding] = useState<string>('all');
+  const [showBuildingPicker, setShowBuildingPicker] = useState(false);
+  const [expandedBuildings, setExpandedBuildings] = useState<Set<string>>(new Set());
 
   const loadTransfers = useCallback(async () => {
     try {
@@ -400,6 +583,127 @@ export default function InventoryTransferStatementsScreen() {
     new Set(transfers.map(t => new Date(t.timestamp).getFullYear()))
   ).sort((a, b) => b - a);
 
+  // Extract unique buildings from outgoing transfers
+  const uniqueBuildings = useMemo(() => {
+    const buildings = new Map<string, { buildingName: string; clientName: string }>();
+
+    transfers
+      .filter(t => t.type === 'outgoing' && new Date(t.timestamp).getFullYear() === selectedYear)
+      .forEach(t => {
+        // Parse destination format: "ClientName - BuildingName" or "ClientName - GroupName (X buildings)"
+        const destination = t.destination;
+        if (!destination) return;
+
+        const dashIndex = destination.indexOf(' - ');
+        if (dashIndex > 0) {
+          const clientName = destination.substring(0, dashIndex);
+          let buildingName = destination.substring(dashIndex + 3);
+
+          // Remove "(X buildings)" suffix if present (building groups)
+          const groupMatch = buildingName.match(/^(.+?)\s*\(\d+\s*buildings?\)$/i);
+          if (groupMatch) {
+            buildingName = groupMatch[1].trim();
+          }
+
+          const key = `${clientName}|${buildingName}`;
+          if (!buildings.has(key)) {
+            buildings.set(key, { buildingName, clientName });
+          }
+        }
+      });
+
+    return Array.from(buildings.values()).sort((a, b) => {
+      const clientCompare = a.clientName.localeCompare(b.clientName);
+      if (clientCompare !== 0) return clientCompare;
+      return a.buildingName.localeCompare(b.buildingName);
+    });
+  }, [transfers, selectedYear]);
+
+  // Build building ledgers for building view
+  const buildingLedgers = useMemo(() => {
+    const ledgersMap = new Map<string, BuildingLedger>();
+
+    const filteredTransfers = transfers
+      .filter(t => {
+        const year = new Date(t.timestamp).getFullYear();
+        if (year !== selectedYear) return false;
+        if (t.type !== 'outgoing') return false;
+
+        // Filter by selected building if not 'all'
+        if (selectedBuilding !== 'all') {
+          const destination = t.destination || '';
+          const dashIndex = destination.indexOf(' - ');
+          if (dashIndex > 0) {
+            const clientName = destination.substring(0, dashIndex);
+            let buildingName = destination.substring(dashIndex + 3);
+            const groupMatch = buildingName.match(/^(.+?)\s*\(\d+\s*buildings?\)$/i);
+            if (groupMatch) {
+              buildingName = groupMatch[1].trim();
+            }
+            const key = `${clientName}|${buildingName}`;
+            if (key !== selectedBuilding) return false;
+          }
+        }
+
+        return true;
+      })
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    filteredTransfers.forEach(t => {
+      const destination = t.destination || 'Unknown';
+      const dashIndex = destination.indexOf(' - ');
+
+      let clientName = 'Unknown';
+      let buildingName = destination;
+
+      if (dashIndex > 0) {
+        clientName = destination.substring(0, dashIndex);
+        buildingName = destination.substring(dashIndex + 3);
+        const groupMatch = buildingName.match(/^(.+?)\s*\(\d+\s*buildings?\)$/i);
+        if (groupMatch) {
+          buildingName = groupMatch[1].trim();
+        }
+      }
+
+      const key = `${clientName}|${buildingName}`;
+
+      if (!ledgersMap.has(key)) {
+        ledgersMap.set(key, {
+          buildingName,
+          clientName,
+          transfers: [],
+          totalTransfers: 0,
+        });
+      }
+
+      const ledger = ledgersMap.get(key)!;
+      ledger.transfers.push({
+        id: t.id,
+        date: new Date(t.timestamp).toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric'
+        }),
+        timestamp: t.timestamp,
+        items: t.items.map(item => ({
+          name: item.name,
+          quantity: item.quantity,
+          unit: item.unit,
+        })),
+        transferredBy: t.transferredBy,
+        notes: t.notes,
+        type: t.type,
+      });
+      ledger.totalTransfers++;
+    });
+
+    return Array.from(ledgersMap.values()).sort((a, b) => {
+      const clientCompare = a.clientName.localeCompare(b.clientName);
+      if (clientCompare !== 0) return clientCompare;
+      return a.buildingName.localeCompare(b.buildingName);
+    });
+  }, [transfers, selectedYear, selectedBuilding]);
+
   const toggleMonth = (index: number) => {
     const newExpanded = new Set(expandedMonths);
     if (newExpanded.has(index)) {
@@ -408,6 +712,22 @@ export default function InventoryTransferStatementsScreen() {
       newExpanded.add(index);
     }
     setExpandedMonths(newExpanded);
+  };
+
+  const toggleBuilding = (key: string) => {
+    const newExpanded = new Set(expandedBuildings);
+    if (newExpanded.has(key)) {
+      newExpanded.delete(key);
+    } else {
+      newExpanded.add(key);
+    }
+    setExpandedBuildings(newExpanded);
+  };
+
+  const getSelectedBuildingLabel = () => {
+    if (selectedBuilding === 'all') return 'All Buildings';
+    const [clientName, buildingName] = selectedBuilding.split('|');
+    return `${buildingName} (${clientName})`;
   };
 
   if (isLoading) {
@@ -470,114 +790,294 @@ export default function InventoryTransferStatementsScreen() {
           </View>
         )}
 
-        {monthlyStatements.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Icon name="document-text-outline" size={64} color={colors.textSecondary} />
-            <Text style={styles.emptyStateText}>
-              No inventory activity for {selectedYear}
+        {/* View Toggle */}
+        <View style={styles.viewToggleContainer}>
+          <TouchableOpacity
+            style={[styles.viewToggleButton, viewMode === 'item' && styles.viewToggleButtonActive]}
+            onPress={() => setViewMode('item')}
+          >
+            <Text style={[styles.viewToggleText, viewMode === 'item' && styles.viewToggleTextActive]}>
+              Item View
             </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.viewToggleButton, viewMode === 'building' && styles.viewToggleButtonActive]}
+            onPress={() => setViewMode('building')}
+          >
+            <Text style={[styles.viewToggleText, viewMode === 'building' && styles.viewToggleTextActive]}>
+              Building View
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Building Filter (only in building view) */}
+        {viewMode === 'building' && uniqueBuildings.length > 0 && (
+          <View style={styles.filterContainer}>
+            <Text style={styles.filterLabel}>Filter:</Text>
+            <TouchableOpacity
+              style={styles.filterDropdown}
+              onPress={() => setShowBuildingPicker(true)}
+            >
+              <Text style={styles.filterDropdownText} numberOfLines={1}>
+                {getSelectedBuildingLabel()}
+              </Text>
+              <Icon name="chevron-down" size={20} color={colors.textSecondary} />
+            </TouchableOpacity>
           </View>
-        ) : (
-          monthlyStatements.map((statement, index) => {
-            const isExpanded = expandedMonths.has(index);
-            return (
-              <AnimatedCard key={index} style={styles.monthCard}>
-                <TouchableOpacity onPress={() => toggleMonth(index)}>
-                  <View style={styles.monthHeader}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.monthTitle}>
-                        {statement.month} {statement.year}
-                      </Text>
-                      <Text style={{ fontSize: typography.sizes.sm, color: colors.textSecondary, marginTop: 4 }}>
-                        {statement.itemLedgers.length} {statement.itemLedgers.length === 1 ? 'item' : 'items'}
-                      </Text>
-                    </View>
-                    <Icon
-                      name={isExpanded ? "chevron-up" : "chevron-down"}
-                      size={28}
-                      color={colors.primary}
-                    />
-                  </View>
-                </TouchableOpacity>
+        )}
 
-              {isExpanded && statement.itemLedgers.map((ledger, ledgerIndex) => (
-                <View key={ledgerIndex} style={styles.itemLedgerCard}>
-                  <View style={styles.itemHeader}>
-                    <View>
-                      <Text style={styles.itemName}>{ledger.itemName}</Text>
-                      <Text style={{ fontSize: typography.sizes.sm, color: colors.textSecondary }}>
-                        Unit: {ledger.unit}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {/* Beginning Balance */}
-                  <View style={styles.balanceRow}>
-                    <Text style={styles.balanceLabel}>Beginning Balance</Text>
-                    <Text style={styles.balanceValue}>{ledger.beginningBalance} {ledger.unit}</Text>
-                  </View>
-
-                  {/* Transactions */}
-                  {ledger.transactions.length > 0 ? (
-                    <View style={styles.transactionsTable}>
-                      {/* Table Header */}
-                      <View style={styles.tableHeader}>
-                        <Text style={[styles.tableHeaderText, { width: 55 }]}>Date</Text>
-                        <Text style={[styles.tableHeaderText, { flex: 1 }]}>Location</Text>
-                        <Text style={[styles.tableHeaderText, { width: 75 }]}>Type</Text>
-                        <Text style={[styles.tableHeaderText, { width: 50, textAlign: 'right' }]}>Qty</Text>
-                      </View>
-                      {/* Table Rows */}
-                      {ledger.transactions.map((transaction, txIndex) => (
-                        <View key={txIndex} style={styles.transactionRow}>
-                          <Text style={styles.transactionDate}>{transaction.date}</Text>
-                          <Text style={styles.transactionLocation} numberOfLines={1}>
-                            {transaction.location}
+        {/* Item View */}
+        {viewMode === 'item' && (
+          <>
+            {monthlyStatements.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Icon name="document-text-outline" size={64} color={colors.textSecondary} />
+                <Text style={styles.emptyStateText}>
+                  No inventory activity for {selectedYear}
+                </Text>
+              </View>
+            ) : (
+              monthlyStatements.map((statement, index) => {
+                const isExpanded = expandedMonths.has(index);
+                return (
+                  <AnimatedCard key={index} style={styles.monthCard}>
+                    <TouchableOpacity onPress={() => toggleMonth(index)}>
+                      <View style={styles.monthHeader}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.monthTitle}>
+                            {statement.month} {statement.year}
                           </Text>
-                          <Text style={styles.transactionType}>
-                            {transaction.type === 'incoming' ? 'Received' : 'Sent'}
-                          </Text>
-                          <Text style={[
-                            styles.transactionQuantity,
-                            transaction.type === 'incoming' ? styles.quantityIncoming : styles.quantityOutgoing
-                          ]}>
-                            {transaction.type === 'incoming' ? '+' : '-'}{transaction.quantity}
+                          <Text style={{ fontSize: typography.sizes.sm, color: colors.textSecondary, marginTop: 4 }}>
+                            {statement.itemLedgers.length} {statement.itemLedgers.length === 1 ? 'item' : 'items'}
                           </Text>
                         </View>
-                      ))}
-                    </View>
-                  ) : (
-                    <View style={styles.noTransactions}>
-                      <Text style={styles.noTransactionsText}>No transactions this month</Text>
-                    </View>
-                  )}
+                        <Icon
+                          name={isExpanded ? "chevron-up" : "chevron-down"}
+                          size={28}
+                          color={colors.primary}
+                        />
+                      </View>
+                    </TouchableOpacity>
 
-                  {/* Summary */}
-                  <View style={{ marginTop: spacing.sm, marginBottom: spacing.xs }}>
-                    <View style={styles.summaryRow}>
-                      <Text style={styles.summaryLabel}>Total Received:</Text>
-                      <Text style={[styles.summaryValue, { color: colors.success }]}>+{ledger.totalIncoming} {ledger.unit}</Text>
-                    </View>
-                    <View style={styles.summaryRow}>
-                      <Text style={styles.summaryLabel}>Total Sent:</Text>
-                      <Text style={[styles.summaryValue, { color: colors.error }]}>-{ledger.totalOutgoing} {ledger.unit}</Text>
-                    </View>
-                  </View>
+                  {isExpanded && statement.itemLedgers.map((ledger, ledgerIndex) => (
+                    <View key={ledgerIndex} style={styles.itemLedgerCard}>
+                      <View style={styles.itemHeader}>
+                        <View>
+                          <Text style={styles.itemName}>{ledger.itemName}</Text>
+                          <Text style={{ fontSize: typography.sizes.sm, color: colors.textSecondary }}>
+                            Unit: {ledger.unit}
+                          </Text>
+                        </View>
+                      </View>
 
-                  {/* Ending Balance */}
-                  <View style={styles.endingBalanceRow}>
-                    <Text style={styles.endingBalanceLabel}>Ending Balance</Text>
-                    <Text style={styles.endingBalanceValue}>{ledger.endingBalance} {ledger.unit}</Text>
-                  </View>
-                </View>
-              ))}
-            </AnimatedCard>
-            );
-          })
+                      {/* Beginning Balance */}
+                      <View style={styles.balanceRow}>
+                        <Text style={styles.balanceLabel}>Beginning Balance</Text>
+                        <Text style={styles.balanceValue}>{ledger.beginningBalance} {ledger.unit}</Text>
+                      </View>
+
+                      {/* Transactions */}
+                      {ledger.transactions.length > 0 ? (
+                        <View style={styles.transactionsTable}>
+                          {/* Table Header */}
+                          <View style={styles.tableHeader}>
+                            <Text style={[styles.tableHeaderText, { width: 55 }]}>Date</Text>
+                            <Text style={[styles.tableHeaderText, { flex: 1 }]}>Location</Text>
+                            <Text style={[styles.tableHeaderText, { width: 75 }]}>Type</Text>
+                            <Text style={[styles.tableHeaderText, { width: 50, textAlign: 'right' }]}>Qty</Text>
+                          </View>
+                          {/* Table Rows */}
+                          {ledger.transactions.map((transaction, txIndex) => (
+                            <View key={txIndex} style={styles.transactionRow}>
+                              <Text style={styles.transactionDate}>{transaction.date}</Text>
+                              <Text style={styles.transactionLocation} numberOfLines={1}>
+                                {transaction.location}
+                              </Text>
+                              <Text style={styles.transactionType}>
+                                {transaction.type === 'incoming' ? 'Received' : 'Sent'}
+                              </Text>
+                              <Text style={[
+                                styles.transactionQuantity,
+                                transaction.type === 'incoming' ? styles.quantityIncoming : styles.quantityOutgoing
+                              ]}>
+                                {transaction.type === 'incoming' ? '+' : '-'}{transaction.quantity}
+                              </Text>
+                            </View>
+                          ))}
+                        </View>
+                      ) : (
+                        <View style={styles.noTransactions}>
+                          <Text style={styles.noTransactionsText}>No transactions this month</Text>
+                        </View>
+                      )}
+
+                      {/* Summary */}
+                      <View style={{ marginTop: spacing.sm, marginBottom: spacing.xs }}>
+                        <View style={styles.summaryRow}>
+                          <Text style={styles.summaryLabel}>Total Received:</Text>
+                          <Text style={[styles.summaryValue, { color: colors.success }]}>+{ledger.totalIncoming} {ledger.unit}</Text>
+                        </View>
+                        <View style={styles.summaryRow}>
+                          <Text style={styles.summaryLabel}>Total Sent:</Text>
+                          <Text style={[styles.summaryValue, { color: colors.error }]}>-{ledger.totalOutgoing} {ledger.unit}</Text>
+                        </View>
+                      </View>
+
+                      {/* Ending Balance */}
+                      <View style={styles.endingBalanceRow}>
+                        <Text style={styles.endingBalanceLabel}>Ending Balance</Text>
+                        <Text style={styles.endingBalanceValue}>{ledger.endingBalance} {ledger.unit}</Text>
+                      </View>
+                    </View>
+                  ))}
+                </AnimatedCard>
+                );
+              })
+            )}
+          </>
+        )}
+
+        {/* Building View */}
+        {viewMode === 'building' && (
+          <>
+            {buildingLedgers.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Icon name="business-outline" size={64} color={colors.textSecondary} />
+                <Text style={styles.emptyStateText}>
+                  No outgoing transfers for {selectedYear}
+                </Text>
+              </View>
+            ) : (
+              buildingLedgers.map((ledger, index) => {
+                const key = `${ledger.clientName}|${ledger.buildingName}`;
+                const isExpanded = expandedBuildings.has(key);
+                return (
+                  <AnimatedCard key={key} style={styles.buildingCard}>
+                    <TouchableOpacity onPress={() => toggleBuilding(key)}>
+                      <View style={styles.buildingHeader}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.buildingName}>{ledger.buildingName}</Text>
+                          <Text style={styles.buildingClient}>{ledger.clientName}</Text>
+                        </View>
+                        <Text style={styles.transferCount}>
+                          {ledger.totalTransfers} {ledger.totalTransfers === 1 ? 'transfer' : 'transfers'}
+                        </Text>
+                        <Icon
+                          name={isExpanded ? "chevron-up" : "chevron-down"}
+                          size={24}
+                          color={colors.primary}
+                          style={{ marginLeft: spacing.sm }}
+                        />
+                      </View>
+                    </TouchableOpacity>
+
+                    {isExpanded && (
+                      <View style={{ marginTop: spacing.sm }}>
+                        {ledger.transfers.map((transfer, txIndex) => (
+                          <View
+                            key={transfer.id}
+                            style={[
+                              styles.transferCard,
+                              transfer.type === 'incoming' && styles.transferCardIncoming
+                            ]}
+                          >
+                            <Text style={styles.transferDate}>{transfer.date}</Text>
+                            <Text style={styles.transferItems}>
+                              {transfer.items.map(item =>
+                                `${item.quantity} ${item.unit} ${item.name}`
+                              ).join(', ')}
+                            </Text>
+                            {transfer.notes && (
+                              <Text style={[styles.transferItems, { marginTop: 4, fontStyle: 'italic' }]}>
+                                Note: {transfer.notes}
+                              </Text>
+                            )}
+                            <Text style={styles.transferBy}>
+                              By: {transfer.transferredBy}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                  </AnimatedCard>
+                );
+              })
+            )}
+          </>
         )}
       </ScrollView>
 
       <Toast />
+
+      {/* Building Picker Modal */}
+      <Modal
+        visible={showBuildingPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowBuildingPicker(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowBuildingPicker(false)}
+        >
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Building</Text>
+              <TouchableOpacity onPress={() => setShowBuildingPicker(false)}>
+                <Icon name="close" size={24} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView>
+              <TouchableOpacity
+                style={styles.modalOption}
+                onPress={() => {
+                  setSelectedBuilding('all');
+                  setShowBuildingPicker(false);
+                }}
+              >
+                <Text style={[
+                  styles.modalOptionText,
+                  selectedBuilding === 'all' && styles.modalOptionSelected
+                ]}>
+                  All Buildings
+                </Text>
+                {selectedBuilding === 'all' && (
+                  <Icon name="checkmark" size={20} color={colors.primary} />
+                )}
+              </TouchableOpacity>
+              {uniqueBuildings.map((building, index) => {
+                const key = `${building.clientName}|${building.buildingName}`;
+                return (
+                  <TouchableOpacity
+                    key={key}
+                    style={styles.modalOption}
+                    onPress={() => {
+                      setSelectedBuilding(key);
+                      setShowBuildingPicker(false);
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={[
+                        styles.modalOptionText,
+                        selectedBuilding === key && styles.modalOptionSelected
+                      ]}>
+                        {building.buildingName}
+                      </Text>
+                      <Text style={{ fontSize: typography.sizes.sm, color: colors.textSecondary }}>
+                        {building.clientName}
+                      </Text>
+                    </View>
+                    {selectedBuilding === key && (
+                      <Icon name="checkmark" size={20} color={colors.primary} />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
