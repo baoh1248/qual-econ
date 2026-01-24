@@ -1044,8 +1044,9 @@ export default function ScheduleView() {
     setRecurringModalVisible(true);
   }, []);
 
-  const handleModalSave = useCallback(async () => {
+  const handleModalSave = useCallback(async (editAllRecurring: boolean = false) => {
     console.log('=== SCHEDULE MODAL SAVE HANDLER (SIMPLIFIED) ===');
+    console.log('Edit all recurring:', editAllRecurring);
 
     try {
       if (modalType === 'add') {
@@ -1257,6 +1258,60 @@ export default function ScheduleView() {
             console.error('Error details:', logError.message, logError.code);
           }
 
+          // If edit all recurring is enabled and this is a recurring shift, update all other shifts with the same recurringId
+          if (editAllRecurring && selectedEntry.isRecurring && selectedEntry.recurringId) {
+            console.log('📝 Updating all recurring shifts with recurringId:', selectedEntry.recurringId);
+
+            try {
+              // Fetch all entries with the same recurringId using Supabase
+              const { data: recurringEntries, error: fetchError } = await supabase
+                .from('schedule_entries')
+                .select('*')
+                .eq('recurring_id', selectedEntry.recurringId)
+                .neq('id', selectedEntry.id); // Exclude the current entry (already updated)
+
+              if (fetchError) {
+                console.error('Error fetching recurring entries:', fetchError);
+                throw fetchError;
+              }
+
+              if (recurringEntries && recurringEntries.length > 0) {
+                console.log(`Found ${recurringEntries.length} other recurring shifts to update`);
+
+                // Update each recurring entry
+                const updatePromises = recurringEntries.map(async (entry) => {
+                  // Calculate endTime based on the entry's date and new hours
+                  const entryEndTime = addHoursToTime(startTime, maxHours);
+
+                  const recurringUpdates: Partial<ScheduleEntry> = {
+                    cleanerName: selectedCleaners[0],
+                    cleanerNames: selectedCleaners,
+                    hours: maxHours,
+                    cleanerHours: cleanerHoursObj,
+                    startTime,
+                    endTime: entryEndTime,
+                    paymentType: paymentType,
+                    flatRateAmount: paymentType === 'flat_rate' ? parseFloat(flatRateAmount) : undefined,
+                    hourlyRate: paymentType === 'hourly' ? 15 : undefined,
+                  };
+
+                  return updateScheduleEntry(entry.id, recurringUpdates);
+                });
+
+                // Wait for all updates to complete
+                await Promise.all(updatePromises);
+
+                console.log(`✅ Successfully updated ${recurringEntries.length} recurring shifts`);
+                showToast(`Updated ${recurringEntries.length + 1} recurring shifts`, 'success');
+              } else {
+                console.log('No other recurring shifts found to update');
+              }
+            } catch (recurringError) {
+              console.error('❌ Error updating recurring shifts:', recurringError);
+              showToast('Warning: Some recurring shifts may not have been updated', 'warning');
+            }
+          }
+
           // Explicitly fetch fresh data to update UI
           const freshEntries = await fetchWeekSchedule(currentWeekId);
           setCurrentWeekSchedule(freshEntries);
@@ -1272,7 +1327,7 @@ export default function ScheduleView() {
       console.error('❌ Error saving schedule entry:', error);
       showToast('Failed to save shift', 'error');
     }
-  }, [modalType, selectedClientBuilding, selectedCleaners, hours, startTime, selectedDay, currentDate, currentWeekId, selectedEntry, addScheduleEntry, updateScheduleEntry, fetchWeekSchedule, handleModalClose, showToast, addHoursToTime]);
+  }, [modalType, selectedClientBuilding, selectedCleaners, hours, cleanerHours, startTime, selectedDay, currentDate, currentWeekId, selectedEntry, addScheduleEntry, updateScheduleEntry, fetchWeekSchedule, handleModalClose, showToast, addHoursToTime, paymentType, flatRateAmount]);
 
   const handleModalDelete = useCallback(async () => {
     if (!selectedEntry) {

@@ -70,7 +70,7 @@ interface ScheduleModalProps {
 
   // Actions
   onClose: () => void;
-  onSave: () => Promise<void>;
+  onSave: (editAllRecurring?: boolean) => Promise<void>;
   onDelete: () => void;
   onAddClient: () => void;
   onAddBuilding: () => void;
@@ -165,6 +165,9 @@ const ScheduleModal = memo(({
   const [showHoursDropdown, setShowHoursDropdown] = useState(false);
   const [showStartTimeDropdown, setShowStartTimeDropdown] = useState(false);
   const [openCleanerHoursDropdown, setOpenCleanerHoursDropdown] = useState<string | null>(null);
+
+  // Local state for editing all recurring shifts
+  const [editAllRecurring, setEditAllRecurring] = useState(false);
 
   // Generate hours options (0.5-12 in 30-minute increments)
   const hoursOptions = Array.from({ length: 24 }, (_, i) => ((i + 1) * 0.5).toString());
@@ -496,13 +499,16 @@ const ScheduleModal = memo(({
         estimatedPayment,
         selectedEntry: selectedEntry?.id,
         selectedBuilding: selectedClientBuilding?.buildingName,
+        editAllRecurring,
+        isRecurring: selectedEntry?.isRecurring,
+        recurringId: selectedEntry?.recurringId,
         isSaving
       });
-      
+
       setIsSaving(true);
-      
-      console.log('Calling parent onSave function...');
-      await onSave();
+
+      console.log('Calling parent onSave function with editAllRecurring:', editAllRecurring);
+      await onSave(editAllRecurring);
       console.log('Parent onSave completed successfully');
       
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -669,6 +675,41 @@ const ScheduleModal = memo(({
             <Text style={styles.modalTitle}>
               {modalType === 'add' ? 'Add New Shift' : 'Edit Shift'}
             </Text>
+
+            {/* Recurring shift edit toggle - Only show in edit mode for recurring shifts */}
+            {modalType === 'edit' && selectedEntry?.isRecurring && selectedEntry?.recurringId && (
+              <View style={[styles.recurringEditToggle, { backgroundColor: themeColor + '10', borderColor: themeColor + '30' }]}>
+                <View style={styles.recurringEditToggleContent}>
+                  <View style={styles.recurringEditToggleText}>
+                    <Icon name="repeat" size={20} style={{ color: themeColor }} />
+                    <View style={styles.recurringEditToggleLabels}>
+                      <Text style={[styles.recurringEditToggleTitle, { color: colors.text }]}>
+                        Edit All Recurring Shifts
+                      </Text>
+                      <Text style={[styles.recurringEditToggleSubtitle, { color: colors.textSecondary }]}>
+                        {editAllRecurring
+                          ? 'Changes will apply to all shifts in this recurring pattern'
+                          : 'Changes will only apply to this shift'}
+                      </Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    style={[
+                      styles.recurringEditToggleSwitch,
+                      editAllRecurring && { backgroundColor: themeColor }
+                    ]}
+                    onPress={() => setEditAllRecurring(!editAllRecurring)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[
+                      styles.recurringEditToggleSwitchKnob,
+                      editAllRecurring && styles.recurringEditToggleSwitchKnobActive
+                    ]} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
             <View style={styles.formContainer}>
               {/* Client Selection - Only show for add mode when NOT adding from grid */}
               {modalType === 'add' && !isAddingFromGrid && (
@@ -2196,6 +2237,57 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: colors.background,
+  },
+  recurringEditToggle: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  recurringEditToggleContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  recurringEditToggleText: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: spacing.sm,
+  },
+  recurringEditToggleLabels: {
+    flex: 1,
+  },
+  recurringEditToggleTitle: {
+    ...typography.body,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  recurringEditToggleSubtitle: {
+    ...typography.small,
+    fontSize: 12,
+  },
+  recurringEditToggleSwitch: {
+    width: 50,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.border,
+    padding: 2,
+    justifyContent: 'center',
+  },
+  recurringEditToggleSwitchKnob: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.background,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  recurringEditToggleSwitchKnobActive: {
+    alignSelf: 'flex-end',
   },
 });
 
