@@ -1335,63 +1335,83 @@ export default function ScheduleView() {
 
         // If edit all recurring is enabled, update ALL entries one by one
         if (editAllRecurring && selectedEntry.isRecurring && selectedEntry.recurringId) {
-          try {
-            // Fetch ALL entries with the same recurringId
-            const { data: allRecurringEntries } = await supabase
-              .from('schedule_entries')
-              .select('id')
-              .eq('recurring_id', selectedEntry.recurringId);
+          // Fetch ALL entries with the same recurringId
+          const { data: allRecurringEntries, error: fetchError } = await supabase
+            .from('schedule_entries')
+            .select('id')
+            .eq('recurring_id', selectedEntry.recurringId);
 
-            if (allRecurringEntries && allRecurringEntries.length > 0) {
-              let successCount = 0;
-
-              // Update each entry one by one
-              for (const entry of allRecurringEntries) {
-                const { error: updateError } = await supabase
-                  .from('schedule_entries')
-                  .update({
-                    cleaner_name: selectedCleaners[0],
-                    cleaner_names: selectedCleaners,
-                    hours: maxHours,
-                    cleaner_hours: cleanerHoursObj,
-                    start_time: startTime,
-                    end_time: endTime,
-                    payment_type: paymentType,
-                    flat_rate_amount: paymentType === 'flat_rate' ? parseFloat(flatRateAmount) : 0,
-                    hourly_rate: paymentType === 'hourly' ? 15 : 0,
-                  })
-                  .eq('id', entry.id);
-
-                if (!updateError) {
-                  successCount++;
-                }
-              }
-
-              showToast(`Updated ${successCount} recurring shifts`, 'success');
-
-              // Log the edit
-              try {
-                await logShiftEdited({
-                  clientName: selectedEntry.clientName,
-                  buildingName: selectedEntry.buildingName,
-                  cleanerNames: selectedCleaners,
-                  shiftDate: selectedEntry.date,
-                  shiftId: selectedEntry.id,
-                  changes: ['shift details updated'],
-                });
-              } catch {
-                // Ignore logging errors
-              }
-            }
-          } catch (recurringError) {
-            showToast('Failed to update recurring shifts', 'error');
+          if (fetchError) {
+            alert('Error fetching recurring shifts: ' + fetchError.message);
+            showToast('Failed to fetch recurring shifts', 'error');
             return;
+          }
+
+          if (!allRecurringEntries || allRecurringEntries.length === 0) {
+            alert('No recurring shifts found with ID: ' + selectedEntry.recurringId);
+            showToast('No recurring shifts found', 'error');
+            return;
+          }
+
+          let successCount = 0;
+          let errorCount = 0;
+          const errors: string[] = [];
+
+          // Update each entry one by one
+          for (const entry of allRecurringEntries) {
+            const { error: updateError } = await supabase
+              .from('schedule_entries')
+              .update({
+                cleaner_name: selectedCleaners[0],
+                cleaner_names: selectedCleaners,
+                hours: maxHours,
+                cleaner_hours: cleanerHoursObj,
+                start_time: startTime,
+                end_time: endTime,
+                payment_type: paymentType,
+                flat_rate_amount: paymentType === 'flat_rate' ? parseFloat(flatRateAmount) : 0,
+                hourly_rate: paymentType === 'hourly' ? 15 : 0,
+              })
+              .eq('id', entry.id);
+
+            if (updateError) {
+              errorCount++;
+              errors.push(`Entry ${entry.id}: ${updateError.message}`);
+            } else {
+              successCount++;
+            }
+          }
+
+          if (errorCount > 0) {
+            alert(`Update errors:\n${errors.join('\n')}`);
+          }
+
+          if (successCount === 0) {
+            showToast('Failed to update any recurring shifts', 'error');
+            return;
+          }
+
+          showToast(`Updated ${successCount} of ${allRecurringEntries.length} recurring shifts`, 'success');
+
+          // Log the edit
+          try {
+            await logShiftEdited({
+              clientName: selectedEntry.clientName,
+              buildingName: selectedEntry.buildingName,
+              cleanerNames: selectedCleaners,
+              shiftDate: selectedEntry.date,
+              shiftId: selectedEntry.id,
+              changes: ['shift details updated'],
+            });
+          } catch {
+            // Ignore logging errors
           }
         } else {
           // Single entry update
           const updatedEntry = await updateScheduleEntry(selectedEntry.id, updates);
 
           if (!updatedEntry) {
+            alert('Failed to update entry - hook returned null');
             throw new Error('Failed to update entry');
           }
 
