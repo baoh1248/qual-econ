@@ -1399,24 +1399,37 @@ export default function ScheduleView() {
               if (recurringEntries && recurringEntries.length > 0) {
                 console.log(`Found ${recurringEntries.length} other recurring shifts to update`);
 
-                // Update each recurring entry
+                // Update each recurring entry directly in Supabase (works across all weeks)
                 const updatePromises = recurringEntries.map(async (entry) => {
                   // Calculate endTime based on the entry's date and new hours
                   const entryEndTime = addHoursToTime(startTime, maxHours);
 
-                  const recurringUpdates: Partial<ScheduleEntry> = {
-                    cleanerName: selectedCleaners[0],
-                    cleanerNames: selectedCleaners,
+                  // Create database update object with proper column names
+                  const dbUpdates = {
+                    cleaner_name: selectedCleaners[0],
+                    cleaner_names: selectedCleaners,
                     hours: maxHours,
-                    cleanerHours: cleanerHoursObj,
-                    startTime,
-                    endTime: entryEndTime,
-                    paymentType: paymentType,
-                    flatRateAmount: paymentType === 'flat_rate' ? parseFloat(flatRateAmount) : undefined,
-                    hourlyRate: paymentType === 'hourly' ? 15 : undefined,
+                    cleaner_hours: cleanerHoursObj,
+                    start_time: startTime,
+                    end_time: entryEndTime,
+                    payment_type: paymentType,
+                    flat_rate_amount: paymentType === 'flat_rate' ? parseFloat(flatRateAmount) : 0,
+                    hourly_rate: paymentType === 'hourly' ? 15 : 0,
+                    updated_at: new Date().toISOString(),
                   };
 
-                  return updateScheduleEntry(entry.id, recurringUpdates);
+                  // Update directly in Supabase to work across all weeks
+                  const { error: updateError } = await supabase
+                    .from('schedule_entries')
+                    .update(dbUpdates)
+                    .eq('id', entry.id);
+
+                  if (updateError) {
+                    console.error(`❌ Failed to update entry ${entry.id}:`, updateError);
+                    throw updateError;
+                  }
+
+                  return true;
                 });
 
                 // Wait for all updates to complete
