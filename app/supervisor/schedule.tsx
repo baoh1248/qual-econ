@@ -95,7 +95,7 @@ export default function ScheduleView() {
   const [selectedCleaners, setSelectedCleaners] = useState<string[]>([]);
   const [hours, setHours] = useState('');
   const [cleanerHours, setCleanerHours] = useState<{ [cleanerName: string]: string }>({});
-  const [startTime, setStartTime] = useState('09:00');
+  const [startTime, setStartTime] = useState('17:00');
   const [paymentType, setPaymentType] = useState<'hourly' | 'flat_rate'>('hourly');
   const [flatRateAmount, setFlatRateAmount] = useState('100');
   const [newClientName, setNewClientName] = useState('');
@@ -184,8 +184,8 @@ export default function ScheduleView() {
     setCleanerHours(prevCleanerHours => {
       const newCleanerHours: { [cleanerName: string]: string } = {};
       for (const cleanerName of selectedCleaners) {
-        // Keep existing hours if cleaner was already selected, otherwise default to 8
-        newCleanerHours[cleanerName] = prevCleanerHours[cleanerName] || '8';
+        // Keep existing hours if cleaner was already selected, otherwise default to 3
+        newCleanerHours[cleanerName] = prevCleanerHours[cleanerName] || '3';
       }
       return newCleanerHours;
     });
@@ -945,7 +945,7 @@ export default function ScheduleView() {
     setSelectedDay(day);
     setSelectedCleaners([]);
     setHours('');
-    setStartTime('09:00');
+    setStartTime('17:00');
     setIsAddingFromGrid(true);
     setModalType('add');
     setModalVisible(true);
@@ -988,7 +988,7 @@ export default function ScheduleView() {
     setSelectedCleaners([cleaner.name]);
     setSelectedDay(day);
     setHours('');
-    setStartTime('09:00');
+    setStartTime('17:00');
     setIsAddingFromGrid(false);
     setModalType('add');
     setModalVisible(true);
@@ -1020,7 +1020,7 @@ export default function ScheduleView() {
     setCleanerName('');
     setSelectedCleaners([]);
     setHours('');
-    setStartTime('09:00');
+    setStartTime('17:00');
     setPaymentType('hourly');
     setFlatRateAmount('100');
     // Don't reset selectedDay here - let it persist for proper key prop behavior
@@ -2075,7 +2075,7 @@ export default function ScheduleView() {
           setSelectedClientBuilding(null);
           setSelectedCleaners([]);
           setHours('');
-          setStartTime('09:00');
+          setStartTime('17:00');
           setIsAddingFromGrid(false);
           setModalType('add');
           setModalVisible(true);

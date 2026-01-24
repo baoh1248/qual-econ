@@ -50,8 +50,8 @@ const BuildingGroupScheduleModal = memo<BuildingGroupScheduleModalProps>(({
   const [loading, setLoading] = useState(false);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [selectedCleaners, setSelectedCleaners] = useState<string[]>([]);
-  const [hours, setHours] = useState('8');
-  const [startTime, setStartTime] = useState('09:00');
+  const [hours, setHours] = useState('3');
+  const [startTime, setStartTime] = useState('17:00');
   const [scheduleDate, setScheduleDate] = useState(() => {
     // Ensure date is in YYYY-MM-DD format
     try {
@@ -84,8 +84,8 @@ const BuildingGroupScheduleModal = memo<BuildingGroupScheduleModalProps>(({
       // Reset form
       setSelectedGroupId(null);
       setSelectedCleaners([]);
-      setHours('8');
-      setStartTime('09:00');
+      setHours('3');
+      setStartTime('17:00');
       const formattedDate = date ? date.split('T')[0] : new Date().toISOString().split('T')[0];
       setScheduleDate(formattedDate);
       setPaymentType('hourly');

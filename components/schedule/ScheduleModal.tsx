@@ -311,7 +311,7 @@ const ScheduleModal = memo(({
         for (const cleanerName of selectedCleaners) {
           const cleaner = cleaners.find(c => c.name === cleanerName);
           const rate = cleaner?.defaultHourlyRate || 15;
-          const cleanerHoursValue = parseFloat(cleanerHours[cleanerName] || '8') || 0;
+          const cleanerHoursValue = parseFloat(cleanerHours[cleanerName] || '3') || 0;
           totalPayment += cleanerHoursValue * rate;
         }
 
@@ -333,7 +333,7 @@ const ScheduleModal = memo(({
     return selectedCleaners.map(cleanerName => {
       const cleaner = cleaners.find(c => c.name === cleanerName);
       const rate = cleaner?.defaultHourlyRate || 15;
-      const cleanerHoursValue = parseFloat(cleanerHours[cleanerName] || '8') || 0;
+      const cleanerHoursValue = parseFloat(cleanerHours[cleanerName] || '3') || 0;
       return {
         name: cleanerName,
         hours: cleanerHoursValue,
@@ -1043,7 +1043,7 @@ const ScheduleModal = memo(({
                 <View style={styles.cleanerHoursSection}>
                   <Text style={styles.sectionTitle}>Hours per Cleaner</Text>
                   {selectedCleaners.map((cleanerName, index) => {
-                    const cleanerHoursValue = cleanerHours[cleanerName] || '8';
+                    const cleanerHoursValue = cleanerHours[cleanerName] || '3';
                     const isDropdownOpen = openCleanerHoursDropdown === cleanerName;
 
                     return (

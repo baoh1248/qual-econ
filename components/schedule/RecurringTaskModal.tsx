@@ -438,7 +438,7 @@ const RecurringTaskModal = memo(({
                   onPress={() => setShowHoursDropdown(!showHoursDropdown)}
                 >
                   <Text style={[styles.inputText, !hours && styles.placeholderText]}>
-                    {hours || '8'}
+                    {hours || '3'}
                   </Text>
                   <Icon name="chevron-down" size={20} style={{ color: colors.textSecondary }} />
                 </TouchableOpacity>
@@ -472,7 +472,7 @@ const RecurringTaskModal = memo(({
                 <Text style={styles.inputLabel}>Start Time</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="09:00"
+                  placeholder="17:00"
                   value={startTime}
                   onChangeText={setStartTime}
                 />
