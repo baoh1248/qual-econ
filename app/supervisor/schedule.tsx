@@ -281,7 +281,7 @@ export default function ScheduleView() {
       const patterns = await executeQuery<RecurringShiftPattern>('select', 'recurring_shifts');
       console.log('Loaded recurring patterns:', patterns.length);
 
-      const activePatterns = patterns.filter(p => isPatternActive(p));
+      const activePatterns = patterns.filter(p => p.is_active && isPatternActive(p));
       console.log('Active patterns:', activePatterns.length);
 
       const today = new Date();
@@ -310,12 +310,21 @@ export default function ScheduleView() {
 
         for (const entry of entries) {
           try {
-            // Check if entry already exists in current schedule
-            const exists = currentWeekSchedule.some(e =>
-              e.recurringId === pattern.id &&
-              e.date === entry.date &&
-              e.buildingName === entry.buildingName
-            );
+            // Check if entry already exists in database (not just current week)
+            const { data: existingEntries, error: checkError } = await supabase
+              .from('schedule_entries')
+              .select('id')
+              .eq('recurring_id', pattern.id)
+              .eq('date', entry.date)
+              .eq('building_name', entry.buildingName)
+              .limit(1);
+
+            if (checkError) {
+              console.error('Error checking existing entry:', checkError);
+              continue;
+            }
+
+            const exists = existingEntries && existingEntries.length > 0;
 
             if (!exists) {
               // Use the new simplified addScheduleEntry - it handles everything
@@ -359,7 +368,7 @@ export default function ScheduleView() {
       showToast('Failed to generate recurring shifts', 'error');
       return 0;
     }
-  }, [executeQuery, currentWeekSchedule, getWeekIdFromDate, addScheduleEntry, showToast, fetchWeekSchedule, currentDate]);
+  }, [executeQuery, getWeekIdFromDate, addScheduleEntry, showToast, fetchWeekSchedule, currentDate]);
   
   const loadCurrentWeekSchedule = useCallback(async () => {
     if (loadingInProgressRef.current) {
@@ -1329,51 +1338,30 @@ export default function ScheduleView() {
     }
   }, [modalType, selectedClientBuilding, selectedCleaners, hours, cleanerHours, startTime, selectedDay, currentDate, currentWeekId, selectedEntry, addScheduleEntry, updateScheduleEntry, fetchWeekSchedule, handleModalClose, showToast, addHoursToTime, paymentType, flatRateAmount]);
 
-  const handleModalDelete = useCallback(async () => {
-    if (!selectedEntry) {
-      showToast('No shift selected', 'error');
-      return;
-    }
-
-    // For web and mobile compatibility - just proceed with delete
-    // The ScheduleModal already has its own confirmation dialog
+  // Helper function to refresh schedule after delete
+  const refreshAfterDelete = useCallback(async (weekId: string) => {
     try {
-      // Store values before deletion
-      const entryId = selectedEntry.id;
-      const entryWeekId = selectedEntry.weekId;
-
-      // Direct Supabase delete
-      const { error: deleteError } = await supabase
-        .from('schedule_entries')
-        .delete()
-        .eq('id', entryId);
-
-      if (deleteError) {
-        throw deleteError;
-      }
-
-      // Success! Show toast
-      showToast('Shift deleted', 'success');
-
       // Log the shift deletion
       try {
-        console.log('📝 Attempting to log shift deletion:', {
-          client: selectedEntry.clientName,
-          building: selectedEntry.buildingName,
-          cleaners: selectedEntry.cleanerNames || [selectedEntry.cleanerName],
-          date: selectedEntry.date,
-          id: selectedEntry.id
-        });
+        if (selectedEntry) {
+          console.log('📝 Attempting to log shift deletion:', {
+            client: selectedEntry.clientName,
+            building: selectedEntry.buildingName,
+            cleaners: selectedEntry.cleanerNames || [selectedEntry.cleanerName],
+            date: selectedEntry.date,
+            id: selectedEntry.id
+          });
 
-        await logShiftDeleted({
-          clientName: selectedEntry.clientName,
-          buildingName: selectedEntry.buildingName,
-          cleanerNames: selectedEntry.cleanerNames || [selectedEntry.cleanerName],
-          shiftDate: selectedEntry.date,
-          shiftId: selectedEntry.id,
-        });
+          await logShiftDeleted({
+            clientName: selectedEntry.clientName,
+            buildingName: selectedEntry.buildingName,
+            cleanerNames: selectedEntry.cleanerNames || [selectedEntry.cleanerName],
+            shiftDate: selectedEntry.date,
+            shiftId: selectedEntry.id,
+          });
 
-        console.log('✅ Shift deletion logged successfully');
+          console.log('✅ Shift deletion logged successfully');
+        }
       } catch (logError: any) {
         console.error('❌ Failed to log shift deletion:', logError);
         console.error('Error details:', logError.message, logError.code);
@@ -1383,7 +1371,7 @@ export default function ScheduleView() {
       const { data: freshData, error: fetchError } = await supabase
         .from('schedule_entries')
         .select('*')
-        .eq('week_id', entryWeekId)
+        .eq('week_id', weekId)
         .order('date', { ascending: true })
         .order('start_time', { ascending: true });
 
@@ -1397,6 +1385,7 @@ export default function ScheduleView() {
           cleanerNames: row.cleaner_names || [],
           cleanerIds: row.cleaner_ids || [],
           hours: parseFloat(row.hours) || 0,
+          cleanerHours: row.cleaner_hours || undefined,
           day: row.day || 'monday',
           date: row.date || '',
           startTime: row.start_time || null,
@@ -1410,19 +1399,125 @@ export default function ScheduleView() {
           isProject: row.is_project || false,
           projectId: row.project_id || null,
           projectName: row.project_name || null,
-        }));
+          paymentType: row.payment_type || 'hourly',
+          flatRateAmount: row.flat_rate_amount || 0,
+          hourlyRate: row.hourly_rate || 15,
+        })) as ScheduleEntry[];
 
-        // Update the UI
         setCurrentWeekSchedule(freshEntries);
         setScheduleKey(prev => prev + 1);
       }
 
-      // Close the modal
       handleModalClose();
+    } catch (error) {
+      console.error('Error refreshing after delete:', error);
+    }
+  }, [selectedEntry, handleModalClose]);
+
+  const handleModalDelete = useCallback(async () => {
+    if (!selectedEntry) {
+      showToast('No shift selected', 'error');
+      return;
+    }
+
+    // For web and mobile compatibility - just proceed with delete
+    // The ScheduleModal already has its own confirmation dialog
+    try {
+      // Store values before deletion
+      const entryId = selectedEntry.id;
+      const entryWeekId = selectedEntry.weekId;
+      const isRecurring = selectedEntry.isRecurring && selectedEntry.recurringId;
+
+      // If this is a recurring shift, ask if they want to delete the entire pattern
+      if (isRecurring) {
+        Alert.alert(
+          'Delete Recurring Shift',
+          'Do you want to delete only this shift or the entire recurring pattern?',
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel',
+              onPress: () => {
+                // Just return without doing anything
+                return;
+              }
+            },
+            {
+              text: 'Delete This Only',
+              onPress: async () => {
+                try {
+                  // Delete just this shift
+                  const { error: deleteError } = await supabase
+                    .from('schedule_entries')
+                    .delete()
+                    .eq('id', entryId);
+
+                  if (deleteError) {
+                    throw deleteError;
+                  }
+
+                  showToast('Shift deleted', 'success');
+                  await refreshAfterDelete(entryWeekId);
+                } catch (error) {
+                  console.error('Error deleting shift:', error);
+                  showToast('Failed to delete shift', 'error');
+                }
+              }
+            },
+            {
+              text: 'Delete All Future',
+              style: 'destructive',
+              onPress: async () => {
+                try {
+                  // Delete this shift and all future shifts in the pattern
+                  const { error: deleteError } = await supabase
+                    .from('schedule_entries')
+                    .delete()
+                    .eq('recurring_id', selectedEntry.recurringId!)
+                    .gte('date', selectedEntry.date);
+
+                  if (deleteError) {
+                    throw deleteError;
+                  }
+
+                  // Mark the recurring pattern as inactive
+                  await executeQuery('update', 'recurring_shifts', {
+                    id: selectedEntry.recurringId!,
+                    is_active: false,
+                  });
+
+                  showToast('All future recurring shifts deleted', 'success');
+                  await refreshAfterDelete(entryWeekId);
+                } catch (error) {
+                  console.error('Error deleting recurring pattern:', error);
+                  showToast('Failed to delete recurring pattern', 'error');
+                }
+              }
+            }
+          ]
+        );
+        return; // Exit early, the alert handlers will do the delete
+      }
+
+      // Non-recurring shift - just delete it
+      const { error: deleteError } = await supabase
+        .from('schedule_entries')
+        .delete()
+        .eq('id', entryId);
+
+      if (deleteError) {
+        throw deleteError;
+      }
+
+      // Success! Show toast
+      showToast('Shift deleted', 'success');
+
+      // Refresh and close
+      await refreshAfterDelete(entryWeekId);
     } catch (error: any) {
       showToast(error.message || 'Failed to delete shift', 'error');
     }
-  }, [selectedEntry, currentWeekId, handleModalClose, showToast]);
+  }, [selectedEntry, executeQuery, refreshAfterDelete, showToast]);
 
   const handleAddClient = useCallback(async () => {
     console.log('Adding client:', newClientName);
