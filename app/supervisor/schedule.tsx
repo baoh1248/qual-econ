@@ -2238,51 +2238,6 @@ export default function ScheduleView() {
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={async () => {
-                // Show recurring patterns management
-                const patterns = await executeQuery<RecurringShiftPattern>('select', 'recurring_shifts');
-                const activePatterns = patterns.filter(p => p.is_active);
-
-                if (activePatterns.length === 0) {
-                  Alert.alert('No Active Patterns', 'You have no active recurring patterns.');
-                  return;
-                }
-
-                const patternList = activePatterns.map((p, i) =>
-                  `${i + 1}. ${p.client_name} - ${p.building_name} (${p.pattern_type}, ${p.cleaner_names.join(', ')})`
-                ).join('\n\n');
-
-                Alert.alert(
-                  `Active Recurring Patterns (${activePatterns.length})`,
-                  patternList + '\n\nDo you want to clear all patterns?',
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    {
-                      text: 'Clear All',
-                      style: 'destructive',
-                      onPress: async () => {
-                        try {
-                          await supabase
-                            .from('recurring_shifts')
-                            .update({ is_active: false })
-                            .eq('is_active', true);
-
-                          showToast(`Cleared ${activePatterns.length} recurring patterns`, 'success');
-                        } catch (error) {
-                          console.error('Error clearing patterns:', error);
-                          showToast('Failed to clear patterns', 'error');
-                        }
-                      }
-                    }
-                  ]
-                );
-              }}
-              style={[buttonStyles.backButton, { backgroundColor: 'rgba(255,255,255,0.2)' }]}
-            >
-              <Icon name="repeat" size={24} color="#FFFFFF" />
-            </TouchableOpacity>
-
-            <TouchableOpacity
               onPress={() => setShowFiltersModal(true)}
               style={[buttonStyles.backButton, { backgroundColor: 'rgba(255,255,255,0.2)', position: 'relative' }]}
             >
