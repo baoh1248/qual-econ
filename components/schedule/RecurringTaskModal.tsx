@@ -132,9 +132,23 @@ const RecurringTaskModal = memo(({
     }
 
     const cleanersToUse = selectedCleaners.length > 0 ? selectedCleaners : (cleanerName ? [cleanerName] : []);
-    
-    if (!selectedBuilding || cleanersToUse.length === 0 || !hours) {
-      console.log('Validation failed:', { selectedBuilding, cleanersToUse, hours });
+
+    // Validation with user feedback
+    if (!selectedBuilding) {
+      alert('Please select a building');
+      console.log('Validation failed: No building selected');
+      return;
+    }
+
+    if (cleanersToUse.length === 0) {
+      alert('Please select at least one cleaner');
+      console.log('Validation failed: No cleaners selected');
+      return;
+    }
+
+    if (!hours || parseFloat(hours) <= 0) {
+      alert('Please enter valid hours');
+      console.log('Validation failed: Invalid hours');
       return;
     }
 
@@ -166,10 +180,11 @@ const RecurringTaskModal = memo(({
       console.log('Calling onSave with task data:', taskData);
       await onSave(taskData);
       console.log('✅ Recurring task saved successfully');
-      
+
       handleClose();
     } catch (error) {
       console.error('❌ Error saving recurring task:', error);
+      alert('Failed to save recurring task. Please try again.');
     } finally {
       setIsSaving(false);
     }

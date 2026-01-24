@@ -51,6 +51,7 @@ const BuildingGroupScheduleModal = memo<BuildingGroupScheduleModalProps>(({
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [selectedCleaners, setSelectedCleaners] = useState<string[]>([]);
   const [hours, setHours] = useState('3');
+  const [cleanerHours, setCleanerHours] = useState<{ [cleanerName: string]: string }>({});
   const [startTime, setStartTime] = useState('17:00');
   const [scheduleDate, setScheduleDate] = useState(() => {
     // Ensure date is in YYYY-MM-DD format
@@ -69,6 +70,7 @@ const BuildingGroupScheduleModal = memo<BuildingGroupScheduleModalProps>(({
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [showHoursDropdown, setShowHoursDropdown] = useState(false);
+  const [openCleanerHoursDropdown, setOpenCleanerHoursDropdown] = useState<string | null>(null);
 
   // Generate hours options (0.5-12 in 30-minute increments)
   const hoursOptions = Array.from({ length: 24 }, (_, i) => ((i + 1) * 0.5).toString());
@@ -110,6 +112,18 @@ const BuildingGroupScheduleModal = memo<BuildingGroupScheduleModalProps>(({
       );
     }
   }, [visible, scheduleDate, fetchApprovedTimeOff]);
+
+  // Initialize cleanerHours when selectedCleaners changes
+  useEffect(() => {
+    setCleanerHours(prevCleanerHours => {
+      const newCleanerHours: { [cleanerName: string]: string } = {};
+      for (const cleanerName of selectedCleaners) {
+        // Keep existing hours if cleaner was already selected, otherwise default to 3
+        newCleanerHours[cleanerName] = prevCleanerHours[cleanerName] || '3';
+      }
+      return newCleanerHours;
+    });
+  }, [selectedCleaners]);
 
   const loadBuildingGroups = async () => {
     try {
@@ -220,6 +234,16 @@ const BuildingGroupScheduleModal = memo<BuildingGroupScheduleModalProps>(({
       return;
     }
 
+    // Validate that all selected cleaners have hours assigned
+    const hasAllCleanerHours = selectedCleaners.every(cleanerName => {
+      const cleanerHoursValue = cleanerHours[cleanerName];
+      return cleanerHoursValue && parseFloat(cleanerHoursValue) > 0;
+    });
+    if (!hasAllCleanerHours) {
+      Alert.alert('Error', 'Please assign hours for all selected cleaners');
+      return;
+    }
+
     if (!scheduleDate) {
       Alert.alert('Error', 'Please enter a valid date');
       return;
@@ -241,7 +265,16 @@ const BuildingGroupScheduleModal = memo<BuildingGroupScheduleModalProps>(({
       console.log('🔄 Creating schedule entries for building group:', selectedGroup.group_name);
       console.log('Using date:', scheduleDate);
 
-      const hoursNum = parseFloat(hours) || 8;
+      // Convert cleanerHours to a clean object with number values
+      const cleanerHoursObj: { [cleanerName: string]: number } = {};
+      let maxHours = 0;
+      for (const cleanerName of selectedCleaners) {
+        const hoursValue = parseFloat(cleanerHours[cleanerName] || '3');
+        cleanerHoursObj[cleanerName] = hoursValue;
+        maxHours = Math.max(maxHours, hoursValue);
+      }
+
+      const hoursNum = maxHours;
       const cleanerIds = selectedCleaners.map(name => {
         const cleaner = cleaners.find(c => c.name === name);
         return cleaner?.id || '';
@@ -278,6 +311,7 @@ const BuildingGroupScheduleModal = memo<BuildingGroupScheduleModalProps>(({
         cleaner_names: selectedCleaners,
         cleaner_ids: cleanerIds,
         hours: hoursNum,
+        cleaner_hours: cleanerHoursObj, // Individual hours per cleaner
         day: dayOfWeek,
         date: scheduleDate, // Store in YYYY-MM-DD format
         start_time: startTime,
@@ -583,45 +617,59 @@ const BuildingGroupScheduleModal = memo<BuildingGroupScheduleModalProps>(({
               </ScrollView>
             </View>
 
-            {/* Schedule Details */}
-            <View style={{ marginBottom: spacing.lg }}>
-              <Text style={styles.label}>Hours *</Text>
-              <TouchableOpacity
-                style={styles.input}
-                onPress={() => setShowHoursDropdown(!showHoursDropdown)}
-              >
-                <Text style={[styles.inputText, !hours && styles.placeholderText]}>
-                  {hours || '8'}
-                </Text>
-                <Icon name="chevron-down" size={20} style={{ color: colors.textSecondary }} />
-              </TouchableOpacity>
-              {showHoursDropdown && (
-                <View style={styles.dropdownContainer}>
-                  <ScrollView style={styles.dropdown} nestedScrollEnabled>
-                    {hoursOptions.map((hour) => (
-                      <TouchableOpacity
-                        key={hour}
-                        style={[styles.dropdownItem, hours === hour && styles.dropdownItemSelected]}
-                        onPress={() => {
-                          setHours(hour);
-                          setShowHoursDropdown(false);
-                        }}
-                      >
-                        <Text style={[styles.dropdownText, hours === hour && styles.dropdownTextSelected]}>
-                          {hour} {parseFloat(hour) === 1 ? 'hour' : 'hours'}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                  <TouchableOpacity
-                    style={styles.closeDropdownButton}
-                    onPress={() => setShowHoursDropdown(false)}
-                  >
-                    <Text style={styles.closeDropdownText}>Close</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
+            {/* Individual hours for each cleaner */}
+            {selectedCleaners.length > 0 && (
+              <View style={styles.cleanerHoursSection}>
+                <Text style={styles.sectionTitle}>Hours per Cleaner</Text>
+                {selectedCleaners.map((cleanerName, index) => {
+                  const cleanerHoursValue = cleanerHours[cleanerName] || '3';
+                  const isDropdownOpen = openCleanerHoursDropdown === cleanerName;
+
+                  return (
+                    <View key={index} style={styles.cleanerHoursRow}>
+                      <Text style={styles.cleanerHoursName}>{cleanerName}</Text>
+                      <View style={styles.cleanerHoursInputWrapper}>
+                        <TouchableOpacity
+                          style={styles.cleanerHoursInput}
+                          onPress={() => setOpenCleanerHoursDropdown(isDropdownOpen ? null : cleanerName)}
+                        >
+                          <Text style={[styles.inputText, !cleanerHoursValue && styles.placeholderText]}>
+                            {cleanerHoursValue}
+                          </Text>
+                          <Icon name="chevron-down" size={20} style={{ color: colors.textSecondary }} />
+                        </TouchableOpacity>
+                        {isDropdownOpen && (
+                          <View style={styles.dropdownContainer}>
+                            <ScrollView style={styles.dropdown} nestedScrollEnabled>
+                              {hoursOptions.map((hour) => (
+                                <TouchableOpacity
+                                  key={hour}
+                                  style={[styles.dropdownItem, cleanerHoursValue === hour && styles.dropdownItemSelected]}
+                                  onPress={() => {
+                                    setCleanerHours({ ...cleanerHours, [cleanerName]: hour });
+                                    setOpenCleanerHoursDropdown(null);
+                                  }}
+                                >
+                                  <Text style={[styles.dropdownText, cleanerHoursValue === hour && styles.dropdownTextSelected]}>
+                                    {hour} {parseFloat(hour) === 1 ? 'hour' : 'hours'}
+                                  </Text>
+                                </TouchableOpacity>
+                              ))}
+                            </ScrollView>
+                            <TouchableOpacity
+                              style={styles.closeDropdownButton}
+                              onPress={() => setOpenCleanerHoursDropdown(null)}
+                            >
+                              <Text style={styles.closeDropdownText}>Close</Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
 
             <View style={{ marginBottom: spacing.lg }}>
               <Text style={styles.label}>Start Time</Text>
@@ -899,6 +947,102 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   paymentTypeTextActive: {
+    color: colors.background,
+    fontWeight: '600',
+  },
+  cleanerHoursSection: {
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 12,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  sectionTitle: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '600',
+    marginBottom: spacing.md,
+  },
+  cleanerHoursRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  cleanerHoursName: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '600',
+    flex: 1,
+  },
+  cleanerHoursInputWrapper: {
+    width: 120,
+  },
+  cleanerHoursInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.background,
+  },
+  inputText: {
+    ...typography.body,
+    color: colors.text,
+  },
+  placeholderText: {
+    color: colors.textSecondary,
+  },
+  dropdownContainer: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    backgroundColor: colors.background,
+    borderRadius: 8,
+    marginTop: spacing.xs,
+    maxHeight: 200,
+    borderWidth: 1,
+    borderColor: colors.border,
+    zIndex: 1000,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  dropdown: {
+    maxHeight: 150,
+  },
+  dropdownItem: {
+    padding: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  dropdownItemSelected: {
+    backgroundColor: colors.primary,
+  },
+  dropdownText: {
+    ...typography.body,
+    color: colors.text,
+  },
+  dropdownTextSelected: {
+    color: colors.background,
+    fontWeight: '600',
+  },
+  closeDropdownButton: {
+    padding: spacing.md,
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderBottomLeftRadius: 8,
+    borderBottomRightRadius: 8,
+  },
+  closeDropdownText: {
+    ...typography.body,
     color: colors.background,
     fontWeight: '600',
   },
