@@ -46,10 +46,11 @@ interface BuildingTransfer {
   id: string;
   date: string;
   timestamp: string;
-  items: { name: string; quantity: number; unit: string }[];
+  items: { name: string; quantity: number; unit: string; unitCost?: number; totalCost?: number }[];
   transferredBy: string;
   notes?: string;
   type: 'incoming' | 'outgoing';
+  totalValue?: number;
 }
 
 interface BuildingLedger {
@@ -393,6 +394,58 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontStyle: 'italic',
   },
+  transferItemsContainer: {
+    marginTop: spacing.xs,
+  },
+  transferItemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingVertical: spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border + '30',
+  },
+  transferItemName: {
+    fontSize: typography.sizes.sm,
+    color: colors.text,
+    flex: 1,
+    marginRight: spacing.sm,
+  },
+  transferItemDetails: {
+    alignItems: 'flex-end',
+  },
+  transferItemQty: {
+    fontSize: typography.sizes.sm,
+    color: colors.textSecondary,
+  },
+  transferItemCost: {
+    fontSize: typography.sizes.xs,
+    color: colors.textSecondary,
+  },
+  transferItemTotal: {
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.semibold as any,
+    color: colors.primary,
+  },
+  transferTotalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  transferTotalLabel: {
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.semibold as any,
+    color: colors.text,
+  },
+  transferTotalValue: {
+    fontSize: typography.sizes.md,
+    fontWeight: typography.weights.bold as any,
+    color: colors.primary,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -689,10 +742,13 @@ export default function InventoryTransferStatementsScreen() {
           name: item.name,
           quantity: item.quantity,
           unit: item.unit,
+          unitCost: item.unitCost,
+          totalCost: item.totalCost,
         })),
         transferredBy: t.transferredBy,
         notes: t.notes,
         type: t.type,
+        totalValue: t.totalValue,
       });
       ledger.totalTransfers++;
     });
@@ -982,13 +1038,38 @@ export default function InventoryTransferStatementsScreen() {
                             ]}
                           >
                             <Text style={styles.transferDate}>{transfer.date}</Text>
-                            <Text style={styles.transferItems}>
-                              {transfer.items.map(item =>
-                                `${item.quantity} ${item.unit} ${item.name}`
-                              ).join(', ')}
-                            </Text>
+                            <View style={styles.transferItemsContainer}>
+                              {transfer.items.map((item, itemIdx) => (
+                                <View key={itemIdx} style={styles.transferItemRow}>
+                                  <Text style={styles.transferItemName}>{item.name}</Text>
+                                  <View style={styles.transferItemDetails}>
+                                    <Text style={styles.transferItemQty}>
+                                      {item.quantity} {item.unit}
+                                    </Text>
+                                    {item.unitCost !== undefined && item.unitCost > 0 && (
+                                      <Text style={styles.transferItemCost}>
+                                        @ {formatCurrency(item.unitCost)}/{item.unit}
+                                      </Text>
+                                    )}
+                                    {item.totalCost !== undefined && item.totalCost > 0 && (
+                                      <Text style={styles.transferItemTotal}>
+                                        {formatCurrency(item.totalCost)}
+                                      </Text>
+                                    )}
+                                  </View>
+                                </View>
+                              ))}
+                            </View>
+                            {transfer.totalValue !== undefined && transfer.totalValue > 0 && (
+                              <View style={styles.transferTotalRow}>
+                                <Text style={styles.transferTotalLabel}>Total Value:</Text>
+                                <Text style={styles.transferTotalValue}>
+                                  {formatCurrency(transfer.totalValue)}
+                                </Text>
+                              </View>
+                            )}
                             {transfer.notes && (
-                              <Text style={[styles.transferItems, { marginTop: 4, fontStyle: 'italic' }]}>
+                              <Text style={[styles.transferItems, { marginTop: spacing.sm, fontStyle: 'italic' }]}>
                                 Note: {transfer.notes}
                               </Text>
                             )}
