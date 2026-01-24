@@ -374,20 +374,10 @@ const BuildingGroupScheduleModal = memo<BuildingGroupScheduleModalProps>(({
       }
 
       console.log('✅ Schedule entries created successfully');
-      
-      Alert.alert(
-        'Success',
-        `Created ${newEntries.length} schedule entries for ${selectedGroup.group_name}`,
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              onScheduleCreated();
-              onClose();
-            }
-          }
-        ]
-      );
+
+      // Auto-close modal after successful scheduling
+      onScheduleCreated();
+      onClose();
     } catch (error) {
       console.error('❌ Failed to create schedule entries:', error);
       Alert.alert('Error', 'Failed to create schedule entries');
