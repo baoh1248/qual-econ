@@ -311,7 +311,6 @@ const BuildingGroupScheduleModal = memo<BuildingGroupScheduleModalProps>(({
         cleaner_names: selectedCleaners,
         cleaner_ids: cleanerIds,
         hours: hoursNum,
-        cleaner_hours: cleanerHoursObj, // Individual hours per cleaner
         day: dayOfWeek,
         date: scheduleDate, // Store in YYYY-MM-DD format
         start_time: startTime,

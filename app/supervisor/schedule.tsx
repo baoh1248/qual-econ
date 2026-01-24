@@ -1365,7 +1365,6 @@ export default function ScheduleView() {
                 cleaner_name: selectedCleaners[0],
                 cleaner_names: selectedCleaners,
                 hours: maxHours,
-                cleaner_hours: cleanerHoursObj,
                 start_time: startTime,
                 end_time: endTime,
                 payment_type: paymentType,

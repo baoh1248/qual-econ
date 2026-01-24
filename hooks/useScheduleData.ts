@@ -95,7 +95,6 @@ const toDatabase = (entry: ScheduleEntry): any => ({
   cleaner_names: entry.cleanerNames?.length ? entry.cleanerNames : [entry.cleanerName || 'UNASSIGNED'],
   cleaner_ids: entry.cleanerIds || [],
   hours: entry.hours || 0,
-  cleaner_hours: entry.cleanerHours && Object.keys(entry.cleanerHours).length > 0 ? entry.cleanerHours : {},
   day: (entry.day || 'monday').toLowerCase(),
   date: entry.date || '',
   start_time: entry.startTime || null,
