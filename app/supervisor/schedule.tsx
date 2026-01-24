@@ -1334,35 +1334,113 @@ export default function ScheduleView() {
         };
 
         console.log('📝 Updating schedule entry:', selectedEntry.id);
+        console.log('Edit all recurring:', editAllRecurring);
 
-        // Use the simplified hook - it handles Supabase update + refetch
-        const updatedEntry = await updateScheduleEntry(selectedEntry.id, updates);
+        // If edit all recurring is enabled, update ALL entries directly via Supabase
+        if (editAllRecurring && selectedEntry.isRecurring && selectedEntry.recurringId) {
+          console.log('📝 Updating all recurring shifts with recurringId:', selectedEntry.recurringId);
 
-        if (updatedEntry) {
+          try {
+            // Fetch ALL entries with the same recurringId (including current one)
+            const { data: allRecurringEntries, error: fetchError } = await supabase
+              .from('schedule_entries')
+              .select('*')
+              .eq('recurring_id', selectedEntry.recurringId);
+
+            if (fetchError) {
+              console.error('Error fetching recurring entries:', fetchError);
+              throw fetchError;
+            }
+
+            if (allRecurringEntries && allRecurringEntries.length > 0) {
+              console.log(`Found ${allRecurringEntries.length} recurring shifts to update`);
+
+              // Create database update object with proper column names
+              const dbUpdates = {
+                cleaner_name: selectedCleaners[0],
+                cleaner_names: selectedCleaners,
+                hours: maxHours,
+                cleaner_hours: cleanerHoursObj,
+                start_time: startTime,
+                end_time: endTime,
+                payment_type: paymentType,
+                flat_rate_amount: paymentType === 'flat_rate' ? parseFloat(flatRateAmount) : 0,
+                hourly_rate: paymentType === 'hourly' ? 15 : 0,
+                updated_at: new Date().toISOString(),
+              };
+
+              console.log('Database updates:', dbUpdates);
+
+              // Update all entries at once using Supabase
+              const { data: updatedData, error: updateError } = await supabase
+                .from('schedule_entries')
+                .update(dbUpdates)
+                .eq('recurring_id', selectedEntry.recurringId)
+                .select();
+
+              if (updateError) {
+                console.error(`❌ Failed to update recurring entries:`, updateError);
+                throw updateError;
+              }
+
+              console.log(`✅ Successfully updated ${updatedData?.length || 0} recurring shifts`);
+              showToast(`Updated ${updatedData?.length || 0} recurring shifts`, 'success');
+
+              // Log the shift edit
+              try {
+                const changes: string[] = [];
+                if (JSON.stringify(selectedEntry.cleanerNames) !== JSON.stringify(selectedCleaners)) {
+                  changes.push('cleaners updated');
+                }
+                if (selectedEntry.hours !== maxHours) {
+                  changes.push(`hours changed from ${selectedEntry.hours} to ${maxHours}`);
+                }
+                if (selectedEntry.startTime !== startTime) {
+                  changes.push('start time updated');
+                }
+
+                await logShiftEdited({
+                  clientName: selectedEntry.clientName,
+                  buildingName: selectedEntry.buildingName,
+                  cleanerNames: selectedCleaners,
+                  shiftDate: selectedEntry.date,
+                  shiftId: selectedEntry.id,
+                  changes: changes.length > 0 ? changes : ['shift details updated'],
+                });
+
+                console.log('✅ Shift edit logged successfully');
+              } catch (logError: any) {
+                console.error('❌ Failed to log shift edit:', logError);
+              }
+            }
+          } catch (recurringError) {
+            console.error('❌ Error updating recurring shifts:', recurringError);
+            showToast('Failed to update recurring shifts', 'error');
+            return; // Don't close modal on error
+          }
+        } else {
+          // Single entry update - use the hook
+          const updatedEntry = await updateScheduleEntry(selectedEntry.id, updates);
+
+          if (!updatedEntry) {
+            throw new Error('Failed to update entry');
+          }
+
           console.log('✅ Entry updated successfully');
           showToast('Shift updated successfully', 'success');
 
-          // Log the shift edit with changes
+          // Log the shift edit
           try {
             const changes: string[] = [];
             if (JSON.stringify(selectedEntry.cleanerNames) !== JSON.stringify(selectedCleaners)) {
               changes.push('cleaners updated');
             }
-            if (selectedEntry.hours !== parseFloat(hours)) {
-              changes.push(`hours changed from ${selectedEntry.hours} to ${parseFloat(hours)}`);
+            if (selectedEntry.hours !== maxHours) {
+              changes.push(`hours changed from ${selectedEntry.hours} to ${maxHours}`);
             }
             if (selectedEntry.startTime !== startTime) {
               changes.push('start time updated');
             }
-
-            console.log('📝 Attempting to log shift edit:', {
-              client: updatedEntry.clientName,
-              building: updatedEntry.buildingName,
-              cleaners: updatedEntry.cleanerNames || [updatedEntry.cleanerName],
-              date: updatedEntry.date,
-              id: updatedEntry.id,
-              changes: changes.length > 0 ? changes : ['shift details updated']
-            });
 
             await logShiftEdited({
               clientName: updatedEntry.clientName,
@@ -1376,84 +1454,14 @@ export default function ScheduleView() {
             console.log('✅ Shift edit logged successfully');
           } catch (logError: any) {
             console.error('❌ Failed to log shift edit:', logError);
-            console.error('Error details:', logError.message, logError.code);
           }
-
-          // If edit all recurring is enabled and this is a recurring shift, update all other shifts with the same recurringId
-          if (editAllRecurring && selectedEntry.isRecurring && selectedEntry.recurringId) {
-            console.log('📝 Updating all recurring shifts with recurringId:', selectedEntry.recurringId);
-
-            try {
-              // Fetch all entries with the same recurringId using Supabase
-              const { data: recurringEntries, error: fetchError } = await supabase
-                .from('schedule_entries')
-                .select('*')
-                .eq('recurring_id', selectedEntry.recurringId)
-                .neq('id', selectedEntry.id); // Exclude the current entry (already updated)
-
-              if (fetchError) {
-                console.error('Error fetching recurring entries:', fetchError);
-                throw fetchError;
-              }
-
-              if (recurringEntries && recurringEntries.length > 0) {
-                console.log(`Found ${recurringEntries.length} other recurring shifts to update`);
-
-                // Update each recurring entry directly in Supabase (works across all weeks)
-                const updatePromises = recurringEntries.map(async (entry) => {
-                  // Calculate endTime based on the entry's date and new hours
-                  const entryEndTime = addHoursToTime(startTime, maxHours);
-
-                  // Create database update object with proper column names
-                  const dbUpdates = {
-                    cleaner_name: selectedCleaners[0],
-                    cleaner_names: selectedCleaners,
-                    hours: maxHours,
-                    cleaner_hours: cleanerHoursObj && Object.keys(cleanerHoursObj).length > 0 ? cleanerHoursObj : {},
-                    start_time: startTime,
-                    end_time: entryEndTime,
-                    payment_type: paymentType,
-                    flat_rate_amount: paymentType === 'flat_rate' ? parseFloat(flatRateAmount) : 0,
-                    hourly_rate: paymentType === 'hourly' ? 15 : 0,
-                    updated_at: new Date().toISOString(),
-                  };
-
-                  // Update directly in Supabase to work across all weeks
-                  const { error: updateError } = await supabase
-                    .from('schedule_entries')
-                    .update(dbUpdates)
-                    .eq('id', entry.id);
-
-                  if (updateError) {
-                    console.error(`❌ Failed to update entry ${entry.id}:`, updateError);
-                    throw updateError;
-                  }
-
-                  return true;
-                });
-
-                // Wait for all updates to complete
-                await Promise.all(updatePromises);
-
-                console.log(`✅ Successfully updated ${recurringEntries.length} recurring shifts`);
-                showToast(`Updated ${recurringEntries.length + 1} recurring shifts`, 'success');
-              } else {
-                console.log('No other recurring shifts found to update');
-              }
-            } catch (recurringError) {
-              console.error('❌ Error updating recurring shifts:', recurringError);
-              showToast('Warning: Some recurring shifts may not have been updated', 'warning');
-            }
-          }
-
-          // Explicitly fetch fresh data to update UI
-          const freshEntries = await fetchWeekSchedule(currentWeekId);
-          setCurrentWeekSchedule(freshEntries);
-          setScheduleKey(prev => prev + 1);
-          console.log('✅ UI updated with', freshEntries.length, 'entries');
-        } else {
-          throw new Error('Failed to update entry');
         }
+
+        // Refresh the current week's data
+        const freshEntries = await fetchWeekSchedule(currentWeekId);
+        setCurrentWeekSchedule(freshEntries);
+        setScheduleKey(prev => prev + 1);
+        console.log('✅ UI updated with', freshEntries.length, 'entries');
 
         handleModalClose();
       }
