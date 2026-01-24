@@ -1409,7 +1409,7 @@ export default function ScheduleView() {
                     cleaner_name: selectedCleaners[0],
                     cleaner_names: selectedCleaners,
                     hours: maxHours,
-                    cleaner_hours: cleanerHoursObj,
+                    cleaner_hours: cleanerHoursObj && Object.keys(cleanerHoursObj).length > 0 ? cleanerHoursObj : {},
                     start_time: startTime,
                     end_time: entryEndTime,
                     payment_type: paymentType,
