@@ -53,7 +53,6 @@ const RecurringTaskModal = memo(({
   const [cleanerName, setCleanerName] = useState('');
   const [selectedCleaners, setSelectedCleaners] = useState<string[]>([]); // New state for multiple cleaners
   const [cleanerHours, setCleanerHours] = useState<{ [cleanerName: string]: string }>({}); // Individual hours per cleaner
-  const [hours, setHours] = useState('');
   const [startTime, setStartTime] = useState('');
   const [notes, setNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -74,7 +73,6 @@ const RecurringTaskModal = memo(({
   const [showClientDropdown, setShowClientDropdown] = useState(false);
   const [showBuildingDropdown, setShowBuildingDropdown] = useState(false);
   const [showCleanerDropdown, setShowCleanerDropdown] = useState(false);
-  const [showHoursDropdown, setShowHoursDropdown] = useState(false);
   const [openCleanerHoursDropdown, setOpenCleanerHoursDropdown] = useState<string | null>(null);
 
   // Generate hours options (0.5-12 in 30-minute increments)
@@ -104,7 +102,6 @@ const RecurringTaskModal = memo(({
     setCleanerName('');
     setSelectedCleaners([]);
     setCleanerHours({});
-    setHours('');
     setStartTime('');
     setNotes('');
     setPatternType('weekly');
@@ -149,11 +146,19 @@ const RecurringTaskModal = memo(({
       return;
     }
 
-    if (!hours || parseFloat(hours) <= 0) {
-      alert('Please enter valid hours');
-      console.log('Validation failed: Invalid hours');
+    // Validate that all selected cleaners have hours assigned
+    const hasAllCleanerHours = cleanersToUse.every(cleanerName => {
+      const cleanerHoursValue = cleanerHours[cleanerName];
+      return cleanerHoursValue && parseFloat(cleanerHoursValue) > 0;
+    });
+    if (!hasAllCleanerHours) {
+      alert('Please assign hours for all selected cleaners');
+      console.log('Validation failed: Not all cleaners have hours assigned');
       return;
     }
+
+    // Calculate max hours from cleaner hours
+    const maxHours = Math.max(...cleanersToUse.map(name => parseFloat(cleanerHours[name] || '0')));
 
     try {
       console.log('=== SAVING RECURRING TASK ===');
@@ -174,7 +179,7 @@ const RecurringTaskModal = memo(({
         clientBuilding: selectedBuilding,
         cleanerName: cleanersToUse[0], // Keep backward compatibility
         cleanerNames: cleanersToUse, // New field for multiple cleaners
-        hours: parseFloat(hours),
+        hours: maxHours,
         startTime,
         pattern,
         notes: notes || undefined,
@@ -446,43 +451,6 @@ const RecurringTaskModal = memo(({
                       onPress={() => setShowCleanerDropdown(false)}
                     >
                       <Text style={styles.closeDropdownText}>Done</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-
-                <Text style={styles.inputLabel}>Hours *</Text>
-                <TouchableOpacity
-                  style={styles.input}
-                  onPress={() => setShowHoursDropdown(!showHoursDropdown)}
-                >
-                  <Text style={[styles.inputText, !hours && styles.placeholderText]}>
-                    {hours || '3'}
-                  </Text>
-                  <Icon name="chevron-down" size={20} style={{ color: colors.textSecondary }} />
-                </TouchableOpacity>
-                {showHoursDropdown && (
-                  <View style={styles.dropdownContainer}>
-                    <ScrollView style={styles.dropdown} nestedScrollEnabled>
-                      {hoursOptions.map((hour) => (
-                        <TouchableOpacity
-                          key={hour}
-                          style={[styles.dropdownItem, hours === hour && styles.dropdownItemSelected]}
-                          onPress={() => {
-                            setHours(hour);
-                            setShowHoursDropdown(false);
-                          }}
-                        >
-                          <Text style={[styles.dropdownText, hours === hour && styles.dropdownTextSelected]}>
-                            {hour} {parseFloat(hour) === 1 ? 'hour' : 'hours'}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                    <TouchableOpacity
-                      style={styles.closeDropdownButton}
-                      onPress={() => setShowHoursDropdown(false)}
-                    >
-                      <Text style={styles.closeDropdownText}>Close</Text>
                     </TouchableOpacity>
                   </View>
                 )}

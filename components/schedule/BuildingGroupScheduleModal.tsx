@@ -958,6 +958,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: spacing.md,
+    zIndex: 5,
   },
   cleanerHoursName: {
     ...typography.body,
@@ -967,6 +968,8 @@ const styles = StyleSheet.create({
   },
   cleanerHoursInputWrapper: {
     width: 120,
+    position: 'relative',
+    zIndex: 10,
   },
   cleanerHoursInput: {
     borderWidth: 1,
