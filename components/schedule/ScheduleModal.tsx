@@ -28,6 +28,7 @@ interface ScheduleModalProps {
   cleanerName: string;
   selectedCleaners: string[];
   hours: string;
+  cleanerHours: { [cleanerName: string]: string };
   startTime: string;
   paymentType: 'hourly' | 'flat_rate';
   flatRateAmount: string;
@@ -49,6 +50,7 @@ interface ScheduleModalProps {
   setCleanerName: (value: string) => void;
   setSelectedCleaners: (value: string[]) => void;
   setHours: (value: string) => void;
+  setCleanerHours: (value: { [cleanerName: string]: string }) => void;
   setStartTime: (value: string) => void;
   setPaymentType: (value: 'hourly' | 'flat_rate') => void;
   setFlatRateAmount: (value: string) => void;
@@ -93,6 +95,7 @@ const ScheduleModal = memo(({
   cleanerName,
   selectedCleaners = [],
   hours,
+  cleanerHours,
   startTime,
   paymentType: propPaymentType,
   flatRateAmount: propFlatRateAmount,
@@ -112,6 +115,7 @@ const ScheduleModal = memo(({
   setCleanerName,
   setSelectedCleaners,
   setHours,
+  setCleanerHours,
   setStartTime,
   setPaymentType: setPropPaymentType,
   setFlatRateAmount: setPropFlatRateAmount,
@@ -160,9 +164,10 @@ const ScheduleModal = memo(({
   // Local state for hours and start time dropdowns
   const [showHoursDropdown, setShowHoursDropdown] = useState(false);
   const [showStartTimeDropdown, setShowStartTimeDropdown] = useState(false);
+  const [openCleanerHoursDropdown, setOpenCleanerHoursDropdown] = useState<string | null>(null);
 
-  // Generate hours options (1-12)
-  const hoursOptions = Array.from({ length: 12 }, (_, i) => (i + 1).toString());
+  // Generate hours options (0.5-12 in 30-minute increments)
+  const hoursOptions = Array.from({ length: 24 }, (_, i) => ((i + 1) * 0.5).toString());
 
   // Generate start time options (6 AM to 11:30 PM in 30-minute intervals)
   const startTimeOptions = useMemo(() => {
@@ -296,46 +301,47 @@ const ScheduleModal = memo(({
 
   // Calculate estimated payment based on selected cleaners and their hourly rates
   const estimatedPayment = useMemo(() => {
-    const hoursNum = parseFloat(hours) || 0;
-    
     if (paymentType === 'flat_rate') {
       return parseFloat(flatRateAmount) || 0;
     } else {
-      // For hourly rate, calculate based on selected cleaners' rates
+      // For hourly rate, calculate based on each cleaner's individual hours and rates
       if (selectedCleaners && selectedCleaners.length > 0) {
         let totalPayment = 0;
-        
+
         for (const cleanerName of selectedCleaners) {
           const cleaner = cleaners.find(c => c.name === cleanerName);
           const rate = cleaner?.defaultHourlyRate || 15;
-          totalPayment += hoursNum * rate;
+          const cleanerHoursValue = parseFloat(cleanerHours[cleanerName] || '8') || 0;
+          totalPayment += cleanerHoursValue * rate;
         }
-        
+
         return totalPayment;
       }
-      
+
       // Default calculation if no cleaners selected
+      const hoursNum = parseFloat(hours) || 0;
       return hoursNum * 15;
     }
-  }, [hours, paymentType, flatRateAmount, selectedCleaners, cleaners]);
+  }, [hours, cleanerHours, paymentType, flatRateAmount, selectedCleaners, cleaners]);
 
   // Get breakdown of payment per cleaner
   const paymentBreakdown = useMemo(() => {
     if (paymentType === 'flat_rate' || !selectedCleaners || selectedCleaners.length === 0) {
       return [];
     }
-    
-    const hoursNum = parseFloat(hours) || 0;
+
     return selectedCleaners.map(cleanerName => {
       const cleaner = cleaners.find(c => c.name === cleanerName);
       const rate = cleaner?.defaultHourlyRate || 15;
+      const cleanerHoursValue = parseFloat(cleanerHours[cleanerName] || '8') || 0;
       return {
         name: cleanerName,
+        hours: cleanerHoursValue,
         rate,
-        payment: hoursNum * rate
+        payment: cleanerHoursValue * rate
       };
     });
-  }, [hours, paymentType, selectedCleaners, cleaners]);
+  }, [cleanerHours, paymentType, selectedCleaners, cleaners]);
 
   if (!visible) return null;
 
@@ -871,7 +877,13 @@ const ScheduleModal = memo(({
                       <Text style={styles.selectedCleanerText}>{cleanerName}</Text>
                       {selectedCleaners.length > 1 && (
                         <TouchableOpacity
-                          onPress={() => toggleCleanerSelection(cleanerName)}
+                          onPress={() => {
+                            toggleCleanerSelection(cleanerName);
+                            // Remove hours for this cleaner
+                            const newCleanerHours = { ...cleanerHours };
+                            delete newCleanerHours[cleanerName];
+                            setCleanerHours(newCleanerHours);
+                          }}
                           style={styles.removeSelectedCleanerButton}
                         >
                           <Icon name="close" size={12} style={{ color: colors.background }} />
@@ -1025,41 +1037,58 @@ const ScheduleModal = memo(({
                   </TouchableOpacity>
                 </View>
               )}
-              
-              <Text style={styles.inputLabel}>Hours *</Text>
-              <TouchableOpacity
-                style={[styles.input, styles.dropdownSelector]}
-                onPress={() => setShowHoursDropdown(!showHoursDropdown)}
-              >
-                <Text style={[styles.inputText, !hours && styles.placeholderText]}>
-                  {hours || '8'}
-                </Text>
-                <Icon name="chevron-down" size={20} style={{ color: colors.textSecondary }} />
-              </TouchableOpacity>
-              {showHoursDropdown && (
-                <View style={styles.dropdownContainer}>
-                  <ScrollView style={styles.dropdown} nestedScrollEnabled>
-                    {hoursOptions.map((hour) => (
-                      <TouchableOpacity
-                        key={hour}
-                        style={[styles.dropdownItem, hours === hour && { backgroundColor: themeColor }]}
-                        onPress={() => {
-                          setHours(hour);
-                          setShowHoursDropdown(false);
-                        }}
-                      >
-                        <Text style={[styles.dropdownText, hours === hour && styles.dropdownTextSelected]}>
-                          {hour} {hour === '1' ? 'hour' : 'hours'}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                  <TouchableOpacity
-                    style={[styles.closeDropdownButton, { backgroundColor: themeColor }]}
-                    onPress={() => setShowHoursDropdown(false)}
-                  >
-                    <Text style={styles.closeDropdownText}>Close</Text>
-                  </TouchableOpacity>
+
+              {/* Individual hours for each cleaner */}
+              {selectedCleaners.length > 0 && (
+                <View style={styles.cleanerHoursSection}>
+                  <Text style={styles.sectionTitle}>Hours per Cleaner</Text>
+                  {selectedCleaners.map((cleanerName, index) => {
+                    const cleanerHoursValue = cleanerHours[cleanerName] || '8';
+                    const isDropdownOpen = openCleanerHoursDropdown === cleanerName;
+
+                    return (
+                      <View key={index} style={styles.cleanerHoursRow}>
+                        <Text style={styles.cleanerHoursName}>{cleanerName}</Text>
+                        <View style={styles.cleanerHoursInputWrapper}>
+                          <TouchableOpacity
+                            style={styles.cleanerHoursInput}
+                            onPress={() => setOpenCleanerHoursDropdown(isDropdownOpen ? null : cleanerName)}
+                          >
+                            <Text style={[styles.inputText, !cleanerHoursValue && styles.placeholderText]}>
+                              {cleanerHoursValue}
+                            </Text>
+                            <Icon name="chevron-down" size={20} style={{ color: colors.textSecondary }} />
+                          </TouchableOpacity>
+                          {isDropdownOpen && (
+                            <View style={styles.dropdownContainer}>
+                              <ScrollView style={styles.dropdown} nestedScrollEnabled>
+                                {hoursOptions.map((hour) => (
+                                  <TouchableOpacity
+                                    key={hour}
+                                    style={[styles.dropdownItem, cleanerHoursValue === hour && { backgroundColor: themeColor }]}
+                                    onPress={() => {
+                                      setCleanerHours({ ...cleanerHours, [cleanerName]: hour });
+                                      setOpenCleanerHoursDropdown(null);
+                                    }}
+                                  >
+                                    <Text style={[styles.dropdownText, cleanerHoursValue === hour && styles.dropdownTextSelected]}>
+                                      {hour} {parseFloat(hour) === 1 ? 'hour' : 'hours'}
+                                    </Text>
+                                  </TouchableOpacity>
+                                ))}
+                              </ScrollView>
+                              <TouchableOpacity
+                                style={[styles.closeDropdownButton, { backgroundColor: themeColor }]}
+                                onPress={() => setOpenCleanerHoursDropdown(null)}
+                              >
+                                <Text style={styles.closeDropdownText}>Close</Text>
+                              </TouchableOpacity>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+                    );
+                  })}
                 </View>
               )}
 
@@ -1184,7 +1213,7 @@ const ScheduleModal = memo(({
                         <View key={index} style={styles.paymentBreakdownItem}>
                           <Text style={styles.paymentBreakdownName}>{item.name}</Text>
                           <Text style={styles.paymentBreakdownAmount}>
-                            {hours || '0'} hrs × ${item.rate.toFixed(2)}/hr = ${item.payment.toFixed(2)}
+                            {item.hours || '0'} hrs × ${item.rate.toFixed(2)}/hr = ${item.payment.toFixed(2)}
                           </Text>
                         </View>
                       ))}
@@ -2133,6 +2162,40 @@ const styles = StyleSheet.create({
     color: colors.background,
     fontWeight: '600',
     fontSize: 10,
+  },
+  cleanerHoursSection: {
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 12,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  cleanerHoursRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  cleanerHoursName: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '600',
+    flex: 1,
+  },
+  cleanerHoursInputWrapper: {
+    width: 120,
+  },
+  cleanerHoursInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.background,
   },
 });
 

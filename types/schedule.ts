@@ -12,6 +12,7 @@ export interface ScheduleEntry {
   cleanerNames?: string[];
   cleanerIds?: string[];
   hours: number;
+  cleanerHours?: { [cleanerName: string]: number }; // Individual hours per cleaner
   day: 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
   date: string;
   startTime?: string;
@@ -80,6 +81,7 @@ export interface RecurringShiftPattern {
   cleaner_names: string[];
   cleaner_ids?: string[];
   hours: number;
+  cleaner_hours?: { [cleanerName: string]: number }; // Individual hours per cleaner
   start_time?: string;
   notes?: string;
   pattern_type: 'daily' | 'weekly' | 'monthly' | 'custom';

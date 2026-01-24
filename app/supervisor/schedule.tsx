@@ -94,6 +94,7 @@ export default function ScheduleView() {
   const [cleanerName, setCleanerName] = useState('');
   const [selectedCleaners, setSelectedCleaners] = useState<string[]>([]);
   const [hours, setHours] = useState('');
+  const [cleanerHours, setCleanerHours] = useState<{ [cleanerName: string]: string }>({});
   const [startTime, setStartTime] = useState('09:00');
   const [paymentType, setPaymentType] = useState<'hourly' | 'flat_rate'>('hourly');
   const [flatRateAmount, setFlatRateAmount] = useState('100');
@@ -177,6 +178,18 @@ export default function ScheduleView() {
 
     fetchTimeOff();
   }, [currentDate, fetchApprovedTimeOff]);
+
+  // Initialize cleanerHours when selectedCleaners changes
+  useEffect(() => {
+    setCleanerHours(prevCleanerHours => {
+      const newCleanerHours: { [cleanerName: string]: string } = {};
+      for (const cleanerName of selectedCleaners) {
+        // Keep existing hours if cleaner was already selected, otherwise default to 8
+        newCleanerHours[cleanerName] = prevCleanerHours[cleanerName] || '8';
+      }
+      return newCleanerHours;
+    });
+  }, [selectedCleaners]);
 
   // Realtime sync with proper error handling and UI refresh
   const { isConnected, lastSyncTime } = useRealtimeSync({
@@ -1045,8 +1058,13 @@ export default function ScheduleView() {
           showToast('Please select at least one cleaner', 'error');
           return;
         }
-        if (!hours || parseFloat(hours) <= 0) {
-          showToast('Please enter valid hours', 'error');
+        // Validate that all selected cleaners have hours assigned
+        const hasAllCleanerHours = selectedCleaners.every(cleanerName => {
+          const cleanerHoursValue = cleanerHours[cleanerName];
+          return cleanerHoursValue && parseFloat(cleanerHoursValue) > 0;
+        });
+        if (!hasAllCleanerHours) {
+          showToast('Please assign hours for all selected cleaners', 'error');
           return;
         }
         if (!selectedDay || !selectedDay.trim()) {
@@ -1060,8 +1078,19 @@ export default function ScheduleView() {
           return;
         }
 
-        // Calculate entry date
-        const endTime = addHoursToTime(startTime, parseFloat(hours));
+        // Calculate entry date and hours
+        // Convert cleanerHours to a clean object with number values
+        const cleanerHoursObj: { [cleanerName: string]: number } = {};
+        let totalHours = 0;
+        let maxHours = 0;
+        for (const cleanerName of selectedCleaners) {
+          const hoursValue = parseFloat(cleanerHours[cleanerName] || '8');
+          cleanerHoursObj[cleanerName] = hoursValue;
+          totalHours += hoursValue;
+          maxHours = Math.max(maxHours, hoursValue);
+        }
+
+        const endTime = addHoursToTime(startTime, maxHours);
         const weekStart = new Date(currentDate);
         const dayOfWeek = weekStart.getDay();
         const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
@@ -1080,7 +1109,8 @@ export default function ScheduleView() {
           cleanerNames: selectedCleaners,
           day: selectedDay.toLowerCase() as any,
           date: entryDate.toISOString().split('T')[0],
-          hours: parseFloat(hours),
+          hours: maxHours, // Use max hours for backward compatibility
+          cleanerHours: cleanerHoursObj, // Individual hours per cleaner
           startTime,
           endTime,
           status: 'scheduled',
@@ -1148,17 +1178,32 @@ export default function ScheduleView() {
           showToast('Please select at least one cleaner', 'error');
           return;
         }
-        if (!hours || parseFloat(hours) <= 0) {
-          showToast('Please enter valid hours', 'error');
+        // Validate that all selected cleaners have hours assigned
+        const hasAllCleanerHours = selectedCleaners.every(cleanerName => {
+          const cleanerHoursValue = cleanerHours[cleanerName];
+          return cleanerHoursValue && parseFloat(cleanerHoursValue) > 0;
+        });
+        if (!hasAllCleanerHours) {
+          showToast('Please assign hours for all selected cleaners', 'error');
           return;
         }
 
-        const endTime = addHoursToTime(startTime, parseFloat(hours));
+        // Convert cleanerHours to a clean object with number values
+        const cleanerHoursObj: { [cleanerName: string]: number } = {};
+        let maxHours = 0;
+        for (const cleanerName of selectedCleaners) {
+          const hoursValue = parseFloat(cleanerHours[cleanerName] || '8');
+          cleanerHoursObj[cleanerName] = hoursValue;
+          maxHours = Math.max(maxHours, hoursValue);
+        }
+
+        const endTime = addHoursToTime(startTime, maxHours);
 
         const updates: Partial<ScheduleEntry> = {
           cleanerName: selectedCleaners[0],
           cleanerNames: selectedCleaners,
-          hours: parseFloat(hours),
+          hours: maxHours, // Use max hours for backward compatibility
+          cleanerHours: cleanerHoursObj, // Individual hours per cleaner
           startTime,
           endTime,
           paymentType: paymentType,
@@ -1464,9 +1509,26 @@ export default function ScheduleView() {
   const handleSwitchToEdit = useCallback(() => {
     console.log('Switching to edit mode');
     if (selectedEntry) {
-      setSelectedCleaners(selectedEntry.cleanerNames || [selectedEntry.cleanerName]);
+      const cleaners = selectedEntry.cleanerNames || [selectedEntry.cleanerName];
+      setSelectedCleaners(cleaners);
       setHours(selectedEntry.hours.toString());
       setStartTime(selectedEntry.startTime || '09:00');
+
+      // Initialize cleanerHours from entry or use default
+      const initialCleanerHours: { [cleanerName: string]: string } = {};
+      if (selectedEntry.cleanerHours) {
+        // Use existing cleaner hours
+        for (const cleanerName in selectedEntry.cleanerHours) {
+          initialCleanerHours[cleanerName] = selectedEntry.cleanerHours[cleanerName].toString();
+        }
+      } else {
+        // Initialize all cleaners with the same hours
+        for (const cleanerName of cleaners) {
+          initialCleanerHours[cleanerName] = selectedEntry.hours.toString();
+        }
+      }
+      setCleanerHours(initialCleanerHours);
+
       setModalType('edit');
     }
   }, [selectedEntry]);
@@ -2073,6 +2135,7 @@ export default function ScheduleView() {
         cleanerName={cleanerName}
         selectedCleaners={selectedCleaners}
         hours={hours}
+        cleanerHours={cleanerHours}
         startTime={startTime}
         paymentType={paymentType}
         flatRateAmount={flatRateAmount}
@@ -2092,6 +2155,7 @@ export default function ScheduleView() {
         setCleanerName={setCleanerName}
         setSelectedCleaners={setSelectedCleaners}
         setHours={setHours}
+        setCleanerHours={setCleanerHours}
         setStartTime={setStartTime}
         setPaymentType={setPaymentType}
         setFlatRateAmount={setFlatRateAmount}

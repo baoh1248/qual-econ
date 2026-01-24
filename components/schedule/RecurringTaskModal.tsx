@@ -73,6 +73,10 @@ const RecurringTaskModal = memo(({
   const [showClientDropdown, setShowClientDropdown] = useState(false);
   const [showBuildingDropdown, setShowBuildingDropdown] = useState(false);
   const [showCleanerDropdown, setShowCleanerDropdown] = useState(false);
+  const [showHoursDropdown, setShowHoursDropdown] = useState(false);
+
+  // Generate hours options (0.5-12 in 30-minute increments)
+  const hoursOptions = Array.from({ length: 24 }, (_, i) => ((i + 1) * 0.5).toString());
 
   const daysOfWeek = [
     { name: 'Sunday', value: 0 },
@@ -429,13 +433,41 @@ const RecurringTaskModal = memo(({
                 )}
 
                 <Text style={styles.inputLabel}>Hours *</Text>
-                <TextInput
+                <TouchableOpacity
                   style={styles.input}
-                  placeholder="8"
-                  value={hours}
-                  onChangeText={setHours}
-                  keyboardType="numeric"
-                />
+                  onPress={() => setShowHoursDropdown(!showHoursDropdown)}
+                >
+                  <Text style={[styles.inputText, !hours && styles.placeholderText]}>
+                    {hours || '8'}
+                  </Text>
+                  <Icon name="chevron-down" size={20} style={{ color: colors.textSecondary }} />
+                </TouchableOpacity>
+                {showHoursDropdown && (
+                  <View style={styles.dropdownContainer}>
+                    <ScrollView style={styles.dropdown} nestedScrollEnabled>
+                      {hoursOptions.map((hour) => (
+                        <TouchableOpacity
+                          key={hour}
+                          style={[styles.dropdownItem, hours === hour && styles.dropdownItemSelected]}
+                          onPress={() => {
+                            setHours(hour);
+                            setShowHoursDropdown(false);
+                          }}
+                        >
+                          <Text style={[styles.dropdownText, hours === hour && styles.dropdownTextSelected]}>
+                            {hour} {parseFloat(hour) === 1 ? 'hour' : 'hours'}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                    <TouchableOpacity
+                      style={styles.closeDropdownButton}
+                      onPress={() => setShowHoursDropdown(false)}
+                    >
+                      <Text style={styles.closeDropdownText}>Close</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
 
                 <Text style={styles.inputLabel}>Start Time</Text>
                 <TextInput

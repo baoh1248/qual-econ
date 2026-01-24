@@ -152,6 +152,7 @@ CREATE TABLE IF NOT EXISTS schedule_entries (
   cleaner_names TEXT[] DEFAULT '{}',
   cleaner_ids TEXT[] DEFAULT '{}',
   hours DECIMAL NOT NULL,
+  cleaner_hours JSONB DEFAULT '{}'::jsonb,
   day TEXT CHECK (day IN ('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday')) NOT NULL,
   date TEXT NOT NULL,
   start_time TEXT,
