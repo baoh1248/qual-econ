@@ -213,6 +213,19 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: spacing.md,
   },
+  infoText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  badge: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: 8,
+  },
+  badgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
 });
 
 const PREDEFINED_COLORS = [

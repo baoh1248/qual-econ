@@ -792,21 +792,43 @@ export const useScheduleStorage = () => {
   const getScheduleForCleaner = useCallback(async (cleanerName: string): Promise<ScheduleEntry[]> => {
     try {
       console.log('🔄 Getting schedule for cleaner:', cleanerName);
-      
+
       const allEntries: ScheduleEntry[] = [];
-      
+
       Object.keys(weeklySchedules).forEach(weekId => {
         const weekSchedule = getWeekSchedule(weekId);
         allEntries.push(...weekSchedule);
       });
-      
+
       const cleanerEntries = allEntries.filter(entry => {
         if (entry.cleanerNames && entry.cleanerNames.length > 0) {
           return entry.cleanerNames.includes(cleanerName);
         }
         return entry.cleanerName === cleanerName;
       });
-      
+
+      // Fetch building addresses from client_buildings table
+      try {
+        const buildingNames = [...new Set(cleanerEntries.map(e => e.buildingName))];
+        if (buildingNames.length > 0) {
+          const { data: buildings } = await supabase
+            .from('client_buildings')
+            .select('building_name, address')
+            .in('building_name', buildingNames);
+
+          if (buildings && buildings.length > 0) {
+            const addressMap = new Map(buildings.map(b => [b.building_name, b.address]));
+            cleanerEntries.forEach(entry => {
+              if (!entry.address && addressMap.has(entry.buildingName)) {
+                entry.address = addressMap.get(entry.buildingName) || undefined;
+              }
+            });
+          }
+        }
+      } catch (addressError) {
+        console.warn('Could not fetch building addresses:', addressError);
+      }
+
       console.log(`✅ Found ${cleanerEntries.length} schedule entries for ${cleanerName}`);
       return cleanerEntries;
     } catch (error) {
