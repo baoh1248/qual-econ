@@ -412,8 +412,6 @@ export default function SupervisorInventoryScreen() {
   const [showSendItemsModal, setShowSendItemsModal] = useState(false);
   const [showTransferHistoryModal, setShowTransferHistoryModal] = useState(false);
   const [showReceiveSupplyModal, setShowReceiveSupplyModal] = useState(false);
-  const [showAddStockModal, setShowAddStockModal] = useState(false);
-  const [addStockQuantity, setAddStockQuantity] = useState('');
 
   const [newItemForm, setNewItemForm] = useState<NewItemForm>({
     name: '',
@@ -667,68 +665,6 @@ export default function SupervisorInventoryScreen() {
         },
       ]
     );
-  };
-
-  const openAddStockModal = (item: InventoryItem) => {
-    setSelectedItem(item);
-    setAddStockQuantity('');
-    setShowAddStockModal(true);
-  };
-
-  const handleAddStock = async () => {
-    if (!selectedItem) return;
-
-    const quantity = parseInt(addStockQuantity);
-    if (isNaN(quantity) || quantity <= 0) {
-      showToast('Please enter a valid quantity', 'error');
-      return;
-    }
-
-    try {
-      console.log('🔄 Adding stock for item:', selectedItem.name);
-
-      const newStock = selectedItem.current_stock + quantity;
-
-      const { error } = await supabase
-        .from('inventory_items')
-        .update({
-          current_stock: newStock,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', selectedItem.id);
-
-      if (error) {
-        console.error('❌ Error adding stock:', error);
-        throw error;
-      }
-
-      // Record this as an incoming transfer
-      await supabase.from('inventory_transfers').insert({
-        id: uuid.v4(),
-        type: 'incoming',
-        source: selectedItem.supplier || 'Supplier',
-        destination: 'Main Storage',
-        timestamp: new Date().toISOString(),
-        items: [{
-          name: selectedItem.name,
-          quantity: quantity,
-          unit: selectedItem.unit
-        }],
-        transferred_by: 'Supervisor',
-        notes: `Stock received from supplier`
-      });
-
-      console.log('✅ Stock added successfully');
-      showToast(`Added ${quantity} ${selectedItem.unit} to ${selectedItem.name}`, 'success');
-
-      await loadInventoryData();
-      setShowAddStockModal(false);
-      setSelectedItem(null);
-      setAddStockQuantity('');
-    } catch (error) {
-      console.error('❌ Failed to add stock:', error);
-      showToast('Failed to add stock', 'error');
-    }
   };
 
   const handleSendItems = async (itemIds: string[], quantities: number[]) => {
@@ -1147,9 +1083,6 @@ export default function SupervisorInventoryScreen() {
                   </View>
 
                   <View style={styles.itemActions}>
-                    <TouchableOpacity onPress={() => openAddStockModal(item)}>
-                      <Icon name="add-circle" size={18} color={colors.success} />
-                    </TouchableOpacity>
                     <TouchableOpacity onPress={() => openEditModal(item)}>
                       <Icon name="create" size={18} color={themeColor} />
                     </TouchableOpacity>
@@ -1487,55 +1420,6 @@ export default function SupervisorInventoryScreen() {
               <Button
                 title="Save Changes"
                 onPress={handleUpdateItem}
-                style={{ flex: 1 }}
-              />
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Add Stock Modal */}
-      <Modal visible={showAddStockModal} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { maxHeight: '40%' }]}>
-            <Text style={styles.modalTitle}>Add Stock</Text>
-
-            {selectedItem && (
-              <View style={{ marginBottom: spacing.lg }}>
-                <Text style={styles.label}>{selectedItem.name}</Text>
-                <Text style={{ fontSize: typography.sizes.sm, color: colors.textSecondary }}>
-                  Current stock: {selectedItem.current_stock} {selectedItem.unit}
-                </Text>
-              </View>
-            )}
-
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Quantity Received *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Enter quantity"
-                placeholderTextColor={colors.textSecondary}
-                value={addStockQuantity}
-                onChangeText={setAddStockQuantity}
-                keyboardType="numeric"
-                autoFocus
-              />
-            </View>
-
-            <View style={styles.modalActions}>
-              <Button
-                title="Cancel"
-                onPress={() => {
-                  setShowAddStockModal(false);
-                  setSelectedItem(null);
-                  setAddStockQuantity('');
-                }}
-                variant="secondary"
-                style={{ flex: 1 }}
-              />
-              <Button
-                title="Add Stock"
-                onPress={handleAddStock}
                 style={{ flex: 1 }}
               />
             </View>
