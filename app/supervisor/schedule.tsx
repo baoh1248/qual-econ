@@ -96,6 +96,7 @@ export default function ScheduleView() {
   const [hours, setHours] = useState('');
   const [cleanerHours, setCleanerHours] = useState<{ [cleanerName: string]: string }>({});
   const [startTime, setStartTime] = useState('17:00');
+  const [shiftNotes, setShiftNotes] = useState('');
   const [paymentType, setPaymentType] = useState<'hourly' | 'flat_rate'>('hourly');
   const [flatRateAmount, setFlatRateAmount] = useState('100');
   const [newClientName, setNewClientName] = useState('');
@@ -1124,6 +1125,7 @@ export default function ScheduleView() {
     setStartTime(entry.startTime || '09:00');
     setPaymentType(entry.paymentType || 'hourly');
     setFlatRateAmount(entry.flatRateAmount?.toString() || '100');
+    setShiftNotes(entry.notes || '');
     setSelectedDay(entry.day);
     setIsAddingFromGrid(false);
     setModalType('details');
@@ -1142,6 +1144,7 @@ export default function ScheduleView() {
     setSelectedCleaners([]);
     setHours('');
     setStartTime('17:00');
+    setShiftNotes('');
     setPaymentType('hourly');
     setFlatRateAmount('100');
     // Don't reset selectedDay here - let it persist for proper key prop behavior
@@ -1241,6 +1244,7 @@ export default function ScheduleView() {
           flatRateAmount: paymentType === 'flat_rate' ? parseFloat(flatRateAmount) : undefined,
           hourlyRate: paymentType === 'hourly' ? 15 : undefined,
           priority: 'medium',
+          notes: shiftNotes.trim() || undefined,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         };
@@ -1331,6 +1335,7 @@ export default function ScheduleView() {
           paymentType: paymentType,
           flatRateAmount: paymentType === 'flat_rate' ? parseFloat(flatRateAmount) : undefined,
           hourlyRate: paymentType === 'hourly' ? 15 : undefined,
+          notes: shiftNotes.trim() || undefined,
         };
 
         // If edit all recurring is enabled, update ALL entries one by one
@@ -1370,6 +1375,7 @@ export default function ScheduleView() {
                 payment_type: paymentType,
                 flat_rate_amount: paymentType === 'flat_rate' ? parseFloat(flatRateAmount) : 0,
                 hourly_rate: paymentType === 'hourly' ? 15 : 0,
+                notes: shiftNotes.trim() || null,
               })
               .eq('id', entry.id);
 
@@ -2402,6 +2408,7 @@ export default function ScheduleView() {
         hours={hours}
         cleanerHours={cleanerHours}
         startTime={startTime}
+        shiftNotes={shiftNotes}
         paymentType={paymentType}
         flatRateAmount={flatRateAmount}
         newClientName={newClientName}
@@ -2422,6 +2429,7 @@ export default function ScheduleView() {
         setHours={setHours}
         setCleanerHours={setCleanerHours}
         setStartTime={setStartTime}
+        setShiftNotes={setShiftNotes}
         setPaymentType={setPaymentType}
         setFlatRateAmount={setFlatRateAmount}
         setNewClientName={setNewClientName}
