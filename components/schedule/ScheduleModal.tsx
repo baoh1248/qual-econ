@@ -30,6 +30,7 @@ interface ScheduleModalProps {
   hours: string;
   cleanerHours: { [cleanerName: string]: string };
   startTime: string;
+  shiftNotes: string;
   paymentType: 'hourly' | 'flat_rate';
   flatRateAmount: string;
   newClientName: string;
@@ -52,6 +53,7 @@ interface ScheduleModalProps {
   setHours: (value: string) => void;
   setCleanerHours: (value: { [cleanerName: string]: string }) => void;
   setStartTime: (value: string) => void;
+  setShiftNotes: (value: string) => void;
   setPaymentType: (value: 'hourly' | 'flat_rate') => void;
   setFlatRateAmount: (value: string) => void;
   setNewClientName: (value: string) => void;
@@ -97,6 +99,7 @@ const ScheduleModal = memo(({
   hours,
   cleanerHours,
   startTime,
+  shiftNotes = '',
   paymentType: propPaymentType,
   flatRateAmount: propFlatRateAmount,
   newClientName,
@@ -117,6 +120,7 @@ const ScheduleModal = memo(({
   setHours,
   setCleanerHours,
   setStartTime,
+  setShiftNotes,
   setPaymentType: setPropPaymentType,
   setFlatRateAmount: setPropFlatRateAmount,
   setNewClientName,
@@ -649,6 +653,15 @@ const ScheduleModal = memo(({
                   <Text style={styles.detailLabel}>Week:</Text>
                   <Text style={styles.detailValue}>{selectedEntry.weekId}</Text>
                 </View>
+
+                {selectedEntry.notes && (
+                  <View style={styles.notesDetailSection}>
+                    <Text style={styles.detailLabel}>Notes:</Text>
+                    <View style={styles.notesDetailBox}>
+                      <Text style={styles.notesDetailText}>{selectedEntry.notes}</Text>
+                    </View>
+                  </View>
+                )}
                 <View style={styles.modalActions}>
                   <Button 
                     text="Edit" 
@@ -1169,6 +1182,23 @@ const ScheduleModal = memo(({
                   </TouchableOpacity>
                 </View>
               )}
+
+              {/* Notes Section */}
+              <View style={styles.notesSection}>
+                <Text style={styles.sectionTitle}>Shift Notes</Text>
+                <Text style={styles.sectionDescription}>
+                  Add instructions or notes for the cleaner (e.g., building passcode, specific areas to clean)
+                </Text>
+                <TextInput
+                  style={[styles.input, styles.notesInput]}
+                  placeholder="Enter notes for the cleaner..."
+                  value={shiftNotes}
+                  onChangeText={setShiftNotes}
+                  multiline
+                  numberOfLines={3}
+                  textAlignVertical="top"
+                />
+              </View>
 
               {/* Payment Configuration Section */}
               <View style={styles.paymentSection}>
@@ -2036,6 +2066,42 @@ const styles = StyleSheet.create({
   },
   confirmButton: {
     flex: 1,
+  },
+  notesSection: {
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 12,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  notesInput: {
+    height: 80,
+    textAlignVertical: 'top',
+    paddingTop: spacing.sm,
+  },
+  notesDetailSection: {
+    marginTop: spacing.md,
+    marginBottom: spacing.md,
+  },
+  notesDetailBox: {
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 8,
+    padding: spacing.md,
+    marginTop: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  notesDetailText: {
+    ...typography.body,
+    color: colors.text,
+    lineHeight: 20,
+  },
+  sectionDescription: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
+    fontSize: 13,
   },
   paymentSection: {
     backgroundColor: colors.backgroundAlt,

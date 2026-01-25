@@ -26,6 +26,7 @@ interface Shift {
   hours: number;
   status: 'scheduled' | 'in-progress' | 'completed' | 'cancelled';
   priority?: 'low' | 'medium' | 'high';
+  notes?: string;
 }
 
 interface CleanerProfile {
@@ -235,6 +236,70 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.md,
   },
+  shiftModalSubtitle: {
+    ...typography.bodyMedium,
+    fontWeight: '600',
+    marginBottom: spacing.lg,
+    textAlign: 'center',
+  },
+  shiftModalDetails: {
+    width: '100%',
+    gap: spacing.sm,
+  },
+  shiftModalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  shiftModalAddressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 8,
+    marginVertical: spacing.xs,
+  },
+  shiftModalLabel: {
+    ...typography.body,
+    color: colors.textSecondary,
+    width: 60,
+  },
+  shiftModalValue: {
+    ...typography.body,
+    color: colors.text,
+    flex: 1,
+  },
+  shiftModalAddressLink: {
+    textDecorationLine: 'underline',
+  },
+  shiftModalNotesSection: {
+    marginTop: spacing.lg,
+    width: '100%',
+  },
+  shiftModalNotesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  shiftModalNotesTitle: {
+    ...typography.bodyMedium,
+    fontWeight: '600',
+  },
+  shiftModalNotesBox: {
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 8,
+    padding: spacing.md,
+    borderWidth: 1,
+  },
+  shiftModalNotesText: {
+    ...typography.body,
+    color: colors.text,
+    lineHeight: 22,
+  },
 });
 
 export default function CleanerDashboard() {
@@ -255,6 +320,8 @@ export default function CleanerDashboard() {
   const [upcomingShifts, setUpcomingShifts] = useState<Shift[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
+  const [showShiftModal, setShowShiftModal] = useState(false);
 
   const { syncStatus } = useRealtimeSync();
   const { toast, showToast } = useToast();
@@ -350,6 +417,7 @@ export default function CleanerDashboard() {
           hours: entry.hours,
           status: entry.status,
           priority: 'medium' as const,
+          notes: entry.notes || '',
         }));
 
       setShifts(todayShifts);
@@ -371,6 +439,7 @@ export default function CleanerDashboard() {
           hours: entry.hours,
           status: entry.status,
           priority: 'medium' as const,
+          notes: entry.notes || '',
         }));
 
       setUpcomingShifts(upcoming);
@@ -418,19 +487,20 @@ export default function CleanerDashboard() {
   };
 
   const handleShiftPress = (shift: Shift) => {
-    Alert.alert(
-      shift.clientName,
-      `${shift.buildingName}\n${shift.address}\n\nTime: ${shift.startTime}${shift.endTime ? ` - ${shift.endTime}` : ''}\nHours: ${shift.hours}`,
-      [
-        { text: 'Get Directions', onPress: () => {
-          if (shift.address) {
-            const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(shift.address)}`;
-            Linking.openURL(url);
-          }
-        }},
-        { text: 'Close', style: 'cancel' },
-      ]
-    );
+    setSelectedShift(shift);
+    setShowShiftModal(true);
+  };
+
+  const handleOpenMaps = (address: string) => {
+    if (address) {
+      const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+      Linking.openURL(url);
+    }
+  };
+
+  const handleCloseShiftModal = () => {
+    setShowShiftModal(false);
+    setSelectedShift(null);
   };
 
   const handleEmergencyAlert = () => {
@@ -648,6 +718,98 @@ export default function CleanerDashboard() {
                 style={{ flex: 1 }}
               />
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Shift Details Modal */}
+      <Modal
+        visible={showShiftModal}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCloseShiftModal}
+      >
+        <View style={styles.logoutModal}>
+          <View style={[styles.logoutModalContent, { maxWidth: 400 }]}>
+            {selectedShift && (
+              <>
+                <Text style={styles.logoutModalTitle}>{selectedShift.clientName}</Text>
+                <Text style={[styles.shiftModalSubtitle, { color: themeColor }]}>
+                  {selectedShift.buildingName}
+                </Text>
+
+                <View style={styles.shiftModalDetails}>
+                  <View style={styles.shiftModalRow}>
+                    <Icon name="calendar" size={18} color={colors.textSecondary} />
+                    <Text style={styles.shiftModalLabel}>Date:</Text>
+                    <Text style={styles.shiftModalValue}>{selectedShift.date}</Text>
+                  </View>
+
+                  <View style={styles.shiftModalRow}>
+                    <Icon name="time" size={18} color={colors.textSecondary} />
+                    <Text style={styles.shiftModalLabel}>Time:</Text>
+                    <Text style={styles.shiftModalValue}>
+                      {selectedShift.startTime}{selectedShift.endTime ? ` - ${selectedShift.endTime}` : ''}
+                    </Text>
+                  </View>
+
+                  <View style={styles.shiftModalRow}>
+                    <Icon name="hourglass" size={18} color={colors.textSecondary} />
+                    <Text style={styles.shiftModalLabel}>Hours:</Text>
+                    <Text style={styles.shiftModalValue}>{selectedShift.hours}h</Text>
+                  </View>
+
+                  {selectedShift.address ? (
+                    <TouchableOpacity
+                      style={styles.shiftModalAddressRow}
+                      onPress={() => handleOpenMaps(selectedShift.address)}
+                    >
+                      <Icon name="location" size={18} color={themeColor} />
+                      <Text style={styles.shiftModalLabel}>Address:</Text>
+                      <Text style={[styles.shiftModalValue, styles.shiftModalAddressLink, { color: themeColor }]}>
+                        {selectedShift.address}
+                      </Text>
+                      <Icon name="open-outline" size={16} color={themeColor} />
+                    </TouchableOpacity>
+                  ) : (
+                    <View style={styles.shiftModalRow}>
+                      <Icon name="location" size={18} color={colors.textSecondary} />
+                      <Text style={styles.shiftModalLabel}>Address:</Text>
+                      <Text style={[styles.shiftModalValue, { color: colors.textTertiary }]}>No address provided</Text>
+                    </View>
+                  )}
+                </View>
+
+                {selectedShift.notes ? (
+                  <View style={styles.shiftModalNotesSection}>
+                    <View style={styles.shiftModalNotesHeader}>
+                      <Icon name="document-text" size={18} color={themeColor} />
+                      <Text style={[styles.shiftModalNotesTitle, { color: themeColor }]}>Notes from Supervisor</Text>
+                    </View>
+                    <View style={[styles.shiftModalNotesBox, { borderColor: themeColor + '40' }]}>
+                      <Text style={styles.shiftModalNotesText}>{selectedShift.notes}</Text>
+                    </View>
+                  </View>
+                ) : null}
+
+                <View style={[styles.logoutModalButtons, { marginTop: spacing.lg }]}>
+                  {selectedShift.address && (
+                    <Button
+                      title="Get Directions"
+                      onPress={() => handleOpenMaps(selectedShift.address)}
+                      variant="primary"
+                      style={{ flex: 1 }}
+                    />
+                  )}
+                  <Button
+                    title="Close"
+                    onPress={handleCloseShiftModal}
+                    variant="secondary"
+                    style={{ flex: 1 }}
+                  />
+                </View>
+              </>
+            )}
           </View>
         </View>
       </Modal>
