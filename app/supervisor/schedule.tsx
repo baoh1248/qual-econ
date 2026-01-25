@@ -1449,7 +1449,7 @@ export default function ScheduleView() {
       console.error('❌ Error saving schedule entry:', error);
       showToast('Failed to save shift', 'error');
     }
-  }, [modalType, selectedClientBuilding, selectedCleaners, hours, cleanerHours, startTime, selectedDay, currentDate, currentWeekId, selectedEntry, addScheduleEntry, updateScheduleEntry, fetchWeekSchedule, handleModalClose, showToast, addHoursToTime, paymentType, flatRateAmount]);
+  }, [modalType, selectedClientBuilding, selectedCleaners, hours, cleanerHours, startTime, shiftNotes, selectedDay, currentDate, currentWeekId, selectedEntry, addScheduleEntry, updateScheduleEntry, fetchWeekSchedule, handleModalClose, showToast, addHoursToTime, paymentType, flatRateAmount]);
 
   // Helper function to refresh schedule after delete
   const refreshAfterDelete = useCallback(async (weekId: string) => {
