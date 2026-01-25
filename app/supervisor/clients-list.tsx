@@ -1,6 +1,6 @@
 
 import { useClientData } from '../../hooks/useClientData';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, Modal, Switch, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, Modal, Switch, Alert, Platform } from 'react-native';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { router } from 'expo-router';
 import { useToast } from '../../hooks/useToast';
@@ -496,63 +496,67 @@ export default function ClientsListScreen() {
   };
 
   const handleDeleteClient = async (clientId: string, clientName: string) => {
-    Alert.alert(
-      'Delete Client',
-      `Are you sure you want to delete ${clientName}? This will also delete all associated buildings and projects.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              console.log('🔄 Deleting client:', clientId);
+    const confirmDelete = async () => {
+      try {
+        console.log('🔄 Deleting client:', clientId);
 
-              // Delete associated buildings
-              const { error: buildingsError } = await supabase
-                .from('client_buildings')
-                .delete()
-                .eq('client_name', clientName);
+        // Delete associated buildings
+        const { error: buildingsError } = await supabase
+          .from('client_buildings')
+          .delete()
+          .eq('client_name', clientName);
 
-              if (buildingsError) {
-                console.error('❌ Error deleting buildings:', buildingsError);
-              }
+        if (buildingsError) {
+          console.error('❌ Error deleting buildings:', buildingsError);
+        }
 
-              // Delete associated projects
-              const { error: projectsError } = await supabase
-                .from('client_projects')
-                .delete()
-                .eq('client_name', clientName);
+        // Delete associated projects
+        const { error: projectsError } = await supabase
+          .from('client_projects')
+          .delete()
+          .eq('client_name', clientName);
 
-              if (projectsError) {
-                console.error('❌ Error deleting projects:', projectsError);
-              }
+        if (projectsError) {
+          console.error('❌ Error deleting projects:', projectsError);
+        }
 
-              // Delete client
-              const { error } = await supabase
-                .from('clients')
-                .delete()
-                .eq('id', clientId);
+        // Delete client
+        const { error } = await supabase
+          .from('clients')
+          .delete()
+          .eq('id', clientId);
 
-              if (error) {
-                console.error('❌ Error deleting client:', error);
-                throw error;
-              }
+        if (error) {
+          console.error('❌ Error deleting client:', error);
+          throw error;
+        }
 
-              console.log('✅ Client deleted successfully');
-              showToast('Client deleted successfully', 'success');
-              
-              // Refresh data to remove the deleted client
-              await refreshData();
-              await loadProjects();
-            } catch (error) {
-              console.error('❌ Failed to delete client:', error);
-              showToast('Failed to delete client', 'error');
-            }
-          },
-        },
-      ]
-    );
+        console.log('✅ Client deleted successfully');
+        showToast('Client deleted successfully', 'success');
+
+        // Refresh data to remove the deleted client
+        await refreshData();
+        await loadProjects();
+      } catch (error) {
+        console.error('❌ Failed to delete client:', error);
+        showToast('Failed to delete client', 'error');
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(`Are you sure you want to delete ${clientName}? This will also delete all associated buildings and projects.`)) {
+        await confirmDelete();
+      }
+    } else {
+      Alert.alert(
+        'Delete Client',
+        `Are you sure you want to delete ${clientName}? This will also delete all associated buildings and projects.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Delete', style: 'destructive', onPress: confirmDelete },
+        ]
+      );
+    }
   };
 
   const openEditModal = (clientName: string) => {
@@ -714,49 +718,53 @@ export default function ClientsListScreen() {
   const handleDeleteBuilding = async () => {
     if (!selectedBuilding) return;
 
-    Alert.alert(
-      'Delete Building',
-      `Are you sure you want to delete "${buildingFormData.building_name}"? This action cannot be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              console.log('🔄 Deleting building:', selectedBuilding.id);
+    const confirmDelete = async () => {
+      try {
+        console.log('🔄 Deleting building:', selectedBuilding.id);
 
-              const { error } = await supabase
-                .from('client_buildings')
-                .delete()
-                .eq('id', selectedBuilding.id);
+        const { error } = await supabase
+          .from('client_buildings')
+          .delete()
+          .eq('id', selectedBuilding.id);
 
-              if (error) {
-                console.error('❌ Error deleting building:', error);
-                throw error;
-              }
+        if (error) {
+          console.error('❌ Error deleting building:', error);
+          throw error;
+        }
 
-              console.log('✅ Building deleted successfully');
-              showToast('Building deleted successfully', 'success');
+        console.log('✅ Building deleted successfully');
+        showToast('Building deleted successfully', 'success');
 
-              await refreshData();
+        await refreshData();
 
-              setShowEditBuildingModal(false);
-              setSelectedBuilding(null);
-              setBuildingFormData({
-                building_name: '',
-                security_level: 'medium',
-                security: '',
-                address: '',
-              });
-            } catch (error) {
-              console.error('❌ Failed to delete building:', error);
-              showToast('Failed to delete building', 'error');
-            }
-          },
-        },
-      ]
-    );
+        setShowEditBuildingModal(false);
+        setSelectedBuilding(null);
+        setBuildingFormData({
+          building_name: '',
+          security_level: 'medium',
+          security: '',
+          address: '',
+        });
+      } catch (error) {
+        console.error('❌ Failed to delete building:', error);
+        showToast('Failed to delete building', 'error');
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(`Are you sure you want to delete "${buildingFormData.building_name}"? This action cannot be undone.`)) {
+        await confirmDelete();
+      }
+    } else {
+      Alert.alert(
+        'Delete Building',
+        `Are you sure you want to delete "${buildingFormData.building_name}"? This action cannot be undone.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Delete', style: 'destructive', onPress: confirmDelete },
+        ]
+      );
+    }
   };
 
   const getSecurityLevelColor = (level: string) => {

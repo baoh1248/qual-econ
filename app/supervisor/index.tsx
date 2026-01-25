@@ -228,7 +228,7 @@ const SupervisorDashboard = () => {
             />
           </View>
         </View>
-        <Text style={styles.title}>Supervisor Dashboard</Text>
+        <Text style={styles.title}>Management Dashboard</Text>
         <Text style={styles.subtitle}>
           {teamMembers.length} team members • {taskSummary.completed} tasks completed today
         </Text>

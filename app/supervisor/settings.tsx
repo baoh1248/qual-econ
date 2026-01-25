@@ -42,30 +42,15 @@ export default function SettingsScreen() {
     showToast('Theme color updated!', 'success');
   };
 
-  const handleLogout = () => {
-    Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Logout',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await supabase.auth.signOut();
-              router.replace('/');
-            } catch (error) {
-              console.error('Error logging out:', error);
-              showToast('Failed to logout', 'error');
-            }
-          },
-        },
-      ]
-    );
+  const handleLogout = async () => {
+    try {
+      const { clearSession } = await import('../utils/auth');
+      await clearSession();
+      router.replace('/');
+    } catch (error) {
+      console.error('Error logging out:', error);
+      showToast('Failed to logout', 'error');
+    }
   };
 
   return (
