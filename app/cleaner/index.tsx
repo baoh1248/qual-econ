@@ -14,26 +14,6 @@ import Button from '../../components/Button';
 import { supabase } from '../integrations/supabase/client';
 import { useTheme } from '../../hooks/useTheme';
 
-interface Task {
-  id: string;
-  title: string;
-  location: string;
-  address?: string;
-  status: 'pending' | 'in-progress' | 'completed' | 'overdue';
-  priority: 'low' | 'medium' | 'high';
-  estimatedTime: number;
-  description: string;
-  checklistItems: string[];
-  photos: number;
-  photoCategories: {
-    before: number;
-    during: number;
-    after: number;
-    issue: number;
-    completion: number;
-  };
-}
-
 interface Shift {
   id: string;
   clientName: string;
@@ -168,47 +148,6 @@ const styles = StyleSheet.create({
     ...typography.bodyMedium,
     fontWeight: '500',
   },
-  taskCard: {
-    marginHorizontal: spacing.xl,
-    marginBottom: spacing.md,
-  },
-  taskHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: spacing.md,
-  },
-  taskTitle: {
-    ...typography.h4,
-    color: colors.text,
-    flex: 1,
-    marginRight: spacing.md,
-  },
-  taskLocation: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  taskLocationText: {
-    ...typography.body,
-    color: colors.textSecondary,
-  },
-  taskMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.lg,
-    marginTop: spacing.md,
-  },
-  taskMetaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  taskMetaText: {
-    ...typography.caption,
-    color: colors.textSecondary,
-  },
   shiftCard: {
     marginHorizontal: spacing.xl,
     marginBottom: spacing.md,
@@ -312,8 +251,8 @@ export default function CleanerDashboard() {
     efficiency: 0,
   });
 
-  const [tasks, setTasks] = useState<Task[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
+  const [upcomingShifts, setUpcomingShifts] = useState<Shift[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
@@ -393,10 +332,10 @@ export default function CleanerDashboard() {
       }
 
       const schedule = await getScheduleForCleaner(profile.name);
-      
+
       const today = new Date();
       const todayStr = today.toISOString().split('T')[0];
-      
+
       const todayShifts = schedule
         .filter(entry => entry.date === todayStr)
         .map(entry => ({
@@ -415,27 +354,26 @@ export default function CleanerDashboard() {
 
       setShifts(todayShifts);
 
-      const mockTasks: Task[] = todayShifts.slice(0, 2).map((shift, index) => ({
-        id: `task-${index + 1}`,
-        title: `Clean ${shift.buildingName}`,
-        location: shift.clientName,
-        address: shift.address,
-        status: index === 0 ? 'in-progress' : 'pending',
-        priority: 'high',
-        estimatedTime: shift.hours * 60,
-        description: `Complete cleaning tasks for ${shift.buildingName}`,
-        checklistItems: ['Vacuum floors', 'Clean windows', 'Empty trash', 'Sanitize surfaces'],
-        photos: 0,
-        photoCategories: {
-          before: 0,
-          during: 0,
-          after: 0,
-          issue: 0,
-          completion: 0,
-        },
-      }));
+      // Get upcoming shifts (next 7 days, excluding today)
+      const upcoming = schedule
+        .filter(entry => entry.date > todayStr)
+        .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime))
+        .slice(0, 10)
+        .map(entry => ({
+          id: entry.id,
+          clientName: entry.clientName,
+          buildingName: entry.buildingName || '',
+          address: entry.address || '',
+          day: entry.day,
+          date: entry.date,
+          startTime: entry.startTime,
+          endTime: entry.endTime,
+          hours: entry.hours,
+          status: entry.status,
+          priority: 'medium' as const,
+        }));
 
-      setTasks(mockTasks);
+      setUpcomingShifts(upcoming);
     } catch (error) {
       console.error('Error loading shifts:', error);
     }
@@ -479,10 +417,6 @@ export default function CleanerDashboard() {
     setShowLogoutModal(false);
   };
 
-  const handleTaskPress = (taskId: string) => {
-    router.push(`/cleaner/task/${taskId}`);
-  };
-
   const handleShiftPress = (shift: Shift) => {
     Alert.alert(
       shift.clientName,
@@ -518,15 +452,6 @@ export default function CleanerDashboard() {
 
   const handleTimeOffPress = () => {
     router.push('/cleaner/time-off');
-  };
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'high': return colors.danger;
-      case 'medium': return colors.warning;
-      case 'low': return colors.success;
-      default: return colors.textSecondary;
-    }
   };
 
   const getStatusStyle = (status: string) => {
@@ -595,61 +520,8 @@ export default function CleanerDashboard() {
             </TouchableOpacity>
           </View>
 
-          {/* Today's Tasks */}
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Today&apos;s Tasks</Text>
-            <TouchableOpacity style={styles.viewAllButton}>
-              <Text style={[styles.viewAllText, { color: themeColor }]}>View All</Text>
-              <Icon name="chevron-forward" size={16} style={{ color: themeColor }} />
-            </TouchableOpacity>
-          </View>
-
-          {tasks.length > 0 ? (
-            tasks.map((task) => (
-              <TouchableOpacity key={task.id} onPress={() => handleTaskPress(task.id)}>
-                <AnimatedCard style={styles.taskCard}>
-                  <View style={styles.taskHeader}>
-                    <Text style={styles.taskTitle}>{task.title}</Text>
-                    <View style={[commonStyles.badge, { backgroundColor: getStatusStyle(task.status).bg }]}>
-                      <Text style={[typography.small, { color: getStatusStyle(task.status).text }]}>
-                        {task.status}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.taskLocation}>
-                    <Icon name="location" size={16} color={colors.textSecondary} />
-                    <Text style={styles.taskLocationText}>{task.location}</Text>
-                  </View>
-
-                  <View style={styles.taskMeta}>
-                    <View style={styles.taskMetaItem}>
-                      <Icon name="time" size={16} color={colors.textSecondary} />
-                      <Text style={styles.taskMetaText}>{task.estimatedTime} min</Text>
-                    </View>
-                    <View style={styles.taskMetaItem}>
-                      <Icon name="flag" size={16} color={getPriorityColor(task.priority)} />
-                      <Text style={[styles.taskMetaText, { color: getPriorityColor(task.priority) }]}>
-                        {task.priority}
-                      </Text>
-                    </View>
-                    <View style={styles.taskMetaItem}>
-                      <Icon name="camera" size={16} color={colors.textSecondary} />
-                      <Text style={styles.taskMetaText}>{task.photos} photos</Text>
-                    </View>
-                  </View>
-                </AnimatedCard>
-              </TouchableOpacity>
-            ))
-          ) : (
-            <View style={styles.emptyState}>
-              <Icon name="checkmark-circle" size={64} color={colors.textTertiary} />
-              <Text style={styles.emptyStateText}>No tasks scheduled for today</Text>
-            </View>
-          )}
-
           {/* Today's Schedule */}
-          <View style={[styles.sectionHeader, { marginTop: spacing.xl }]}>
+          <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Today&apos;s Schedule</Text>
           </View>
 
@@ -692,6 +564,51 @@ export default function CleanerDashboard() {
             <View style={styles.emptyState}>
               <Icon name="calendar" size={64} color={colors.textTertiary} />
               <Text style={styles.emptyStateText}>No shifts scheduled for today</Text>
+            </View>
+          )}
+
+          {/* Upcoming Schedule */}
+          <View style={[styles.sectionHeader, { marginTop: spacing.xl }]}>
+            <Text style={styles.sectionTitle}>Upcoming Schedule</Text>
+          </View>
+
+          {upcomingShifts.length > 0 ? (
+            upcomingShifts.map((shift) => (
+              <TouchableOpacity key={shift.id} onPress={() => handleShiftPress(shift)}>
+                <AnimatedCard style={styles.shiftCard}>
+                  <View style={styles.shiftHeader}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.shiftClient}>{shift.clientName}</Text>
+                      <Text style={styles.shiftBuilding}>{shift.buildingName}</Text>
+                    </View>
+                    <View style={[commonStyles.badge, { backgroundColor: themeColor + '20' }]}>
+                      <Text style={[typography.small, { color: themeColor }]}>
+                        {shift.day}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.shiftDetails}>
+                    <View style={styles.shiftDetailItem}>
+                      <Icon name="calendar" size={16} color={colors.textSecondary} />
+                      <Text style={styles.shiftDetailText}>{shift.date}</Text>
+                    </View>
+                    <View style={styles.shiftDetailItem}>
+                      <Icon name="time" size={16} color={colors.textSecondary} />
+                      <Text style={styles.shiftDetailText}>{shift.startTime}</Text>
+                    </View>
+                    <View style={styles.shiftDetailItem}>
+                      <Icon name="hourglass" size={16} color={colors.textSecondary} />
+                      <Text style={styles.shiftDetailText}>{shift.hours}h</Text>
+                    </View>
+                  </View>
+                </AnimatedCard>
+              </TouchableOpacity>
+            ))
+          ) : (
+            <View style={styles.emptyState}>
+              <Icon name="calendar-outline" size={64} color={colors.textTertiary} />
+              <Text style={styles.emptyStateText}>No upcoming shifts scheduled</Text>
             </View>
           )}
 
