@@ -249,9 +249,11 @@ export default function ClientsListScreen() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showAddBuildingModal, setShowAddBuildingModal] = useState(false);
+  const [showEditBuildingModal, setShowEditBuildingModal] = useState(false);
   const [showBuildingGroupsModal, setShowBuildingGroupsModal] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [selectedClientForBuilding, setSelectedClientForBuilding] = useState<string>('');
+  const [selectedBuilding, setSelectedBuilding] = useState<{ id: string; clientName: string } | null>(null);
   const [selectedClientForGroups, setSelectedClientForGroups] = useState<string>('');
   const [projects, setProjects] = useState<ClientProject[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(false);
@@ -647,6 +649,116 @@ export default function ClientsListScreen() {
     }
   };
 
+  const openEditBuildingModal = (building: any) => {
+    setSelectedBuilding({ id: building.id, clientName: building.clientName });
+    setBuildingFormData({
+      building_name: building.buildingName,
+      security_level: building.securityLevel || 'medium',
+      security: building.security || '',
+      address: building.address || '',
+    });
+    setShowEditBuildingModal(true);
+  };
+
+  const handleEditBuilding = async () => {
+    if (!buildingFormData.building_name.trim()) {
+      showToast('Please enter a building name', 'error');
+      return;
+    }
+
+    if (!selectedBuilding) {
+      showToast('No building selected', 'error');
+      return;
+    }
+
+    try {
+      console.log('🔄 Updating building:', selectedBuilding.id);
+
+      const updates = {
+        building_name: buildingFormData.building_name.trim(),
+        security_level: buildingFormData.security_level,
+        security: buildingFormData.security.trim() || null,
+        address: buildingFormData.address.trim() || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase
+        .from('client_buildings')
+        .update(updates)
+        .eq('id', selectedBuilding.id);
+
+      if (error) {
+        console.error('❌ Error updating building:', error);
+        throw error;
+      }
+
+      console.log('✅ Building updated successfully');
+      showToast('Building updated successfully', 'success');
+
+      await refreshData();
+
+      setShowEditBuildingModal(false);
+      setSelectedBuilding(null);
+      setBuildingFormData({
+        building_name: '',
+        security_level: 'medium',
+        security: '',
+        address: '',
+      });
+    } catch (error) {
+      console.error('❌ Failed to update building:', error);
+      showToast('Failed to update building', 'error');
+    }
+  };
+
+  const handleDeleteBuilding = async () => {
+    if (!selectedBuilding) return;
+
+    Alert.alert(
+      'Delete Building',
+      `Are you sure you want to delete "${buildingFormData.building_name}"? This action cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              console.log('🔄 Deleting building:', selectedBuilding.id);
+
+              const { error } = await supabase
+                .from('client_buildings')
+                .delete()
+                .eq('id', selectedBuilding.id);
+
+              if (error) {
+                console.error('❌ Error deleting building:', error);
+                throw error;
+              }
+
+              console.log('✅ Building deleted successfully');
+              showToast('Building deleted successfully', 'success');
+
+              await refreshData();
+
+              setShowEditBuildingModal(false);
+              setSelectedBuilding(null);
+              setBuildingFormData({
+                building_name: '',
+                security_level: 'medium',
+                security: '',
+                address: '',
+              });
+            } catch (error) {
+              console.error('❌ Failed to delete building:', error);
+              showToast('Failed to delete building', 'error');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const getSecurityLevelColor = (level: string) => {
     switch (level) {
       case 'high':
@@ -843,19 +955,19 @@ export default function ClientsListScreen() {
                       ) : (
                         <>
                           {clientBuildingsList.map((building) => (
-                            <TouchableOpacity 
-                              key={building.id} 
+                            <TouchableOpacity
+                              key={building.id}
                               style={styles.buildingItem}
-                              onPress={() => handleBuildingPress(building.id, building.buildingName)}
+                              onPress={() => openEditBuildingModal(building)}
                             >
                               <Icon name="business-outline" size={16} color={colors.textSecondary} />
                               <Text style={styles.buildingName}>{building.buildingName}</Text>
                               {building.address && (
-                                <Text style={[styles.infoText, { marginLeft: spacing.xs }]}>
+                                <Text style={[styles.infoText, { marginLeft: spacing.xs }]} numberOfLines={1}>
                                   - {building.address}
                                 </Text>
                               )}
-                              <Icon name="chevron-forward" size={16} color={colors.textSecondary} style={{ marginLeft: 'auto' }} />
+                              <Icon name="create-outline" size={16} color={themeColor} style={{ marginLeft: 'auto' }} />
                             </TouchableOpacity>
                           ))}
                           
@@ -1250,6 +1362,125 @@ export default function ClientsListScreen() {
               <Button
                 title="Add Building"
                 onPress={handleAddBuilding}
+                style={{ flex: 1 }}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Edit Building Modal */}
+      <Modal visible={showEditBuildingModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.lg }}>
+              <Text style={styles.modalTitle}>Edit Building</Text>
+              <TouchableOpacity onPress={handleDeleteBuilding}>
+                <Icon name="trash-outline" size={24} color={colors.danger} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView>
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Building Name *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter building name"
+                  placeholderTextColor={colors.textSecondary}
+                  value={buildingFormData.building_name}
+                  onChangeText={(text) =>
+                    setBuildingFormData({ ...buildingFormData, building_name: text })
+                  }
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Address</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter building address"
+                  placeholderTextColor={colors.textSecondary}
+                  value={buildingFormData.address}
+                  onChangeText={(text) =>
+                    setBuildingFormData({ ...buildingFormData, address: text })
+                  }
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Security Level</Text>
+                <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                  {['low', 'medium', 'high'].map((level) => (
+                    <TouchableOpacity
+                      key={level}
+                      style={[
+                        styles.badge,
+                        {
+                          backgroundColor:
+                            buildingFormData.security_level === level
+                              ? colors.primary
+                              : colors.background,
+                        },
+                      ]}
+                      onPress={() =>
+                        setBuildingFormData({
+                          ...buildingFormData,
+                          security_level: level as any,
+                        })
+                      }
+                    >
+                      <Text
+                        style={[
+                          styles.badgeText,
+                          {
+                            color:
+                              buildingFormData.security_level === level
+                                ? '#FFFFFF'
+                                : colors.text,
+                          },
+                        ]}
+                      >
+                        {level.toUpperCase()}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Security Notes</Text>
+                <TextInput
+                  style={[styles.input, { height: 80 }]}
+                  placeholder="Enter security requirements..."
+                  placeholderTextColor={colors.textSecondary}
+                  value={buildingFormData.security}
+                  onChangeText={(text) =>
+                    setBuildingFormData({ ...buildingFormData, security: text })
+                  }
+                  multiline
+                />
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <Button
+                title="Cancel"
+                onPress={() => {
+                  setShowEditBuildingModal(false);
+                  setSelectedBuilding(null);
+                  setBuildingFormData({
+                    building_name: '',
+                    security_level: 'medium',
+                    security: '',
+                    address: '',
+                  });
+                }}
+                variant="secondary"
+                style={{ flex: 1 }}
+              />
+              <Button
+                title="Save Changes"
+                onPress={handleEditBuilding}
                 style={{ flex: 1 }}
               />
             </View>
