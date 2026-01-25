@@ -228,7 +228,7 @@ const PREDEFINED_COLORS = [
 
 export default function ClientsListScreen() {
   const { clients, clientBuildings, refreshData, isLoading } = useClientData();
-  const { theme } = useTheme();
+  const { themeColor } = useTheme();
   const { showToast } = useToast();
   const { config } = useDatabase();
 
@@ -650,8 +650,6 @@ export default function ClientsListScreen() {
   if (isLoading || loadingProjects) {
     return <LoadingSpinner />;
   }
-
-  const themeColor = theme.colors.primary;
 
   return (
     <View style={enhancedStyles.screenContainer}>
