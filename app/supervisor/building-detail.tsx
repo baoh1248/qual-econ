@@ -24,7 +24,7 @@ interface BuildingFormData {
 export default function BuildingDetailScreen() {
   const { buildingId } = useLocalSearchParams<{ buildingId: string }>();
   const { themeColor } = useTheme();
-  const { showToast } = useToast();
+  const { toast, showToast } = useToast();
   const { clientBuildings, refreshData } = useClientData();
   
   const [loading, setLoading] = useState(true);
@@ -342,7 +342,12 @@ export default function BuildingDetailScreen() {
         <View style={{ height: spacing.xxxl }} />
       </ScrollView>
 
-      <Toast />
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+        onHide={() => {}}
+      />
     </View>
   );
 }
