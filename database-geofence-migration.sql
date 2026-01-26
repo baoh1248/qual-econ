@@ -8,12 +8,13 @@ ADD COLUMN IF NOT EXISTS longitude DECIMAL(11, 8),
 ADD COLUMN IF NOT EXISTS geofence_radius_ft INTEGER DEFAULT 300;
 
 -- Create clock_records table for tracking clock-in/out
+-- Note: Using TEXT for cleaner_id to match actual cleaners table schema
 CREATE TABLE IF NOT EXISTS clock_records (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  cleaner_id UUID REFERENCES cleaners(id) ON DELETE CASCADE,
+  cleaner_id TEXT NOT NULL,
   cleaner_name TEXT NOT NULL,
-  schedule_entry_id UUID REFERENCES schedule_entries(id) ON DELETE SET NULL,
-  building_id UUID REFERENCES client_buildings(id) ON DELETE SET NULL,
+  schedule_entry_id UUID,
+  building_id UUID,
   building_name TEXT NOT NULL,
   client_name TEXT NOT NULL,
 
@@ -52,20 +53,14 @@ CREATE INDEX IF NOT EXISTS idx_clock_records_status ON clock_records(status);
 CREATE INDEX IF NOT EXISTS idx_clock_records_clock_in_time ON clock_records(clock_in_time);
 CREATE INDEX IF NOT EXISTS idx_client_buildings_coordinates ON client_buildings(latitude, longitude);
 
--- Add trigger for updated_at
-CREATE TRIGGER update_clock_records_updated_at
-  BEFORE UPDATE ON clock_records
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
 -- Enable Row Level Security
 ALTER TABLE clock_records ENABLE ROW LEVEL SECURITY;
 
 -- Basic RLS policy (allow all for now - customize based on auth requirements)
-CREATE POLICY "Allow all operations" ON clock_records FOR ALL USING (true);
+CREATE POLICY "Allow all operations on clock_records" ON clock_records FOR ALL USING (true);
 
--- Add address field to schedule_entries if it doesn't exist
+-- Add coordinate fields to schedule_entries if they don't exist
 ALTER TABLE schedule_entries
-ADD COLUMN IF NOT EXISTS address TEXT,
 ADD COLUMN IF NOT EXISTS building_latitude DECIMAL(10, 8),
 ADD COLUMN IF NOT EXISTS building_longitude DECIMAL(11, 8),
 ADD COLUMN IF NOT EXISTS geofence_radius_ft INTEGER DEFAULT 300;

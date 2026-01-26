@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../app/integrations/supabase/client';
+import { geocodeAddress, isValidCoordinates } from '../utils/geocoding';
 
 export interface Client {
   id: string;
@@ -35,6 +36,10 @@ export interface ClientBuilding {
     email: string;
     phone: string;
   };
+  // Geofence coordinates
+  latitude?: number;
+  longitude?: number;
+  geofenceRadiusFt?: number;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -207,6 +212,9 @@ export const useClientData = () => {
         securityInfo: row.security || undefined,
         isActive: true,
         priority: 'medium',
+        latitude: row.latitude || undefined,
+        longitude: row.longitude || undefined,
+        geofenceRadiusFt: row.geofence_radius_ft || 300,
         createdAt: row.created_at ? new Date(row.created_at) : undefined,
         updatedAt: row.updated_at ? new Date(row.updated_at) : undefined,
       }));
@@ -428,9 +436,25 @@ export const useClientData = () => {
   const addClientBuilding = useCallback(async (building: Omit<ClientBuilding, 'id'> | ClientBuilding) => {
     try {
       const newBuilding = 'id' in building ? building : { ...building, id: `building-${Date.now()}` };
-      
+
       console.log('🔄 Adding building to Supabase:', newBuilding.buildingName);
-      
+
+      // Geocode address if provided and no coordinates exist
+      let latitude = newBuilding.latitude;
+      let longitude = newBuilding.longitude;
+
+      if (newBuilding.address && !isValidCoordinates(latitude, longitude)) {
+        console.log('🌍 Geocoding address:', newBuilding.address);
+        const geocodeResult = await geocodeAddress(newBuilding.address);
+        if (geocodeResult.success) {
+          latitude = geocodeResult.latitude;
+          longitude = geocodeResult.longitude;
+          console.log('✅ Geocoded successfully:', latitude, longitude);
+        } else {
+          console.warn('⚠️ Geocoding failed:', geocodeResult.error);
+        }
+      }
+
       const { error } = await supabase
         .from('client_buildings')
         .insert({
@@ -440,6 +464,9 @@ export const useClientData = () => {
           security_level: newBuilding.securityLevel,
           security: newBuilding.securityInfo || newBuilding.security || null,
           address: newBuilding.address || null,
+          latitude: latitude || null,
+          longitude: longitude || null,
+          geofence_radius_ft: newBuilding.geofenceRadiusFt || 300,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         });
@@ -450,7 +477,7 @@ export const useClientData = () => {
       }
 
       console.log('✅ Building added to Supabase successfully');
-      
+
       await refreshData();
     } catch (error) {
       console.error('❌ Failed to add building to Supabase, saving locally:', error);
@@ -462,7 +489,7 @@ export const useClientData = () => {
   const updateClientBuilding = useCallback(async (buildingId: string, updates: Partial<ClientBuilding>) => {
     try {
       console.log('🔄 Updating building in Supabase:', buildingId);
-      
+
       const updateData: any = {};
       if (updates.buildingName !== undefined) updateData.building_name = updates.buildingName;
       if (updates.clientName !== undefined) updateData.client_name = updates.clientName;
@@ -470,7 +497,25 @@ export const useClientData = () => {
       if (updates.securityInfo !== undefined) updateData.security = updates.securityInfo || null;
       if (updates.security !== undefined) updateData.security = updates.security || null;
       if (updates.address !== undefined) updateData.address = updates.address || null;
-      
+      if (updates.geofenceRadiusFt !== undefined) updateData.geofence_radius_ft = updates.geofenceRadiusFt;
+
+      // If address is being updated, geocode it
+      if (updates.address && !isValidCoordinates(updates.latitude, updates.longitude)) {
+        console.log('🌍 Geocoding updated address:', updates.address);
+        const geocodeResult = await geocodeAddress(updates.address);
+        if (geocodeResult.success) {
+          updateData.latitude = geocodeResult.latitude;
+          updateData.longitude = geocodeResult.longitude;
+          console.log('✅ Geocoded successfully:', geocodeResult.latitude, geocodeResult.longitude);
+        } else {
+          console.warn('⚠️ Geocoding failed:', geocodeResult.error);
+        }
+      } else if (updates.latitude !== undefined || updates.longitude !== undefined) {
+        // Manual coordinate update
+        if (updates.latitude !== undefined) updateData.latitude = updates.latitude;
+        if (updates.longitude !== undefined) updateData.longitude = updates.longitude;
+      }
+
       updateData.updated_at = new Date().toISOString();
 
       const { error } = await supabase
@@ -484,7 +529,7 @@ export const useClientData = () => {
       }
 
       console.log('✅ Building updated in Supabase successfully');
-      
+
       await refreshData();
     } catch (error) {
       console.error('❌ Failed to update building in Supabase, updating locally:', error);
@@ -630,6 +675,63 @@ export const useClientData = () => {
     setError(null);
   }, []);
 
+  // Geocode all buildings that have addresses but no coordinates
+  const geocodeAllBuildings = useCallback(async (): Promise<{ success: number; failed: number }> => {
+    console.log('🌍 Starting batch geocoding of all buildings...');
+    let success = 0;
+    let failed = 0;
+
+    const buildingsToGeocode = clientBuildings.filter(
+      b => b.address && !isValidCoordinates(b.latitude, b.longitude)
+    );
+
+    console.log(`📍 Found ${buildingsToGeocode.length} buildings to geocode`);
+
+    for (const building of buildingsToGeocode) {
+      if (!building.address) continue;
+
+      console.log(`🔄 Geocoding: ${building.buildingName} - ${building.address}`);
+      const result = await geocodeAddress(building.address);
+
+      if (result.success) {
+        try {
+          const { error } = await supabase
+            .from('client_buildings')
+            .update({
+              latitude: result.latitude,
+              longitude: result.longitude,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', building.id);
+
+          if (!error) {
+            success++;
+            console.log(`✅ Geocoded ${building.buildingName}: ${result.latitude}, ${result.longitude}`);
+          } else {
+            failed++;
+            console.error(`❌ Failed to save coordinates for ${building.buildingName}:`, error);
+          }
+        } catch (err) {
+          failed++;
+          console.error(`❌ Error updating ${building.buildingName}:`, err);
+        }
+      } else {
+        failed++;
+        console.warn(`⚠️ Could not geocode ${building.buildingName}: ${result.error}`);
+      }
+
+      // Rate limiting: wait 1 second between requests (Nominatim requirement)
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+
+    console.log(`🏁 Batch geocoding complete: ${success} success, ${failed} failed`);
+
+    // Refresh data to get updated coordinates
+    await refreshData();
+
+    return { success, failed };
+  }, [clientBuildings, refreshData]);
+
   useEffect(() => {
     return () => {
       if (saveTimeoutRef.current) {
@@ -660,5 +762,6 @@ export const useClientData = () => {
     clearError,
     loadData,
     refreshData,
+    geocodeAllBuildings,
   };
 };
