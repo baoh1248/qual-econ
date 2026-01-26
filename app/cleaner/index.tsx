@@ -6,13 +6,16 @@ import CompanyLogo from '../../components/CompanyLogo';
 import Toast from '../../components/Toast';
 import { router } from 'expo-router';
 import { useToast } from '../../hooks/useToast';
-import { Text, View, ScrollView, TouchableOpacity, Alert, RefreshControl, StyleSheet, Linking, Modal } from 'react-native';
+import { Text, View, ScrollView, TouchableOpacity, Alert, RefreshControl, StyleSheet, Linking, Modal, ActivityIndicator } from 'react-native';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import { useState, useEffect, useCallback } from 'react';
 import Icon from '../../components/Icon';
 import Button from '../../components/Button';
 import { supabase } from '../integrations/supabase/client';
 import { useTheme } from '../../hooks/useTheme';
+import { useGeofenceClockInOut } from '../../hooks/useGeofenceClockInOut';
+import { GeofenceShiftInfo } from '../../types/clockRecord';
+import { formatDistance } from '../../utils/geofence';
 
 interface Shift {
   id: string;
@@ -27,6 +30,10 @@ interface Shift {
   status: 'scheduled' | 'in-progress' | 'completed' | 'cancelled';
   priority?: 'low' | 'medium' | 'high';
   notes?: string;
+  // Geofence data
+  buildingLatitude?: number;
+  buildingLongitude?: number;
+  geofenceRadiusFt?: number;
 }
 
 interface CleanerProfile {
@@ -300,6 +307,128 @@ const styles = StyleSheet.create({
     color: colors.text,
     lineHeight: 22,
   },
+  // Clock-in/out styles
+  clockCard: {
+    marginHorizontal: spacing.xl,
+    marginBottom: spacing.lg,
+    padding: spacing.lg,
+    borderRadius: 16,
+    borderWidth: 2,
+  },
+  clockCardActive: {
+    borderColor: colors.success,
+    backgroundColor: colors.success + '10',
+  },
+  clockCardInactive: {
+    borderColor: colors.border,
+    backgroundColor: colors.backgroundAlt,
+  },
+  clockHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  clockTitle: {
+    ...typography.h3,
+    color: colors.text,
+  },
+  clockStatusBadge: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: 20,
+  },
+  clockStatusText: {
+    ...typography.small,
+    fontWeight: '600',
+  },
+  clockTimer: {
+    alignItems: 'center',
+    marginVertical: spacing.lg,
+  },
+  clockTimerText: {
+    fontSize: 48,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+  },
+  clockTimerLabel: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+  },
+  clockShiftInfo: {
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 12,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  clockShiftName: {
+    ...typography.bodyMedium,
+    color: colors.text,
+    fontWeight: '600',
+    marginBottom: spacing.xs,
+  },
+  clockShiftDetails: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  clockShiftDetailText: {
+    ...typography.small,
+    color: colors.textSecondary,
+  },
+  clockLocationStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: 8,
+  },
+  clockLocationStatusWithin: {
+    backgroundColor: colors.success + '20',
+  },
+  clockLocationStatusOutside: {
+    backgroundColor: colors.warning + '20',
+  },
+  clockLocationText: {
+    ...typography.small,
+    fontWeight: '500',
+  },
+  clockButton: {
+    paddingVertical: spacing.md,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clockButtonIn: {
+    backgroundColor: colors.success,
+  },
+  clockButtonOut: {
+    backgroundColor: colors.danger,
+  },
+  clockButtonDisabled: {
+    backgroundColor: colors.textTertiary,
+  },
+  clockButtonText: {
+    ...typography.bodyMedium,
+    color: colors.textInverse,
+    fontWeight: '700',
+  },
+  clockMessage: {
+    ...typography.small,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: spacing.sm,
+  },
+  clockError: {
+    ...typography.small,
+    color: colors.danger,
+    textAlign: 'center',
+    marginTop: spacing.sm,
+  },
 });
 
 export default function CleanerDashboard() {
@@ -322,10 +451,34 @@ export default function CleanerDashboard() {
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
   const [showShiftModal, setShowShiftModal] = useState(false);
+  const [selectedShiftForClock, setSelectedShiftForClock] = useState<GeofenceShiftInfo | null>(null);
 
   const { syncStatus } = useRealtimeSync();
   const { toast, showToast } = useToast();
   const { getScheduleForCleaner } = useScheduleStorage();
+
+  // Geofence clock-in/out hook
+  const {
+    state: clockState,
+    clockIn,
+    clockOut,
+    refreshLocation,
+    currentLocation,
+    elapsedTime,
+  } = useGeofenceClockInOut({
+    cleanerId: profile.id,
+    cleanerName: profile.name,
+    shift: selectedShiftForClock,
+    onAutoClockOut: (message) => {
+      showToast(message, 'warning');
+      loadShifts(); // Refresh shifts to update status
+    },
+    onGeofenceAlert: (alert) => {
+      if (alert.type === 'left_geofence') {
+        showToast(alert.message, 'warning');
+      }
+    },
+  });
 
   const loadProfile = useCallback(async () => {
     try {
@@ -404,24 +557,75 @@ export default function CleanerDashboard() {
       const today = new Date();
       const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
-      const todayShifts = schedule
-        .filter(entry => entry.date === todayStr)
-        .map(entry => ({
+      // Get today's shifts
+      const todayScheduleEntries = schedule.filter(entry => entry.date === todayStr);
+
+      // Fetch building coordinates for geofencing
+      const buildingNames = [...new Set(todayScheduleEntries.map(e => e.buildingName).filter(Boolean))];
+      let buildingCoordinates: { [key: string]: { latitude: number; longitude: number; radius: number } } = {};
+
+      if (buildingNames.length > 0) {
+        const { data: buildings } = await supabase
+          .from('client_buildings')
+          .select('building_name, latitude, longitude, geofence_radius_ft')
+          .in('building_name', buildingNames);
+
+        if (buildings) {
+          buildings.forEach(b => {
+            if (b.latitude && b.longitude) {
+              buildingCoordinates[b.building_name] = {
+                latitude: b.latitude,
+                longitude: b.longitude,
+                radius: b.geofence_radius_ft || 300,
+              };
+            }
+          });
+        }
+      }
+
+      const todayShifts: Shift[] = todayScheduleEntries.map(entry => {
+        const buildingCoords = entry.buildingName ? buildingCoordinates[entry.buildingName] : null;
+        return {
           id: entry.id,
           clientName: entry.clientName,
           buildingName: entry.buildingName || '',
           address: entry.address || '',
           day: entry.day,
           date: entry.date,
-          startTime: entry.startTime,
+          startTime: entry.startTime || '09:00',
           endTime: entry.endTime,
           hours: entry.hours,
           status: entry.status,
           priority: 'medium' as const,
           notes: entry.notes || '',
-        }));
+          buildingLatitude: buildingCoords?.latitude,
+          buildingLongitude: buildingCoords?.longitude,
+          geofenceRadiusFt: buildingCoords?.radius || 300,
+        };
+      });
 
       setShifts(todayShifts);
+
+      // Set the first available (non-completed, non-cancelled) shift for clock-in
+      const availableShift = todayShifts.find(s => s.status === 'scheduled' || s.status === 'in-progress');
+      if (availableShift) {
+        const geofenceShift: GeofenceShiftInfo = {
+          id: availableShift.id,
+          clientName: availableShift.clientName,
+          buildingName: availableShift.buildingName,
+          address: availableShift.address,
+          date: availableShift.date,
+          startTime: availableShift.startTime,
+          endTime: availableShift.endTime,
+          hours: availableShift.hours,
+          status: availableShift.status,
+          buildingLatitude: availableShift.buildingLatitude,
+          buildingLongitude: availableShift.buildingLongitude,
+          geofenceRadiusFt: availableShift.geofenceRadiusFt || 300,
+          canClockIn: false,
+        };
+        setSelectedShiftForClock(geofenceShift);
+      }
 
       // Get upcoming shifts (next 7 days, excluding today)
       const upcoming = schedule
@@ -463,6 +667,7 @@ export default function CleanerDashboard() {
     setRefreshing(true);
     await loadProfile();
     await loadShifts();
+    await refreshLocation();
     setRefreshing(false);
   };
 
@@ -525,6 +730,40 @@ export default function CleanerDashboard() {
     router.push('/cleaner/time-off');
   };
 
+  const handleClockIn = async () => {
+    if (!selectedShiftForClock) {
+      showToast('No shift available for clock-in', 'error');
+      return;
+    }
+
+    const success = await clockIn();
+    if (success) {
+      showToast('Successfully clocked in!', 'success');
+      loadShifts(); // Refresh to update shift status
+    }
+  };
+
+  const handleClockOut = async () => {
+    Alert.alert(
+      'Clock Out',
+      'Are you sure you want to clock out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clock Out',
+          style: 'destructive',
+          onPress: async () => {
+            const success = await clockOut('manual');
+            if (success) {
+              showToast('Successfully clocked out!', 'success');
+              loadShifts(); // Refresh to update shift status
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const getStatusStyle = (status: string) => {
     return statusColors[status as keyof typeof statusColors] || statusColors.pending;
   };
@@ -573,6 +812,142 @@ export default function CleanerDashboard() {
 
         {/* Content */}
         <View style={styles.content}>
+          {/* Clock In/Out Card */}
+          {selectedShiftForClock && (
+            <AnimatedCard
+              style={[
+                styles.clockCard,
+                clockState.currentClockRecord ? styles.clockCardActive : styles.clockCardInactive,
+              ]}
+            >
+              <View style={styles.clockHeader}>
+                <Text style={styles.clockTitle}>
+                  {clockState.currentClockRecord ? 'Currently Working' : 'Clock In'}
+                </Text>
+                <View
+                  style={[
+                    styles.clockStatusBadge,
+                    {
+                      backgroundColor: clockState.currentClockRecord
+                        ? colors.success + '20'
+                        : colors.textTertiary + '20',
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.clockStatusText,
+                      {
+                        color: clockState.currentClockRecord
+                          ? colors.success
+                          : colors.textTertiary,
+                      },
+                    ]}
+                  >
+                    {clockState.currentClockRecord ? 'Clocked In' : 'Not Clocked In'}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Timer Display */}
+              {clockState.currentClockRecord && (
+                <View style={styles.clockTimer}>
+                  <Text style={[styles.clockTimerText, { color: colors.success }]}>
+                    {elapsedTime}
+                  </Text>
+                  <Text style={styles.clockTimerLabel}>Time Worked</Text>
+                </View>
+              )}
+
+              {/* Shift Info */}
+              <View style={styles.clockShiftInfo}>
+                <Text style={styles.clockShiftName}>
+                  {selectedShiftForClock.clientName} - {selectedShiftForClock.buildingName}
+                </Text>
+                <View style={styles.clockShiftDetails}>
+                  <Icon name="time-outline" size={14} color={colors.textSecondary} />
+                  <Text style={styles.clockShiftDetailText}>
+                    {selectedShiftForClock.startTime}
+                    {selectedShiftForClock.endTime ? ` - ${selectedShiftForClock.endTime}` : ''}
+                  </Text>
+                  <Text style={styles.clockShiftDetailText}>|</Text>
+                  <Icon name="hourglass-outline" size={14} color={colors.textSecondary} />
+                  <Text style={styles.clockShiftDetailText}>{selectedShiftForClock.hours}h</Text>
+                </View>
+              </View>
+
+              {/* Location Status */}
+              <TouchableOpacity
+                style={[
+                  styles.clockLocationStatus,
+                  clockState.isWithinGeofence
+                    ? styles.clockLocationStatusWithin
+                    : styles.clockLocationStatusOutside,
+                ]}
+                onPress={refreshLocation}
+              >
+                <Icon
+                  name={clockState.isWithinGeofence ? 'checkmark-circle' : 'location-outline'}
+                  size={18}
+                  color={clockState.isWithinGeofence ? colors.success : colors.warning}
+                />
+                <Text
+                  style={[
+                    styles.clockLocationText,
+                    { color: clockState.isWithinGeofence ? colors.success : colors.warning },
+                  ]}
+                >
+                  {clockState.isWithinGeofence
+                    ? `Within work area (${Math.round(clockState.distanceFromSite)} ft)`
+                    : currentLocation
+                    ? `${formatDistance(clockState.distanceFromSite)} from work site`
+                    : 'Tap to check location'}
+                </Text>
+                {clockState.isLoading && (
+                  <ActivityIndicator size="small" color={themeColor} />
+                )}
+              </TouchableOpacity>
+
+              {/* Clock In/Out Button */}
+              {clockState.currentClockRecord ? (
+                <TouchableOpacity
+                  style={[styles.clockButton, styles.clockButtonOut]}
+                  onPress={handleClockOut}
+                  disabled={clockState.isLoading}
+                >
+                  {clockState.isLoading ? (
+                    <ActivityIndicator color={colors.textInverse} />
+                  ) : (
+                    <Text style={styles.clockButtonText}>Clock Out</Text>
+                  )}
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={[
+                    styles.clockButton,
+                    clockState.canClockIn ? styles.clockButtonIn : styles.clockButtonDisabled,
+                  ]}
+                  onPress={handleClockIn}
+                  disabled={!clockState.canClockIn || clockState.isLoading}
+                >
+                  {clockState.isLoading ? (
+                    <ActivityIndicator color={colors.textInverse} />
+                  ) : (
+                    <Text style={styles.clockButtonText}>Clock In</Text>
+                  )}
+                </TouchableOpacity>
+              )}
+
+              {/* Clock Message */}
+              {!clockState.currentClockRecord && clockState.clockInMessage && (
+                <Text style={styles.clockMessage}>{clockState.clockInMessage}</Text>
+              )}
+
+              {/* Error Message */}
+              {clockState.error && <Text style={styles.clockError}>{clockState.error}</Text>}
+            </AnimatedCard>
+          )}
+
           {/* Quick Actions */}
           <View style={styles.quickActionsContainer}>
             <TouchableOpacity onPress={handleTimeOffPress}>

@@ -24,9 +24,9 @@ interface BuildingFormData {
 export default function BuildingDetailScreen() {
   const { buildingId } = useLocalSearchParams<{ buildingId: string }>();
   const { themeColor } = useTheme();
-  const { showToast } = useToast();
-  const { clientBuildings, refreshData } = useClientData();
-  
+  const { toast, showToast } = useToast();
+  const { clientBuildings, updateClientBuilding, refreshData, isLoading: isDataLoading } = useClientData();
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [building, setBuilding] = useState<any>(null);
@@ -37,10 +37,18 @@ export default function BuildingDetailScreen() {
     address: '',
   });
 
-  const loadBuildingData = useCallback(() => {
+  // Wait for clientBuildings to load before trying to find the building
+  useEffect(() => {
+    // Don't try to find building while data is still loading
+    if (isDataLoading) {
+      return;
+    }
+
     console.log('🔄 Loading building data for ID:', buildingId);
+    console.log('📦 Available buildings:', clientBuildings.length);
+
     const foundBuilding = clientBuildings.find(b => b.id === buildingId);
-    
+
     if (foundBuilding) {
       console.log('✅ Building found:', foundBuilding);
       setBuilding(foundBuilding);
@@ -50,18 +58,14 @@ export default function BuildingDetailScreen() {
         security: foundBuilding.security || '',
         address: foundBuilding.address || '',
       });
-    } else {
+      setLoading(false);
+    } else if (clientBuildings.length > 0) {
+      // Only show error if we have loaded buildings but couldn't find the one we're looking for
       console.log('❌ Building not found');
       showToast('Building not found', 'error');
       router.back();
     }
-    
-    setLoading(false);
-  }, [buildingId, clientBuildings, showToast]);
-
-  useEffect(() => {
-    loadBuildingData();
-  }, [loadBuildingData]);
+  }, [buildingId, clientBuildings, isDataLoading, showToast]);
 
   const handleSave = async () => {
     if (!formData.building_name.trim()) {
@@ -73,30 +77,17 @@ export default function BuildingDetailScreen() {
       setSaving(true);
       console.log('🔄 Updating building:', buildingId);
 
-      const updates = {
-        building_name: formData.building_name.trim(),
-        security_level: formData.security_level,
-        security: formData.security.trim() || null,
-        address: formData.address.trim() || null,
-        updated_at: new Date().toISOString(),
-      };
-
-      const { error } = await supabase
-        .from('client_buildings')
-        .update(updates)
-        .eq('id', buildingId);
-
-      if (error) {
-        console.error('❌ Error updating building:', error);
-        throw error;
-      }
+      // Use updateClientBuilding from hook - this handles geocoding and data refresh
+      await updateClientBuilding(buildingId!, {
+        buildingName: formData.building_name.trim(),
+        securityLevel: formData.security_level,
+        security: formData.security.trim() || undefined,
+        address: formData.address.trim() || undefined,
+      });
 
       console.log('✅ Building updated successfully');
       showToast('Building updated successfully', 'success');
-      
-      // Refresh data
-      await refreshData();
-      
+
       // Go back after a short delay
       setTimeout(() => {
         router.back();
@@ -342,7 +333,12 @@ export default function BuildingDetailScreen() {
         <View style={{ height: spacing.xxxl }} />
       </ScrollView>
 
-      <Toast />
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+        onHide={() => {}}
+      />
     </View>
   );
 }

@@ -219,8 +219,10 @@ const styles = StyleSheet.create({
   },
   badge: {
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    paddingVertical: spacing.sm,
     borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   badgeText: {
     fontSize: 12,
@@ -242,7 +244,7 @@ const PREDEFINED_COLORS = [
 export default function ClientsListScreen() {
   const { clients, clientBuildings, refreshData, isLoading } = useClientData();
   const { themeColor } = useTheme();
-  const { showToast } = useToast();
+  const { toast, showToast } = useToast();
   const { config } = useDatabase();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -1496,7 +1498,12 @@ export default function ClientsListScreen() {
         </View>
       </Modal>
 
-      <Toast />
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+        onHide={() => {}}
+      />
     </View>
   );
 }
