@@ -25,7 +25,7 @@ export default function BuildingDetailScreen() {
   const { buildingId } = useLocalSearchParams<{ buildingId: string }>();
   const { themeColor } = useTheme();
   const { toast, showToast } = useToast();
-  const { clientBuildings, refreshData, isLoading: isDataLoading } = useClientData();
+  const { clientBuildings, updateClientBuilding, refreshData, isLoading: isDataLoading } = useClientData();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -77,30 +77,17 @@ export default function BuildingDetailScreen() {
       setSaving(true);
       console.log('🔄 Updating building:', buildingId);
 
-      const updates = {
-        building_name: formData.building_name.trim(),
-        security_level: formData.security_level,
-        security: formData.security.trim() || null,
-        address: formData.address.trim() || null,
-        updated_at: new Date().toISOString(),
-      };
-
-      const { error } = await supabase
-        .from('client_buildings')
-        .update(updates)
-        .eq('id', buildingId);
-
-      if (error) {
-        console.error('❌ Error updating building:', error);
-        throw error;
-      }
+      // Use updateClientBuilding from hook - this handles geocoding and data refresh
+      await updateClientBuilding(buildingId!, {
+        buildingName: formData.building_name.trim(),
+        securityLevel: formData.security_level,
+        security: formData.security.trim() || undefined,
+        address: formData.address.trim() || undefined,
+      });
 
       console.log('✅ Building updated successfully');
       showToast('Building updated successfully', 'success');
-      
-      // Refresh data
-      await refreshData();
-      
+
       // Go back after a short delay
       setTimeout(() => {
         router.back();
