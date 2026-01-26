@@ -186,6 +186,11 @@ const ScheduleModal = memo(({
     return times;
   }, []);
 
+  // Helper function to format date as YYYY-MM-DD using local timezone (not UTC)
+  const formatLocalDate = (date: Date): string => {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  };
+
   // Helper function to calculate date from selected day
   const calculateDateFromDay = (dayName: string, baseDate: Date): string => {
     try {
@@ -201,7 +206,7 @@ const ScheduleModal = memo(({
 
       const targetDayIndex = dayMap[dayName.toLowerCase()];
       if (targetDayIndex === undefined) {
-        return new Date().toISOString().split('T')[0];
+        return formatLocalDate(new Date());
       }
 
       // Calculate Monday of the current week
@@ -213,10 +218,10 @@ const ScheduleModal = memo(({
       // Add days to get to the target day
       weekStart.setDate(weekStart.getDate() + targetDayIndex);
 
-      return weekStart.toISOString().split('T')[0];
+      return formatLocalDate(weekStart);
     } catch (error) {
       console.error('Error calculating date from day:', error);
-      return new Date().toISOString().split('T')[0];
+      return formatLocalDate(new Date());
     }
   };
 
@@ -230,10 +235,10 @@ const ScheduleModal = memo(({
         const dateStr = selectedEntry.date.split('T')[0];
         return dateStr;
       }
-      return new Date().toISOString().split('T')[0];
+      return formatLocalDate(new Date());
     } catch (error) {
       console.error('Error initializing schedule date:', error);
-      return new Date().toISOString().split('T')[0];
+      return formatLocalDate(new Date());
     }
   });
 
@@ -259,7 +264,7 @@ const ScheduleModal = memo(({
       console.log('📅 Calculating date for day:', selectedDay, '→', calculatedDate);
       setScheduleDate(calculatedDate);
     } else {
-      const fallbackDate = new Date().toISOString().split('T')[0];
+      const fallbackDate = formatLocalDate(new Date());
       console.log('📅 Using fallback date (today):', fallbackDate, 'because selectedDay:', selectedDay, 'currentDate:', !!currentDate);
       setScheduleDate(fallbackDate);
     }

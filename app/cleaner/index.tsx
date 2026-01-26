@@ -400,8 +400,9 @@ export default function CleanerDashboard() {
 
       const schedule = await getScheduleForCleaner(profile.name);
 
+      // Use local date instead of UTC to avoid timezone issues around midnight
       const today = new Date();
-      const todayStr = today.toISOString().split('T')[0];
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
       const todayShifts = schedule
         .filter(entry => entry.date === todayStr)

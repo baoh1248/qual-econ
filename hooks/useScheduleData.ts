@@ -149,7 +149,6 @@ export const useScheduleData = () => {
    * This is the ONLY way we get data - always fresh from DB
    */
   const fetchWeekSchedule = useCallback(async (weekId: string): Promise<ScheduleEntry[]> => {
-    console.log('📥 [useScheduleData] Fetching week:', weekId);
     setIsLoading(true);
     setError(null);
 
@@ -167,7 +166,6 @@ export const useScheduleData = () => {
       }
 
       const fetchedEntries = (data || []).map(fromDatabase);
-      console.log(`✅ [useScheduleData] Fetched ${fetchedEntries.length} entries for week ${weekId}`);
 
       // Update state
       currentWeekIdRef.current = weekId;
@@ -190,7 +188,6 @@ export const useScheduleData = () => {
    * 2. Refetch the week to get fresh data
    */
   const addEntry = useCallback(async (entry: Omit<ScheduleEntry, 'id'> & { id?: string }): Promise<ScheduleEntry | null> => {
-    console.log('➕ [useScheduleData] Adding entry:', entry.buildingName, entry.day);
     setIsSaving(true);
     setError(null);
 
@@ -202,7 +199,6 @@ export const useScheduleData = () => {
       } as ScheduleEntry;
 
       const dbEntry = toDatabase(entryWithId);
-      console.log('📤 [useScheduleData] DB entry:', { id: dbEntry.id, building: dbEntry.building_name, week: dbEntry.week_id });
 
       const { data, error: insertError } = await supabase
         .from('schedule_entries')
@@ -215,12 +211,9 @@ export const useScheduleData = () => {
         throw insertError;
       }
 
-      console.log('✅ [useScheduleData] Entry inserted successfully:', data.id);
-
       // Refetch the week to ensure UI is in sync
       const weekId = entryWithId.weekId || currentWeekIdRef.current;
       if (weekId) {
-        console.log('🔄 [useScheduleData] Refetching week after insert:', weekId);
         await fetchWeekSchedule(weekId);
       }
 
@@ -240,7 +233,6 @@ export const useScheduleData = () => {
    * 2. Refetch the week to get fresh data
    */
   const updateEntry = useCallback(async (id: string, updates: Partial<ScheduleEntry>): Promise<ScheduleEntry | null> => {
-    console.log('✏️ [useScheduleData] Updating entry:', id, updates);
     setIsSaving(true);
     setError(null);
 
@@ -271,12 +263,9 @@ export const useScheduleData = () => {
         throw updateError;
       }
 
-      console.log('✅ [useScheduleData] Entry updated successfully:', data.id);
-
       // Refetch the week to ensure UI is in sync
       const weekId = mergedEntry.weekId || currentWeekIdRef.current;
       if (weekId) {
-        console.log('🔄 [useScheduleData] Refetching week after update:', weekId);
         await fetchWeekSchedule(weekId);
       }
 
@@ -296,72 +285,36 @@ export const useScheduleData = () => {
    * 2. Refetch the week to get fresh data
    */
   const deleteEntry = useCallback(async (id: string): Promise<boolean> => {
-    console.log('🗑️ [useScheduleData] Deleting entry:', id);
-    console.log('Current entries count:', entries.length);
     setIsSaving(true);
     setError(null);
 
     try {
       // Find the entry first to know which week to refetch
       const entryToDelete = entries.find(e => e.id === id);
-      console.log('Entry to delete found:', entryToDelete ? 'Yes' : 'No');
-
-      if (entryToDelete) {
-        console.log('Entry details:', {
-          id: entryToDelete.id,
-          cleaner: entryToDelete.cleanerName,
-          building: entryToDelete.buildingName,
-          weekId: entryToDelete.weekId
-        });
-      }
-
       const weekId = entryToDelete?.weekId || currentWeekIdRef.current;
-      console.log('Week ID for refetch:', weekId);
 
-      console.log('🔄 Executing Supabase delete...');
-      const { data, error: deleteError, count } = await supabase
+      const { error: deleteError } = await supabase
         .from('schedule_entries')
         .delete()
-        .eq('id', id)
-        .select();
-
-      console.log('Supabase delete response:', { data, count, error: deleteError });
+        .eq('id', id);
 
       if (deleteError) {
-        console.error('❌ [useScheduleData] Delete error from Supabase:', deleteError);
-        console.error('Error details:', {
-          message: deleteError.message,
-          details: deleteError.details,
-          hint: deleteError.hint,
-          code: deleteError.code
-        });
+        console.error('❌ [useScheduleData] Delete error:', deleteError);
         throw deleteError;
-      }
-
-      if (!data || data.length === 0) {
-        console.warn('⚠️ [useScheduleData] No rows were deleted. Entry may not exist.');
-      } else {
-        console.log('✅ [useScheduleData] Entry deleted successfully. Deleted rows:', data.length);
       }
 
       // Refetch the week to ensure UI is in sync
       if (weekId) {
-        console.log('🔄 [useScheduleData] Refetching week after delete:', weekId);
-        const freshEntries = await fetchWeekSchedule(weekId);
-        console.log(`✅ [useScheduleData] Refetched ${freshEntries.length} entries`);
-      } else {
-        console.warn('⚠️ [useScheduleData] No weekId available, skipping refetch');
+        await fetchWeekSchedule(weekId);
       }
 
       return true;
     } catch (err: any) {
       console.error('❌ [useScheduleData] Error deleting entry:', err);
-      console.error('Error stack:', err.stack);
       setError(err.message || 'Failed to delete entry');
       return false;
     } finally {
       setIsSaving(false);
-      console.log('🏁 [useScheduleData] Delete operation completed');
     }
   }, [entries, fetchWeekSchedule]);
 
@@ -369,7 +322,6 @@ export const useScheduleData = () => {
    * Bulk update multiple entries
    */
   const bulkUpdateEntries = useCallback(async (ids: string[], updates: Partial<ScheduleEntry>): Promise<boolean> => {
-    console.log('✏️ [useScheduleData] Bulk updating entries:', ids.length);
     setIsSaving(true);
     setError(null);
 
@@ -397,8 +349,6 @@ export const useScheduleData = () => {
         }
       }
 
-      console.log('✅ [useScheduleData] Bulk update completed');
-
       // Refetch the week
       if (currentWeekIdRef.current) {
         await fetchWeekSchedule(currentWeekIdRef.current);
@@ -418,7 +368,6 @@ export const useScheduleData = () => {
    * Bulk delete multiple entries
    */
   const bulkDeleteEntries = useCallback(async (ids: string[]): Promise<boolean> => {
-    console.log('🗑️ [useScheduleData] Bulk deleting entries:', ids.length);
     setIsSaving(true);
     setError(null);
 
@@ -432,8 +381,6 @@ export const useScheduleData = () => {
         console.error('❌ [useScheduleData] Bulk delete error:', deleteError);
         throw deleteError;
       }
-
-      console.log('✅ [useScheduleData] Bulk delete completed');
 
       // Refetch the week
       if (currentWeekIdRef.current) {
@@ -455,7 +402,6 @@ export const useScheduleData = () => {
    */
   const refresh = useCallback(async () => {
     if (currentWeekIdRef.current) {
-      console.log('🔄 [useScheduleData] Refreshing current week:', currentWeekIdRef.current);
       return fetchWeekSchedule(currentWeekIdRef.current);
     }
     return [];
