@@ -25,8 +25,8 @@ export default function BuildingDetailScreen() {
   const { buildingId } = useLocalSearchParams<{ buildingId: string }>();
   const { themeColor } = useTheme();
   const { toast, showToast } = useToast();
-  const { clientBuildings, refreshData } = useClientData();
-  
+  const { clientBuildings, refreshData, isLoading: isDataLoading } = useClientData();
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [building, setBuilding] = useState<any>(null);
@@ -37,10 +37,18 @@ export default function BuildingDetailScreen() {
     address: '',
   });
 
-  const loadBuildingData = useCallback(() => {
+  // Wait for clientBuildings to load before trying to find the building
+  useEffect(() => {
+    // Don't try to find building while data is still loading
+    if (isDataLoading) {
+      return;
+    }
+
     console.log('🔄 Loading building data for ID:', buildingId);
+    console.log('📦 Available buildings:', clientBuildings.length);
+
     const foundBuilding = clientBuildings.find(b => b.id === buildingId);
-    
+
     if (foundBuilding) {
       console.log('✅ Building found:', foundBuilding);
       setBuilding(foundBuilding);
@@ -50,18 +58,14 @@ export default function BuildingDetailScreen() {
         security: foundBuilding.security || '',
         address: foundBuilding.address || '',
       });
-    } else {
+      setLoading(false);
+    } else if (clientBuildings.length > 0) {
+      // Only show error if we have loaded buildings but couldn't find the one we're looking for
       console.log('❌ Building not found');
       showToast('Building not found', 'error');
       router.back();
     }
-    
-    setLoading(false);
-  }, [buildingId, clientBuildings, showToast]);
-
-  useEffect(() => {
-    loadBuildingData();
-  }, [loadBuildingData]);
+  }, [buildingId, clientBuildings, isDataLoading, showToast]);
 
   const handleSave = async () => {
     if (!formData.building_name.trim()) {
