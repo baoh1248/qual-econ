@@ -1,8 +1,7 @@
 
 import React from 'react';
-import { View, Text, StyleSheet, ViewStyle, Image } from 'react-native';
+import { View, Text, StyleSheet, ViewStyle, Image, Platform } from 'react-native';
 import { colors, spacing, typography } from '../styles/commonStyles';
-import Icon from './Icon';
 
 interface CompanyLogoProps {
   size?: 'small' | 'medium' | 'large';
@@ -46,11 +45,16 @@ export default function CompanyLogo({
     const sizeStyles = getSizeStyles();
     const textColor = variant === 'light' ? colors.background : colors.text;
 
+    // Use different source for web vs native platforms
+    const logoSource = Platform.OS === 'web'
+      ? { uri: '/logo192x192.png' }
+      : require('../assets/images/natively-dark.png');
+
     return (
       <View style={[styles.container, { padding: sizeStyles.containerPadding }, style]}>
         <View style={styles.logoContainer}>
           <Image
-            source={{ uri: '/logo192x192.png' }}
+            source={logoSource}
             style={[styles.logoImage, { width: sizeStyles.iconSize, height: sizeStyles.iconSize }]}
             resizeMode="contain"
           />

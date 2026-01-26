@@ -6,6 +6,16 @@ import type { ScheduleEntry } from './useScheduleStorage';
 export const useSupabaseScheduleSync = () => {
   const syncQueueRef = useRef<{ entry: ScheduleEntry; operation: 'insert' | 'update' | 'delete' }[]>([]);
   const syncInProgressRef = useRef(false);
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
 
   const convertToDatabaseEntry = useCallback((entry: ScheduleEntry): any => {
     return {
@@ -108,8 +118,13 @@ export const useSupabaseScheduleSync = () => {
   const queueSync = useCallback((entry: ScheduleEntry, operation: 'insert' | 'update' | 'delete') => {
     console.log(`Queueing ${operation} for entry:`, entry.id);
     syncQueueRef.current.push({ entry, operation });
-    
-    setTimeout(() => {
+
+    // Clear any existing debounce timer
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    debounceTimerRef.current = setTimeout(() => {
       processSyncQueue();
     }, 500);
   }, [processSyncQueue]);

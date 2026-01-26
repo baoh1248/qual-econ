@@ -1,7 +1,7 @@
 
 import React, { memo } from 'react';
-import { ViewStyle } from 'react-native';
-import Animated, { 
+import { ViewStyle, StyleProp } from 'react-native';
+import Animated, {
   FadeInDown,
   FadeInUp,
 } from 'react-native-reanimated';
@@ -9,7 +9,7 @@ import { commonStyles } from '../styles/commonStyles';
 
 interface AnimatedCardProps {
   children: React.ReactNode;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   delay?: number;
   index?: number;
   elevated?: boolean;

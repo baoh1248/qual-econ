@@ -13,6 +13,9 @@ import Icon from '../../components/Icon';
 import Button from '../../components/Button';
 import { supabase } from '../integrations/supabase/client';
 import { useTheme } from '../../hooks/useTheme';
+import { useGeofenceClockInOut } from '../../hooks/useGeofenceClockInOut';
+import { GeofenceShiftInfo } from '../../types/clockRecord';
+import { formatDistance } from '../../utils/geofence';
 
 interface Task {
   id: string;
@@ -46,6 +49,10 @@ interface Shift {
   hours: number;
   status: 'scheduled' | 'in-progress' | 'completed' | 'cancelled';
   priority?: 'low' | 'medium' | 'high';
+  notes?: string;
+  buildingLatitude?: number;
+  buildingLongitude?: number;
+  geofenceRadiusFt?: number;
 }
 
 interface CleanerProfile {
@@ -255,6 +262,183 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.md,
   },
+  // Clock In/Out Card Styles
+  clockCard: {
+    marginHorizontal: spacing.xl,
+    marginBottom: spacing.lg,
+    padding: spacing.lg,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  clockCardActive: {
+    backgroundColor: colors.success + '10',
+    borderColor: colors.success + '30',
+  },
+  clockCardInactive: {
+    backgroundColor: colors.card,
+  },
+  clockHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  clockTitle: {
+    ...typography.h4,
+    color: colors.text,
+    fontWeight: '600',
+  },
+  clockStatusBadge: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: 16,
+  },
+  clockStatusText: {
+    ...typography.caption,
+    fontWeight: '600',
+  },
+  clockTimer: {
+    alignItems: 'center',
+    marginVertical: spacing.lg,
+  },
+  clockTimerText: {
+    fontSize: 36,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+  },
+  clockTimerLabel: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+  },
+  clockShiftInfo: {
+    marginBottom: spacing.md,
+  },
+  clockShiftName: {
+    ...typography.bodyMedium,
+    color: colors.text,
+    fontWeight: '600',
+    marginBottom: spacing.xs,
+  },
+  clockShiftDetails: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  clockShiftDetailText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
+  clockLocationStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: 8,
+    marginBottom: spacing.md,
+  },
+  clockLocationStatusWithin: {
+    backgroundColor: colors.success + '15',
+  },
+  clockLocationStatusOutside: {
+    backgroundColor: colors.warning + '15',
+  },
+  clockLocationText: {
+    ...typography.caption,
+    flex: 1,
+  },
+  clockButton: {
+    paddingVertical: spacing.md,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clockButtonIn: {
+    backgroundColor: colors.success,
+  },
+  clockButtonOut: {
+    backgroundColor: colors.danger,
+  },
+  clockButtonDisabled: {
+    backgroundColor: colors.textTertiary,
+  },
+  clockButtonText: {
+    ...typography.bodyMedium,
+    color: colors.textInverse,
+    fontWeight: '600',
+  },
+  clockMessage: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: spacing.md,
+  },
+  clockError: {
+    ...typography.caption,
+    color: colors.danger,
+    textAlign: 'center',
+    marginTop: spacing.md,
+  },
+  // Shift Modal Styles
+  shiftModalSubtitle: {
+    ...typography.bodyMedium,
+    fontWeight: '500',
+    marginBottom: spacing.md,
+  },
+  shiftModalDetails: {
+    gap: spacing.md,
+  },
+  shiftModalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  shiftModalLabel: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    minWidth: 60,
+  },
+  shiftModalValue: {
+    ...typography.body,
+    color: colors.text,
+    flex: 1,
+  },
+  shiftModalAddressRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+  },
+  shiftModalAddressLink: {
+    textDecorationLine: 'underline',
+  },
+  shiftModalNotesSection: {
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  shiftModalNotesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  shiftModalNotesTitle: {
+    ...typography.caption,
+    fontWeight: '600',
+  },
+  shiftModalNotesBox: {
+    backgroundColor: colors.backgroundAlt,
+    padding: spacing.md,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  shiftModalNotesText: {
+    ...typography.body,
+    color: colors.text,
+    lineHeight: 20,
+  },
 });
 
 export default function CleanerDashboard() {
@@ -275,9 +459,12 @@ export default function CleanerDashboard() {
   const [upcomingShifts, setUpcomingShifts] = useState<Shift[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [selectedShiftForClock, setSelectedShiftForClock] = useState<GeofenceShiftInfo | null>(null);
+  const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
+  const [showShiftModal, setShowShiftModal] = useState(false);
 
-  const { syncStatus } = useRealtimeSync();
-  const { toast, showToast } = useToast();
+  const { isConnected } = useRealtimeSync();
+  const { toast, showToast, hideToast } = useToast();
   const { getScheduleForCleaner } = useScheduleStorage();
 
   // Geofence clock-in/out hook
@@ -421,7 +608,7 @@ export default function CleanerDashboard() {
       // Get upcoming shifts (next 7 days, excluding today)
       const upcoming = schedule
         .filter(entry => entry.date > todayStr)
-        .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime))
+        .sort((a, b) => a.date.localeCompare(b.date) || (a.startTime || '').localeCompare(b.startTime || ''))
         .slice(0, 10)
         .map(entry => ({
           id: entry.id,
@@ -430,7 +617,7 @@ export default function CleanerDashboard() {
           address: entry.address || '',
           day: entry.day,
           date: entry.date,
-          startTime: entry.startTime,
+          startTime: entry.startTime || '',
           endTime: entry.endTime,
           hours: entry.hours,
           status: entry.status,
@@ -500,6 +687,22 @@ export default function CleanerDashboard() {
     setSelectedShift(null);
   };
 
+  const handleClockIn = async () => {
+    const success = await clockIn();
+    if (success) {
+      showToast('Successfully clocked in!', 'success');
+      loadShifts();
+    }
+  };
+
+  const handleClockOut = async () => {
+    const success = await clockOut();
+    if (success) {
+      showToast('Successfully clocked out!', 'success');
+      loadShifts();
+    }
+  };
+
   const handleEmergencyAlert = () => {
     Alert.alert(
       'Emergency Alert',
@@ -552,7 +755,7 @@ export default function CleanerDashboard() {
               <Text style={styles.subGreeting}>Ready to make a difference today?</Text>
             </View>
             <TouchableOpacity onPress={handleLogoutPress}>
-              <CompanyLogo size={50} />
+              <CompanyLogo size="medium" />
             </TouchableOpacity>
           </View>
 
@@ -960,7 +1163,7 @@ export default function CleanerDashboard() {
         message={toast.message}
         type={toast.type}
         visible={toast.visible}
-        onHide={() => {}}
+        onHide={hideToast}
       />
     </View>
   );

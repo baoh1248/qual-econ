@@ -121,14 +121,15 @@ export default function ForgotPasswordScreen() {
         return;
       }
 
-      // Store password as plain text (trim to remove any whitespace)
+      // Hash password before storing
       const trimmedPassword = newPassword.trim();
+      const hashedPassword = await hashPassword(trimmedPassword);
 
       // Update password in database
       const { data, error } = await supabase
         .from('cleaners')
         .update({
-          password_hash: trimmedPassword,
+          password_hash: hashedPassword,
         })
         .eq('id', userId)
         .select();

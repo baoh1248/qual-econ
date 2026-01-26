@@ -9,7 +9,7 @@ import Icon from '../../components/Icon';
 import { useToast } from '../../hooks/useToast';
 import Toast from '../../components/Toast';
 import {
-  hashPassword,
+  verifyPassword,
   saveSession,
   cleanPhoneNumber,
   isValidPhoneNumber,
@@ -94,10 +94,10 @@ export default function LoginScreen() {
         return;
       }
 
-      // Verify password (plain text comparison)
+      // Verify password using secure hash comparison
       const enteredPassword = password.trim();
-      const storedPassword = userData.password_hash;
-      const isPasswordValid = enteredPassword === storedPassword;
+      const storedPasswordHash = userData.password_hash;
+      const isPasswordValid = await verifyPassword(enteredPassword, storedPasswordHash);
 
       if (!isPasswordValid) {
         showToast('Invalid phone number or password', 'error');

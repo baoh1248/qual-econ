@@ -53,8 +53,9 @@ const STORAGE_KEYS = {
   TEST_USER_ID: 'test_user_id_v1',
 };
 
-// TEST MODE: Set to true to bypass authentication
-const TEST_MODE = true;
+// TEST MODE: Set to false in production
+// Set to true only for local development/testing
+const TEST_MODE = false;
 
 export const useChatData = () => {
   const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);

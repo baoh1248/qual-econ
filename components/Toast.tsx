@@ -71,10 +71,11 @@ export default function Toast({ message, type, visible, onHide, duration = 3000 
       { backgroundColor: toastStyle.backgroundColor },
       animatedStyle
     ]}>
-      <Icon 
-        name={toastStyle.icon} 
-        size={20} 
-        style={{ color: colors.background, marginRight: spacing.sm }} 
+      <Icon
+        name={toastStyle.icon}
+        size={20}
+        color={colors.background}
+        style={{ marginRight: spacing.sm }}
       />
       <Text style={styles.message}>{message}</Text>
     </Animated.View>

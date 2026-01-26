@@ -219,15 +219,10 @@ const styles = StyleSheet.create({
   },
   badge: {
     paddingHorizontal: spacing.md,
-<<<<<<< HEAD
     paddingVertical: spacing.xs,
-    borderRadius: 8,
-=======
-    paddingVertical: spacing.sm,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: colors.border,
->>>>>>> origin/claude/geofence-clock-in-out-BFVyR
   },
   badgeText: {
     fontSize: 12,
@@ -249,11 +244,7 @@ const PREDEFINED_COLORS = [
 export default function ClientsListScreen() {
   const { clients, clientBuildings, refreshData, isLoading } = useClientData();
   const { themeColor } = useTheme();
-<<<<<<< HEAD
-  const { showToast } = useToast();
-=======
-  const { toast, showToast } = useToast();
->>>>>>> origin/claude/geofence-clock-in-out-BFVyR
+  const { toast, showToast, hideToast } = useToast();
   const { config } = useDatabase();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -1388,7 +1379,6 @@ export default function ClientsListScreen() {
         </View>
       </Modal>
 
-<<<<<<< HEAD
       {/* Edit Building Modal */}
       <Modal visible={showEditBuildingModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
@@ -1508,15 +1498,12 @@ export default function ClientsListScreen() {
         </View>
       </Modal>
 
-      <Toast />
-=======
       <Toast
         message={toast.message}
         type={toast.type}
         visible={toast.visible}
-        onHide={() => {}}
+        onHide={hideToast}
       />
->>>>>>> origin/claude/geofence-clock-in-out-BFVyR
     </View>
   );
 }
