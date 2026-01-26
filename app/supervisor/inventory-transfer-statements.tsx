@@ -492,7 +492,7 @@ const styles = StyleSheet.create({
 
 export default function InventoryTransferStatementsScreen() {
   const { theme } = useTheme();
-  const { showToast } = useToast();
+  const { toast, showToast, hideToast } = useToast();
   const { config } = useDatabase();
 
   const [transfers, setTransfers] = useState<InventoryTransfer[]>([]);
@@ -1088,7 +1088,12 @@ export default function InventoryTransferStatementsScreen() {
         )}
       </ScrollView>
 
-      <Toast />
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+        onHide={hideToast}
+      />
 
       {/* Building Picker Modal */}
       <Modal

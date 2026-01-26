@@ -48,7 +48,7 @@ interface RecurringShiftInfo {
 export default function CleanerTimeOffScreen() {
   const { themeColor } = useTheme();
   const { executeQuery } = useDatabase();
-  const { showToast } = useToast();
+  const { toast, showToast, hideToast } = useToast();
   
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -491,7 +491,12 @@ export default function CleanerTimeOffScreen() {
         themeColor={themeColor}
       />
 
-      <Toast />
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+        onHide={hideToast}
+      />
     </View>
   );
 }

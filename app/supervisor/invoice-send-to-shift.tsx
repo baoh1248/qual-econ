@@ -231,7 +231,7 @@ type LocationFilter = 'shifts' | 'all';
 export default function InvoiceSendToShiftScreen() {
   const { invoiceId } = useLocalSearchParams();
   const { theme } = useTheme();
-  const { showToast } = useToast();
+  const { toast, showToast, hideToast } = useToast();
   const { config } = useDatabase();
 
   const [isLoading, setIsLoading] = useState(true);
@@ -655,7 +655,12 @@ export default function InvoiceSendToShiftScreen() {
         )}
       </ScrollView>
 
-      <Toast />
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+        onHide={hideToast}
+      />
     </View>
   );
 }

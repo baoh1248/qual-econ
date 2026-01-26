@@ -139,7 +139,7 @@ const styles = StyleSheet.create({
 
 export default function InvoiceStatementsScreen() {
   const { theme } = useTheme();
-  const { showToast } = useToast();
+  const { toast, showToast, hideToast } = useToast();
   const { config } = useDatabase();
 
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -386,7 +386,12 @@ export default function InvoiceStatementsScreen() {
         )}
       </Modal>
 
-      <Toast />
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+        onHide={hideToast}
+      />
     </View>
   );
 }

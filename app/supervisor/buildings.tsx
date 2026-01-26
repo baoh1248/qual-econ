@@ -292,7 +292,7 @@ const styles = StyleSheet.create({
 export default function BuildingsScreen() {
   const { clients, clientBuildings, refreshData, isLoading } = useClientData();
   const { theme } = useTheme();
-  const { showToast } = useToast();
+  const { toast, showToast, hideToast } = useToast();
   const { config } = useDatabase();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -941,7 +941,12 @@ export default function BuildingsScreen() {
         </View>
       </Modal>
 
-      <Toast />
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+        onHide={hideToast}
+      />
     </View>
   );
 }

@@ -398,7 +398,7 @@ const styles = StyleSheet.create({
 
 export default function SupervisorInventoryScreen() {
   const { theme, themeColor } = useTheme();
-  const { showToast } = useToast();
+  const { toast, showToast, hideToast } = useToast();
   const { config, syncStatus } = useDatabase();
 
   const [items, setItems] = useState<InventoryItem[]>([]);
@@ -1427,7 +1427,12 @@ export default function SupervisorInventoryScreen() {
         </View>
       </Modal>
 
-      <Toast />
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+        onHide={hideToast}
+      />
     </View>
   );
 }

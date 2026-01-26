@@ -46,7 +46,7 @@ interface Client {
 
 const SupervisorDashboard = () => {
   const { themeColor } = useTheme();
-  const { showToast } = useToast();
+  const { toast, showToast, hideToast } = useToast();
   const { config, syncStatus } = useDatabase();
   const { lowStockCount, criticalStockCount } = useInventoryAlerts();
   const { getWeekSchedule, getCurrentWeekId, getWeekStats } = useScheduleStorage();
@@ -530,7 +530,12 @@ const SupervisorDashboard = () => {
         </View>
       </Modal>
 
-      <Toast />
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+        onHide={hideToast}
+      />
     </View>
   );
 };

@@ -259,7 +259,7 @@ const styles = StyleSheet.create({
 export default function InvoiceDetailScreen() {
   const { id } = useLocalSearchParams();
   const { theme } = useTheme();
-  const { showToast } = useToast();
+  const { toast, showToast, hideToast } = useToast();
   const { config } = useDatabase();
 
   const [isLoading, setIsLoading] = useState(true);
@@ -821,7 +821,12 @@ export default function InvoiceDetailScreen() {
         </View>
       </Modal>
 
-      <Toast />
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+        onHide={hideToast}
+      />
     </View>
   );
 }

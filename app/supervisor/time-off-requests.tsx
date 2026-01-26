@@ -40,7 +40,7 @@ interface TimeOffRequest {
 export default function SupervisorTimeOffRequestsScreen() {
   const { themeColor } = useTheme();
   const { executeQuery } = useDatabase();
-  const { showToast } = useToast();
+  const { toast, showToast, hideToast } = useToast();
   const { getWeekSchedule, updateScheduleEntry, getWeekIdFromDate, clearCaches, loadData: reloadScheduleData } = useScheduleStorage();
   
   const [isLoading, setIsLoading] = useState(true);
@@ -852,7 +852,12 @@ export default function SupervisorTimeOffRequestsScreen() {
         </View>
       </Modal>
 
-      <Toast />
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+        onHide={hideToast}
+      />
     </View>
   );
 }

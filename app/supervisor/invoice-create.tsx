@@ -184,7 +184,7 @@ const styles = StyleSheet.create({
 
 export default function InvoiceCreateScreen() {
   const { theme } = useTheme();
-  const { showToast } = useToast();
+  const { toast, showToast, hideToast } = useToast();
   const { config } = useDatabase();
 
   const [isLoading, setIsLoading] = useState(false);
@@ -744,7 +744,12 @@ export default function InvoiceCreateScreen() {
         }}
       />
 
-      <Toast />
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+        onHide={hideToast}
+      />
     </View>
   );
 }

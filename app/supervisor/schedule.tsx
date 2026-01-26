@@ -138,7 +138,7 @@ export default function ScheduleView() {
   const loadingInProgressRef = useRef(false);
   const initialLoadCompleteRef = useRef(false);
 
-  const { showToast } = useToast();
+  const { toast, showToast, hideToast } = useToast();
   const { executeQuery } = useDatabase();
   const { clients, clientBuildings, cleaners, refreshData, addClient, addClientBuilding, addCleaner, updateClient, updateClientBuilding } = useClientData();
   const { fetchApprovedTimeOff, timeOffRequests, getTimeOffForDate } = useTimeOffRequests();
@@ -2492,7 +2492,12 @@ export default function ScheduleView() {
         onClose={() => setShowChangeNotifications(false)}
       />
 
-      <Toast />
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+        onHide={hideToast}
+      />
     </View>
   );
 }

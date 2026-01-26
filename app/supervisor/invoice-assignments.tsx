@@ -138,7 +138,7 @@ const styles = StyleSheet.create({
 
 export default function InvoiceAssignmentsScreen() {
   const { theme } = useTheme();
-  const { showToast } = useToast();
+  const { toast, showToast, hideToast } = useToast();
   const { config } = useDatabase();
 
   const [assignments, setAssignments] = useState<InvoiceAssignment[]>([]);
@@ -397,7 +397,12 @@ export default function InvoiceAssignmentsScreen() {
         )}
       </ScrollView>
 
-      <Toast />
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+        onHide={hideToast}
+      />
     </View>
   );
 }

@@ -42,7 +42,7 @@ interface BuildingProjects {
 const ContractDetailsScreen = () => {
   const { clientName } = useLocalSearchParams<{ clientName: string }>();
   const { themeColor } = useTheme();
-  const { showToast } = useToast();
+  const { toast, showToast, hideToast } = useToast();
   const { executeQuery } = useDatabase();
 
   const [projects, setProjects] = useState<ClientProject[]>([]);
@@ -605,7 +605,12 @@ const ContractDetailsScreen = () => {
         )}
       </ScrollView>
 
-      <Toast />
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+        onHide={hideToast}
+      />
     </View>
   );
 };

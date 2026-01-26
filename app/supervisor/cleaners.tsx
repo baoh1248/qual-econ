@@ -37,7 +37,7 @@ interface CleanerGroup {
 
 export default function CleanersScreen() {
   const { themeColor } = useTheme();
-  const { showToast } = useToast();
+  const { toast, showToast, hideToast } = useToast();
   const { executeQuery, config, syncStatus } = useDatabase();
   const { cleaners, addCleaner, updateCleaner, deleteCleaner, loadData } = useClientData();
 
@@ -1572,7 +1572,12 @@ export default function CleanersScreen() {
         onRefresh={loadCleanerGroups}
       />
 
-      <Toast />
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+        onHide={hideToast}
+      />
     </View>
   );
 }
