@@ -213,6 +213,21 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: spacing.md,
   },
+  infoText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  badge: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  badgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
 });
 
 const PREDEFINED_COLORS = [
@@ -229,7 +244,7 @@ const PREDEFINED_COLORS = [
 export default function ClientsListScreen() {
   const { clients, clientBuildings, refreshData, isLoading } = useClientData();
   const { theme } = useTheme();
-  const { showToast } = useToast();
+  const { toast, showToast } = useToast();
   const { config } = useDatabase();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -1246,7 +1261,12 @@ export default function ClientsListScreen() {
         </View>
       </Modal>
 
-      <Toast />
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+        onHide={() => {}}
+      />
     </View>
   );
 }
