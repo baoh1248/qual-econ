@@ -17,6 +17,7 @@ import { useDatabase } from '../../hooks/useDatabase';
 import { useScheduleStorage } from '../../hooks/useScheduleStorage';
 import { useClientData } from '../../hooks/useClientData';
 import { useTheme } from '../../hooks/useTheme';
+import { useCleanerTracking } from '../../hooks/useCleanerTracking';
 
 interface TeamMember {
   id: string;
@@ -51,7 +52,8 @@ const SupervisorDashboard = () => {
   const { lowStockCount, criticalStockCount } = useInventoryAlerts();
   const { getWeekSchedule, getCurrentWeekId, getWeekStats } = useScheduleStorage();
   const { cleaners = [] } = useClientData();
-  
+  const { trackedCleaners, stats: trackingStats, isConnected: isTrackingConnected, refresh: refreshTracking } = useCleanerTracking();
+
   const [refreshing, setRefreshing] = useState(false);
   const [showLiveMap, setShowLiveMap] = useState(false);
 
@@ -179,8 +181,7 @@ const SupervisorDashboard = () => {
   const onRefresh = async () => {
     setRefreshing(true);
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await refreshTracking();
       showToast('Dashboard refreshed', 'success');
     } catch (error) {
       console.log('Error refreshing dashboard:', error);
@@ -294,37 +295,55 @@ const SupervisorDashboard = () => {
 
         {/* Live Map Card */}
         <AnimatedCard style={styles.liveMapCard}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.liveMapHeader}
             onPress={() => setShowLiveMap(true)}
           >
             <View style={styles.liveMapTitleRow}>
-              <Icon name="map" size={24} style={{ color: themeColor }} />
-              <Text style={styles.cardTitle}>Live Cleaner Tracking</Text>
+              <View style={styles.liveMapTitleWithStatus}>
+                <Icon name="pulse" size={20} style={{ color: isTrackingConnected ? colors.success : colors.danger }} />
+                <Icon name="map" size={24} style={{ color: themeColor }} />
+                <Text style={styles.cardTitle}>Live Cleaner Tracking</Text>
+              </View>
+              {isTrackingConnected && (
+                <View style={styles.liveBadge}>
+                  <View style={styles.liveDot} />
+                  <Text style={styles.liveText}>LIVE</Text>
+                </View>
+              )}
             </View>
             <Icon name="chevron-forward" size={20} style={{ color: colors.textSecondary }} />
           </TouchableOpacity>
           <Text style={styles.liveMapDescription}>
-            Monitor your team&apos;s real-time locations and status
+            {isTrackingConnected
+              ? `${trackingStats.totalTracked} cleaner${trackingStats.totalTracked !== 1 ? 's' : ''} currently being tracked`
+              : 'Connecting to real-time tracking...'
+            }
           </Text>
           <View style={styles.liveMapStats}>
             <View style={styles.liveMapStat}>
-              <Text style={[styles.liveMapStatValue, { color: themeColor }]}>
-                {teamMembers.filter(m => m.status === 'on-duty').length}
+              <Text style={[styles.liveMapStatValue, { color: colors.success }]}>
+                {trackingStats.onDuty}
               </Text>
               <Text style={styles.liveMapStatLabel}>On Duty</Text>
             </View>
             <View style={styles.liveMapStat}>
-              <Text style={[styles.liveMapStatValue, { color: themeColor }]}>
-                {teamMembers.filter(m => m.status === 'break').length}
+              <Text style={[styles.liveMapStatValue, { color: '#3B82F6' }]}>
+                {trackingStats.traveling}
+              </Text>
+              <Text style={styles.liveMapStatLabel}>Traveling</Text>
+            </View>
+            <View style={styles.liveMapStat}>
+              <Text style={[styles.liveMapStatValue, { color: colors.warning }]}>
+                {trackingStats.onBreak}
               </Text>
               <Text style={styles.liveMapStatLabel}>On Break</Text>
             </View>
             <View style={styles.liveMapStat}>
               <Text style={[styles.liveMapStatValue, { color: themeColor }]}>
-                {teamMembers.filter(m => m.status === 'off-duty').length}
+                {trackingStats.totalHoursToday.toFixed(1)}h
               </Text>
-              <Text style={styles.liveMapStatLabel}>Off Duty</Text>
+              <Text style={styles.liveMapStatLabel}>Total Time</Text>
             </View>
           </View>
         </AnimatedCard>
@@ -653,6 +672,35 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    flex: 1,
+  },
+  liveMapTitleWithStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  liveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.success + '20',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: 10,
+    marginLeft: spacing.sm,
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.success,
+  },
+  liveText: {
+    ...typography.small,
+    fontSize: 9,
+    fontWeight: '700',
+    color: colors.success,
+    letterSpacing: 0.5,
   },
   liveMapDescription: {
     ...typography.small,
