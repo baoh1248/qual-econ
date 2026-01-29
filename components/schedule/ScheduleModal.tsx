@@ -1889,15 +1889,15 @@ const styles = StyleSheet.create({
   },
   gridDropdownItem: {
     width: '33.33%',
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     borderRightWidth: 1,
     borderRightColor: colors.border,
-    minHeight: 44,
+    minHeight: 56,
   },
   gridDropdownItemWide: {
     width: '25%',
