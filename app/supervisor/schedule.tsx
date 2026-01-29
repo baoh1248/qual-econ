@@ -1454,17 +1454,9 @@ export default function ScheduleView() {
   // Helper function to refresh schedule after delete
   const refreshAfterDelete = useCallback(async (weekId: string) => {
     try {
-      // Log the shift deletion
+      // Log the shift deletion (non-blocking)
       try {
         if (selectedEntry) {
-          console.log('📝 Attempting to log shift deletion:', {
-            client: selectedEntry.clientName,
-            building: selectedEntry.buildingName,
-            cleaners: selectedEntry.cleanerNames || [selectedEntry.cleanerName],
-            date: selectedEntry.date,
-            id: selectedEntry.id
-          });
-
           await logShiftDeleted({
             clientName: selectedEntry.clientName,
             buildingName: selectedEntry.buildingName,
@@ -1472,162 +1464,75 @@ export default function ScheduleView() {
             shiftDate: selectedEntry.date,
             shiftId: selectedEntry.id,
           });
-
-          console.log('✅ Shift deletion logged successfully');
         }
       } catch (logError: any) {
-        console.error('❌ Failed to log shift deletion:', logError);
-        console.error('Error details:', logError.message, logError.code);
+        console.error('Failed to log shift deletion:', logError);
       }
 
-      // Refresh the schedule data
-      const { data: freshData, error: fetchError } = await supabase
-        .from('schedule_entries')
-        .select('*')
-        .eq('week_id', weekId)
-        .order('date', { ascending: true })
-        .order('start_time', { ascending: true });
-
-      if (!fetchError && freshData) {
-        // Convert database format to app format
-        const freshEntries = freshData.map((row: any) => ({
-          id: row.id,
-          clientName: row.client_name || '',
-          buildingName: row.building_name || '',
-          cleanerName: row.cleaner_name || '',
-          cleanerNames: row.cleaner_names || [],
-          cleanerIds: row.cleaner_ids || [],
-          hours: parseFloat(row.hours) || 0,
-          cleanerHours: row.cleaner_hours || undefined,
-          day: row.day || 'monday',
-          date: row.date || '',
-          startTime: row.start_time || null,
-          endTime: row.end_time || null,
-          status: row.status || 'scheduled',
-          weekId: row.week_id || '',
-          notes: row.notes || null,
-          priority: row.priority || 'medium',
-          isRecurring: row.is_recurring || false,
-          recurringId: row.recurring_id || null,
-          isProject: row.is_project || false,
-          projectId: row.project_id || null,
-          projectName: row.project_name || null,
-          paymentType: row.payment_type || 'hourly',
-          flatRateAmount: row.flat_rate_amount || 0,
-          hourlyRate: row.hourly_rate || 15,
-        })) as ScheduleEntry[];
-
-        setCurrentWeekSchedule(freshEntries);
-        setScheduleKey(prev => prev + 1);
-      }
+      // Use the shared fetchWeekSchedule to refresh data consistently
+      const freshEntries = await fetchWeekSchedule(weekId);
+      setCurrentWeekSchedule(freshEntries);
+      setScheduleKey(prev => prev + 1);
 
       handleModalClose();
     } catch (error) {
       console.error('Error refreshing after delete:', error);
+      // Still close the modal even if refresh fails
+      handleModalClose();
     }
-  }, [selectedEntry, handleModalClose]);
+  }, [selectedEntry, handleModalClose, fetchWeekSchedule]);
 
-  const handleModalDelete = useCallback(async () => {
+  const handleModalDelete = useCallback(async (deleteType?: 'single' | 'allFuture') => {
     if (!selectedEntry) {
       showToast('No shift selected', 'error');
       return;
     }
 
-    // For web and mobile compatibility - just proceed with delete
-    // The ScheduleModal already has its own confirmation dialog
+    // Store values before any state changes to avoid stale closures
+    const entryId = selectedEntry.id;
+    const entryWeekId = selectedEntry.weekId;
+    const entryRecurringId = selectedEntry.recurringId;
+    const entryDate = selectedEntry.date;
+    const isRecurring = selectedEntry.isRecurring && entryRecurringId;
+
     try {
-      // Store values before deletion
-      const entryId = selectedEntry.id;
-      const entryWeekId = selectedEntry.weekId;
-      const isRecurring = selectedEntry.isRecurring && selectedEntry.recurringId;
+      if (isRecurring && deleteType === 'allFuture') {
+        // Delete this shift and all future shifts in the recurring pattern
+        const { error: deleteError } = await supabase
+          .from('schedule_entries')
+          .delete()
+          .eq('recurring_id', entryRecurringId!)
+          .gte('date', entryDate);
 
-      // If this is a recurring shift, ask if they want to delete the entire pattern
-      if (isRecurring) {
-        Alert.alert(
-          'Delete Recurring Shift',
-          'Do you want to delete only this shift or the entire recurring pattern?',
-          [
-            {
-              text: 'Cancel',
-              style: 'cancel',
-              onPress: () => {
-                // Just return without doing anything
-                return;
-              }
-            },
-            {
-              text: 'Delete This Only',
-              onPress: async () => {
-                try {
-                  // Delete just this shift
-                  const { error: deleteError } = await supabase
-                    .from('schedule_entries')
-                    .delete()
-                    .eq('id', entryId);
+        if (deleteError) {
+          throw deleteError;
+        }
 
-                  if (deleteError) {
-                    throw deleteError;
-                  }
+        // Mark the recurring pattern as inactive
+        await executeQuery('update', 'recurring_shifts', {
+          id: entryRecurringId!,
+          is_active: false,
+        });
 
-                  showToast('Shift deleted', 'success');
-                  await refreshAfterDelete(entryWeekId);
-                } catch (error) {
-                  console.error('Error deleting shift:', error);
-                  showToast('Failed to delete shift', 'error');
-                }
-              }
-            },
-            {
-              text: 'Delete All Future',
-              style: 'destructive',
-              onPress: async () => {
-                try {
-                  // Delete this shift and all future shifts in the pattern
-                  const { error: deleteError } = await supabase
-                    .from('schedule_entries')
-                    .delete()
-                    .eq('recurring_id', selectedEntry.recurringId!)
-                    .gte('date', selectedEntry.date);
+        showToast('All future recurring shifts deleted', 'success');
+      } else {
+        // Delete just this single shift (works for both recurring 'single' and non-recurring)
+        const { error: deleteError } = await supabase
+          .from('schedule_entries')
+          .delete()
+          .eq('id', entryId);
 
-                  if (deleteError) {
-                    throw deleteError;
-                  }
+        if (deleteError) {
+          throw deleteError;
+        }
 
-                  // Mark the recurring pattern as inactive
-                  await executeQuery('update', 'recurring_shifts', {
-                    id: selectedEntry.recurringId!,
-                    is_active: false,
-                  });
-
-                  showToast('All future recurring shifts deleted', 'success');
-                  await refreshAfterDelete(entryWeekId);
-                } catch (error) {
-                  console.error('Error deleting recurring pattern:', error);
-                  showToast('Failed to delete recurring pattern', 'error');
-                }
-              }
-            }
-          ]
-        );
-        return; // Exit early, the alert handlers will do the delete
+        showToast('Shift deleted', 'success');
       }
 
-      // Non-recurring shift - just delete it
-      const { error: deleteError } = await supabase
-        .from('schedule_entries')
-        .delete()
-        .eq('id', entryId);
-
-      if (deleteError) {
-        throw deleteError;
-      }
-
-      // Success! Show toast
-      showToast('Shift deleted', 'success');
-
-      // Refresh and close
+      // Refresh the schedule and close the modal
       await refreshAfterDelete(entryWeekId);
     } catch (error: any) {
+      console.error('Error deleting shift:', error);
       showToast(error.message || 'Failed to delete shift', 'error');
     }
   }, [selectedEntry, executeQuery, refreshAfterDelete, showToast]);

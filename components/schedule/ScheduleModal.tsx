@@ -73,7 +73,7 @@ interface ScheduleModalProps {
   // Actions
   onClose: () => void;
   onSave: (editAllRecurring?: boolean) => Promise<void>;
-  onDelete: () => void;
+  onDelete: (deleteType?: 'single' | 'allFuture') => void;
   onAddClient: () => void;
   onAddBuilding: () => void;
   onAddCleaner: () => void;
@@ -157,7 +157,8 @@ const ScheduleModal = memo(({
   
   // Local state for delete confirmation
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  
+  const [showRecurringDeleteOptions, setShowRecurringDeleteOptions] = useState(false);
+
   // Local state for save loading
   const [isSaving, setIsSaving] = useState(false);
 
@@ -447,45 +448,68 @@ const ScheduleModal = memo(({
   };
 
   const handleDeletePress = () => {
-    console.log('Delete button pressed, platform:', Platform.OS);
-    console.log('Selected entry:', selectedEntry?.id, selectedEntry?.cleanerName, selectedEntry?.buildingName);
-    
+    const isRecurring = selectedEntry?.isRecurring && selectedEntry?.recurringId;
+
     if (Platform.OS === 'web') {
-      console.log('Web platform detected, showing custom confirmation modal');
-      setShowDeleteConfirm(true);
+      if (isRecurring) {
+        // For recurring shifts on web, show the recurring delete options directly
+        setShowRecurringDeleteOptions(true);
+      } else {
+        setShowDeleteConfirm(true);
+      }
     } else {
-      console.log('Mobile platform detected, showing native Alert confirmation');
-      Alert.alert(
-        'Delete Shift',
-        `Are you sure you want to delete the shift for ${selectedEntry?.cleanerName} at ${selectedEntry?.buildingName}? This action cannot be undone.`,
-        [
-          { 
-            text: 'Cancel', 
-            style: 'cancel',
-            onPress: () => console.log('Delete cancelled by user')
-          },
-          {
-            text: 'Delete',
-            style: 'destructive',
-            onPress: confirmDelete
-          }
-        ]
-      );
+      if (isRecurring) {
+        // For recurring shifts on mobile, use Alert with 3 options
+        Alert.alert(
+          'Delete Recurring Shift',
+          'Do you want to delete only this shift or all future shifts in this pattern?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Delete This Only',
+              onPress: () => onDelete('single'),
+            },
+            {
+              text: 'Delete All Future',
+              style: 'destructive',
+              onPress: () => onDelete('allFuture'),
+            }
+          ]
+        );
+      } else {
+        Alert.alert(
+          'Delete Shift',
+          `Are you sure you want to delete the shift for ${selectedEntry?.cleanerName} at ${selectedEntry?.buildingName}? This action cannot be undone.`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Delete',
+              style: 'destructive',
+              onPress: () => onDelete(),
+            }
+          ]
+        );
+      }
     }
   };
 
   const confirmDelete = async () => {
-    console.log('Confirming delete operation...');
-    console.log('About to call onDelete function for entry:', selectedEntry?.id);
-    
     try {
       setShowDeleteConfirm(false);
-      console.log('Calling onDelete function...');
       await onDelete();
-      console.log('Delete operation completed successfully');
     } catch (error) {
       console.error('Error during delete confirmation:', error);
       setShowDeleteConfirm(false);
+    }
+  };
+
+  const confirmRecurringDelete = async (deleteType: 'single' | 'allFuture') => {
+    try {
+      setShowRecurringDeleteOptions(false);
+      await onDelete(deleteType);
+    } catch (error) {
+      console.error('Error during recurring delete:', error);
+      setShowRecurringDeleteOptions(false);
     }
   };
 
@@ -1118,23 +1142,29 @@ const ScheduleModal = memo(({
                             </Text>
                             <Icon name="chevron-down" size={20} style={{ color: colors.textSecondary }} />
                           </TouchableOpacity>
-                          {isDropdownOpen && (
+                          {isDropdownOpen && (() => {
+                            const selectedIdx = hoursOptions.indexOf(cleanerHoursValue);
+                            const rowIdx = Math.floor(selectedIdx / 3);
+                            const scrollY = Math.max(0, (rowIdx - 1) * 44);
+                            return (
                             <View style={styles.dropdownContainer}>
-                              <ScrollView style={styles.dropdown} nestedScrollEnabled>
+                              <ScrollView style={styles.gridDropdown} nestedScrollEnabled contentOffset={{ x: 0, y: scrollY }}>
+                                <View style={styles.gridDropdownContent}>
                                 {hoursOptions.map((hour) => (
                                   <TouchableOpacity
                                     key={hour}
-                                    style={[styles.dropdownItem, cleanerHoursValue === hour && { backgroundColor: themeColor }]}
+                                    style={[styles.gridDropdownItem, cleanerHoursValue === hour && { backgroundColor: themeColor }]}
                                     onPress={() => {
                                       setCleanerHours({ ...cleanerHours, [cleanerName]: hour });
                                       setOpenCleanerHoursDropdown(null);
                                     }}
                                   >
-                                    <Text style={[styles.dropdownText, cleanerHoursValue === hour && styles.dropdownTextSelected]}>
-                                      {hour} {parseFloat(hour) === 1 ? 'hour' : 'hours'}
+                                    <Text style={[styles.gridDropdownText, cleanerHoursValue === hour && styles.dropdownTextSelected]}>
+                                      {hour} {parseFloat(hour) === 1 ? 'hr' : 'hrs'}
                                     </Text>
                                   </TouchableOpacity>
                                 ))}
+                                </View>
                               </ScrollView>
                               <TouchableOpacity
                                 style={[styles.closeDropdownButton, { backgroundColor: themeColor }]}
@@ -1143,7 +1173,8 @@ const ScheduleModal = memo(({
                                 <Text style={styles.closeDropdownText}>Close</Text>
                               </TouchableOpacity>
                             </View>
-                          )}
+                            );
+                          })()}
                         </View>
                       </View>
                     );
@@ -1161,23 +1192,29 @@ const ScheduleModal = memo(({
                 </Text>
                 <Icon name="chevron-down" size={20} style={{ color: colors.textSecondary }} />
               </TouchableOpacity>
-              {showStartTimeDropdown && (
+              {showStartTimeDropdown && (() => {
+                const selectedIdx = startTimeOptions.indexOf(startTime);
+                const rowIdx = Math.floor(selectedIdx / 4);
+                const scrollY = Math.max(0, (rowIdx - 1) * 44);
+                return (
                 <View style={styles.dropdownContainer}>
-                  <ScrollView style={styles.dropdown} nestedScrollEnabled>
+                  <ScrollView style={styles.gridDropdown} nestedScrollEnabled contentOffset={{ x: 0, y: scrollY }}>
+                    <View style={styles.gridDropdownContent}>
                     {startTimeOptions.map((time) => (
                       <TouchableOpacity
                         key={time}
-                        style={[styles.dropdownItem, startTime === time && { backgroundColor: themeColor }]}
+                        style={[styles.gridDropdownItemWide, startTime === time && { backgroundColor: themeColor }]}
                         onPress={() => {
                           setStartTime(time);
                           setShowStartTimeDropdown(false);
                         }}
                       >
-                        <Text style={[styles.dropdownText, startTime === time && styles.dropdownTextSelected]}>
+                        <Text style={[styles.gridDropdownText, startTime === time && styles.dropdownTextSelected]}>
                           {time}
                         </Text>
                       </TouchableOpacity>
                     ))}
+                    </View>
                   </ScrollView>
                   <TouchableOpacity
                     style={[styles.closeDropdownButton, { backgroundColor: themeColor }]}
@@ -1186,7 +1223,8 @@ const ScheduleModal = memo(({
                     <Text style={styles.closeDropdownText}>Close</Text>
                   </TouchableOpacity>
                 </View>
-              )}
+                );
+              })()}
 
               {/* Notes Section */}
               <View style={styles.notesSection}>
@@ -1689,6 +1727,48 @@ const ScheduleModal = memo(({
           </View>
         </View>
       </Modal>
+
+      {/* Recurring Delete Options Modal */}
+      <Modal
+        visible={showRecurringDeleteOptions}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setShowRecurringDeleteOptions(false)}
+      >
+        <View style={styles.confirmModalOverlay}>
+          <View style={styles.confirmModalContainer}>
+            <View style={styles.confirmModalContent}>
+              <View style={styles.confirmIconContainer}>
+                <Icon name="trash" size={32} style={{ color: colors.danger }} />
+              </View>
+              <Text style={styles.confirmTitle}>Delete Recurring Shift</Text>
+              <Text style={styles.confirmMessage}>
+                This is a recurring shift. How would you like to delete it?
+              </Text>
+              <View style={styles.recurringDeleteActions}>
+                <Button
+                  text="Cancel"
+                  onPress={() => setShowRecurringDeleteOptions(false)}
+                  style={styles.recurringDeleteButton}
+                  variant="secondary"
+                />
+                <Button
+                  text="Delete This Only"
+                  onPress={() => confirmRecurringDelete('single')}
+                  style={styles.recurringDeleteButton}
+                  variant="danger"
+                />
+                <Button
+                  text="Delete All Future"
+                  onPress={() => confirmRecurringDelete('allFuture')}
+                  style={styles.recurringDeleteButton}
+                  variant="danger"
+                />
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 });
@@ -1795,6 +1875,46 @@ const styles = StyleSheet.create({
   dropdownTextSelected: {
     color: colors.background,
     fontWeight: '600',
+  },
+  gridDropdown: {
+    maxHeight: 280,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderTopWidth: 0,
+    backgroundColor: colors.background,
+  },
+  gridDropdownContent: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  gridDropdownItem: {
+    width: '33.33%',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    borderRightWidth: 1,
+    borderRightColor: colors.border,
+    minHeight: 44,
+  },
+  gridDropdownItemWide: {
+    width: '25%',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    borderRightWidth: 1,
+    borderRightColor: colors.border,
+    minHeight: 44,
+  },
+  gridDropdownText: {
+    fontSize: 14,
+    color: colors.text,
+    textAlign: 'center',
   },
   modalActions: {
     flexDirection: 'row',
@@ -2071,6 +2191,13 @@ const styles = StyleSheet.create({
   },
   confirmButton: {
     flex: 1,
+  },
+  recurringDeleteActions: {
+    gap: spacing.sm,
+    width: '100%',
+  },
+  recurringDeleteButton: {
+    width: '100%',
   },
   notesSection: {
     backgroundColor: colors.backgroundAlt,
