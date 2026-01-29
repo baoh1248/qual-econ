@@ -220,6 +220,20 @@ CREATE TABLE IF NOT EXISTS restock_requests (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS inventory_transfers (
+  id TEXT PRIMARY KEY,
+  items JSONB NOT NULL DEFAULT '[]'::jsonb,
+  destination TEXT NOT NULL DEFAULT '',
+  timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  transferred_by TEXT NOT NULL DEFAULT '',
+  notes TEXT,
+  total_value DECIMAL DEFAULT 0,
+  type TEXT CHECK (type IN ('outgoing', 'incoming')) NOT NULL DEFAULT 'outgoing',
+  source TEXT,
+  order_number TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_clients_name ON clients(name);
 CREATE INDEX IF NOT EXISTS idx_client_buildings_client_name ON client_buildings(client_name);
@@ -234,6 +248,8 @@ CREATE INDEX IF NOT EXISTS idx_schedule_entries_date ON schedule_entries(date);
 CREATE INDEX IF NOT EXISTS idx_inventory_items_category ON inventory_items(category);
 CREATE INDEX IF NOT EXISTS idx_inventory_transactions_item_id ON inventory_transactions(item_id);
 CREATE INDEX IF NOT EXISTS idx_restock_requests_status ON restock_requests(status);
+CREATE INDEX IF NOT EXISTS idx_inventory_transfers_timestamp ON inventory_transfers(timestamp);
+CREATE INDEX IF NOT EXISTS idx_inventory_transfers_type ON inventory_transfers(type);
 
 -- Create updated_at triggers
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -269,3 +285,4 @@ CREATE POLICY "Allow all operations" ON schedule_entries FOR ALL USING (true);
 CREATE POLICY "Allow all operations" ON inventory_items FOR ALL USING (true);
 CREATE POLICY "Allow all operations" ON inventory_transactions FOR ALL USING (true);
 CREATE POLICY "Allow all operations" ON restock_requests FOR ALL USING (true);
+CREATE POLICY "Allow all operations" ON inventory_transfers FOR ALL USING (true);

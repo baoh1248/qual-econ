@@ -1,5 +1,5 @@
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from '../app/integrations/supabase/client';
 
 export interface InventoryTransferItem {
   name: string;
@@ -22,33 +22,35 @@ export interface InventoryTransfer {
   orderNumber?: string; // For incoming transfers, order/invoice number
 }
 
-const STORAGE_KEY = 'inventory_transfer_logs';
-
 export async function logInventoryTransfer(transfer: Omit<InventoryTransfer, 'id'>): Promise<void> {
   try {
-    console.log('Logging inventory transfer:', transfer);
-    
     // Calculate total value if not provided
     const totalValue = transfer.totalValue || transfer.items.reduce((sum, item) => {
       return sum + (item.totalCost || 0);
     }, 0);
-    
+
     // Generate unique ID
-    const transferWithId: InventoryTransfer = {
-      ...transfer,
-      id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-      totalValue,
-    };
+    const id = Date.now().toString() + Math.random().toString(36).substr(2, 9);
 
-    // Fetch existing transfer logs
-    const existingLogs = await getInventoryTransferLogs();
+    const { error } = await supabase
+      .from('inventory_transfers')
+      .insert({
+        id,
+        items: transfer.items,
+        destination: transfer.destination,
+        timestamp: transfer.timestamp,
+        transferred_by: transfer.transferredBy,
+        notes: transfer.notes || null,
+        total_value: totalValue,
+        type: transfer.type || 'outgoing',
+        source: transfer.source || null,
+        order_number: transfer.orderNumber || null,
+      });
 
-    // Append the new transfer to the logs
-    const updatedLogs = [...existingLogs, transferWithId];
+    if (error) {
+      throw error;
+    }
 
-    // Save the updated logs
-    await saveInventoryTransferLogs(updatedLogs);
-    
     console.log('Inventory transfer logged successfully with total value:', totalValue);
   } catch (error) {
     console.error('Failed to log inventory transfer:', error);
@@ -58,12 +60,29 @@ export async function logInventoryTransfer(transfer: Omit<InventoryTransfer, 'id
 
 export async function getInventoryTransferLogs(): Promise<InventoryTransfer[]> {
   try {
-    const logsJson = await AsyncStorage.getItem(STORAGE_KEY);
-    if (!logsJson) {
-      return [];
+    const { data, error } = await supabase
+      .from('inventory_transfers')
+      .select('*')
+      .order('timestamp', { ascending: false });
+
+    if (error) {
+      throw error;
     }
-    
-    const logs = JSON.parse(logsJson);
+
+    // Map database columns to app interface
+    const logs: InventoryTransfer[] = (data || []).map((row: any) => ({
+      id: row.id,
+      items: row.items || [],
+      destination: row.destination || '',
+      timestamp: row.timestamp,
+      transferredBy: row.transferred_by || '',
+      notes: row.notes || undefined,
+      totalValue: parseFloat(row.total_value) || 0,
+      type: row.type || 'outgoing',
+      source: row.source || undefined,
+      orderNumber: row.order_number || undefined,
+    }));
+
     console.log(`Retrieved ${logs.length} inventory transfer logs`);
     return logs;
   } catch (error) {
@@ -73,20 +92,22 @@ export async function getInventoryTransferLogs(): Promise<InventoryTransfer[]> {
 }
 
 export async function saveInventoryTransferLogs(logs: InventoryTransfer[]): Promise<void> {
-  try {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(logs));
-    console.log(`Saved ${logs.length} inventory transfer logs`);
-  } catch (error) {
-    console.error('Failed to save inventory transfer logs:', error);
-    throw error;
-  }
+  // This function is no longer needed with Supabase (individual inserts/deletes handle everything).
+  // Kept for backward compatibility but should not be called.
+  console.warn('saveInventoryTransferLogs is deprecated with Supabase storage');
 }
 
 export async function deleteInventoryTransferLog(transferId: string): Promise<void> {
   try {
-    const existingLogs = await getInventoryTransferLogs();
-    const updatedLogs = existingLogs.filter(log => log.id !== transferId);
-    await saveInventoryTransferLogs(updatedLogs);
+    const { error } = await supabase
+      .from('inventory_transfers')
+      .delete()
+      .eq('id', transferId);
+
+    if (error) {
+      throw error;
+    }
+
     console.log(`Deleted inventory transfer log: ${transferId}`);
   } catch (error) {
     console.error('Failed to delete inventory transfer log:', error);
