@@ -48,6 +48,10 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
   const [processing, setProcessing] = useState(false);
   const [showItemSearch, setShowItemSearch] = useState(false);
 
+  // Local editing state so numeric fields can be freely typed without reformatting mid-keystroke
+  const [editingQuantities, setEditingQuantities] = useState<Record<string, string>>({});
+  const [editingCosts, setEditingCosts] = useState<Record<string, string>>({});
+
   useEffect(() => {
     if (visible) {
       // Auto-generate order number when modal opens
@@ -330,11 +334,19 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
                         />
                         <TextInput
                           style={styles.quantityInput}
-                          value={item.quantity.toString()}
+                          value={editingQuantities[item.id] !== undefined ? editingQuantities[item.id] : item.quantity.toString()}
+                          onFocus={() => setEditingQuantities(prev => ({ ...prev, [item.id]: item.quantity.toString() }))}
                           onChangeText={(text) => {
-                            const qty = parseInt(text) || 1;
-                            updateItemQuantity(item.id, qty);
+                            // Allow free typing - only keep digits
+                            const cleaned = text.replace(/[^0-9]/g, '');
+                            setEditingQuantities(prev => ({ ...prev, [item.id]: cleaned }));
                           }}
+                          onBlur={() => {
+                            const qty = parseInt(editingQuantities[item.id]) || 1;
+                            updateItemQuantity(item.id, qty);
+                            setEditingQuantities(prev => { const next = { ...prev }; delete next[item.id]; return next; });
+                          }}
+                          selectTextOnFocus
                           keyboardType="numeric"
                         />
                         <Text style={[typography.caption, { color: colors.textSecondary }]}>{item.unit}</Text>
@@ -355,11 +367,19 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
                         <Text style={[typography.body, { color: colors.text, marginRight: spacing.xs }]}>$</Text>
                         <TextInput
                           style={styles.costInput}
-                          value={(item.unitCost || 0).toFixed(2)}
+                          value={editingCosts[item.id] !== undefined ? editingCosts[item.id] : (item.unitCost || 0).toFixed(2)}
+                          onFocus={() => setEditingCosts(prev => ({ ...prev, [item.id]: (item.unitCost || 0).toFixed(2) }))}
                           onChangeText={(text) => {
-                            const cost = parseFloat(text) || 0;
-                            updateItemUnitCost(item.id, cost);
+                            // Allow free typing - only keep digits and one decimal point
+                            const cleaned = text.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1');
+                            setEditingCosts(prev => ({ ...prev, [item.id]: cleaned }));
                           }}
+                          onBlur={() => {
+                            const cost = parseFloat(editingCosts[item.id]) || 0;
+                            updateItemUnitCost(item.id, cost);
+                            setEditingCosts(prev => { const next = { ...prev }; delete next[item.id]; return next; });
+                          }}
+                          selectTextOnFocus
                           keyboardType="decimal-pad"
                         />
                         <Text style={[typography.caption, { color: colors.textSecondary, marginLeft: spacing.xs }]}>
