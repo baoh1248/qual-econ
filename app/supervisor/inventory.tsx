@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Text, View, ScrollView, TouchableOpacity, TextInput, Alert, Modal, StyleSheet, Platform, Dimensions } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useToast } from '../../hooks/useToast';
 import { useDatabase } from '../../hooks/useDatabase';
 import { useTheme } from '../../hooks/useTheme';
@@ -489,9 +489,12 @@ export default function SupervisorInventoryScreen() {
     await loadInventoryData();
   }, [config.useSupabase, syncStatus.isOnline, loadInventoryData]);
 
-  useEffect(() => {
-    loadInventoryData();
-  }, [loadInventoryData]);
+  // Reload inventory data every time the screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      loadInventoryData();
+    }, [loadInventoryData])
+  );
 
   useEffect(() => {
     if (syncStatus.isOnline && config.useSupabase) {

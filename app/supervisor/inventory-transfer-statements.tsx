@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Text, View, ScrollView, TouchableOpacity, StyleSheet, Modal, Platform } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useToast } from '../../hooks/useToast';
 import { useDatabase } from '../../hooks/useDatabase';
 import { useTheme } from '../../hooks/useTheme';
@@ -528,9 +528,12 @@ export default function InventoryTransferStatementsScreen() {
     }
   }, [showToast]);
 
-  useEffect(() => {
-    loadTransfers();
-  }, [loadTransfers]);
+  // Reload transfers every time the screen comes into focus (not just on mount)
+  useFocusEffect(
+    useCallback(() => {
+      loadTransfers();
+    }, [loadTransfers])
+  );
 
   useEffect(() => {
     // Build monthly inventory statements with item ledgers
