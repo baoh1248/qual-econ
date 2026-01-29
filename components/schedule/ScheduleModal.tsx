@@ -1144,8 +1144,8 @@ const ScheduleModal = memo(({
                           </TouchableOpacity>
                           {isDropdownOpen && (() => {
                             const selectedIdx = hoursOptions.indexOf(cleanerHoursValue);
-                            const rowIdx = Math.floor(selectedIdx / 3);
-                            const scrollY = Math.max(0, (rowIdx - 1) * 44);
+                            const rowIdx = Math.floor(selectedIdx / 4);
+                            const scrollY = Math.max(0, (rowIdx - 1) * 56);
                             return (
                             <View style={styles.dropdownContainer}>
                               <ScrollView style={styles.gridDropdown} nestedScrollEnabled contentOffset={{ x: 0, y: scrollY }}>
@@ -1888,9 +1888,9 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   gridDropdownItem: {
-    width: '33.33%',
+    width: '25%',
     paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.sm,
     alignItems: 'center',
     justifyContent: 'center',
     borderBottomWidth: 1,
@@ -2423,7 +2423,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   cleanerHoursInputWrapper: {
-    width: 180,
+    width: 240,
   },
   cleanerHoursInput: {
     borderWidth: 1,
