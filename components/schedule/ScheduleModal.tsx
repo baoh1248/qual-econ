@@ -2423,7 +2423,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   cleanerHoursInputWrapper: {
-    width: 120,
+    width: 180,
   },
   cleanerHoursInput: {
     borderWidth: 1,
