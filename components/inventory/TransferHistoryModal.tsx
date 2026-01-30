@@ -1,12 +1,12 @@
 
 import React, { memo, useState, useEffect, useMemo } from 'react';
-import { View, Text, Modal, ScrollView, TouchableOpacity, StyleSheet, Platform, Alert } from 'react-native';
+import { View, Text, Modal, ScrollView, TouchableOpacity, TextInput, StyleSheet, Platform, Alert } from 'react-native';
 import { colors, spacing, typography, commonStyles, getContrastColor } from '../../styles/commonStyles';
 import Icon from '../Icon';
 import Button from '../Button';
 import IconButton from '../IconButton';
 import FilterDropdown from '../FilterDropdown';
-import { getInventoryTransferLogs, deleteInventoryTransferLog, formatTransferSummary, formatCurrency, type InventoryTransfer } from '../../utils/inventoryTracking';
+import { getInventoryTransferLogs, deleteInventoryTransferLog, updateInventoryTransferLog, formatTransferSummary, formatCurrency, type InventoryTransfer, type InventoryTransferItem } from '../../utils/inventoryTracking';
 import PropTypes from 'prop-types';
 
 interface TransferHistoryModalProps {
@@ -25,6 +25,13 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
   const [transferToDelete, setTransferToDelete] = useState<InventoryTransfer | null>(null);
   const [selectedClient, setSelectedClient] = useState<string>('');
   const [selectedBuilding, setSelectedBuilding] = useState<string>('');
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingTransfer, setEditingTransfer] = useState<InventoryTransfer | null>(null);
+  const [editDestination, setEditDestination] = useState('');
+  const [editSource, setEditSource] = useState('');
+  const [editOrderNumber, setEditOrderNumber] = useState('');
+  const [editNotes, setEditNotes] = useState('');
+  const [editItems, setEditItems] = useState<InventoryTransferItem[]>([]);
 
   useEffect(() => {
     if (visible) {
@@ -133,6 +140,50 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
     } finally {
       setShowDeleteConfirmModal(false);
       setTransferToDelete(null);
+    }
+  };
+
+  const handleEditTransfer = (transfer: InventoryTransfer) => {
+    setEditingTransfer(transfer);
+    setEditDestination(transfer.destination);
+    setEditSource(transfer.source || '');
+    setEditOrderNumber(transfer.orderNumber || '');
+    setEditNotes(transfer.notes || '');
+    setEditItems(transfer.items.map(item => ({ ...item })));
+    setShowEditModal(true);
+  };
+
+  const updateEditItem = (index: number, field: keyof InventoryTransferItem, value: any) => {
+    const newItems = [...editItems];
+    newItems[index] = { ...newItems[index], [field]: value };
+    if (field === 'quantity' || field === 'unitCost') {
+      newItems[index].totalCost = (newItems[index].quantity || 0) * (newItems[index].unitCost || 0);
+    }
+    setEditItems(newItems);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingTransfer) return;
+
+    try {
+      const updates: Partial<Omit<InventoryTransfer, 'id'>> = {
+        items: editItems,
+        destination: editDestination,
+        notes: editNotes || undefined,
+      };
+
+      if (editingTransfer.type === 'incoming') {
+        updates.source = editSource;
+        updates.orderNumber = editOrderNumber;
+      }
+
+      await updateInventoryTransferLog(editingTransfer.id, updates);
+      await loadTransfers();
+      onRefresh?.();
+      setShowEditModal(false);
+      setEditingTransfer(null);
+    } catch (error) {
+      console.error('Failed to update transfer:', error);
     }
   };
 
@@ -404,13 +455,22 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
                                 </View>
                               </View>
                             </View>
-                            <IconButton
-                              icon="trash"
-                              onPress={() => handleDeleteTransfer(transfer)}
-                              variant="secondary"
-                              size="small"
-                              style={{ backgroundColor: colors.danger + '15' }}
-                            />
+                            <View style={{ flexDirection: 'row', gap: spacing.xs }}>
+                              <IconButton
+                                icon="create"
+                                onPress={() => handleEditTransfer(transfer)}
+                                variant="secondary"
+                                size="small"
+                                style={{ backgroundColor: colors.primary + '15' }}
+                              />
+                              <IconButton
+                                icon="trash"
+                                onPress={() => handleDeleteTransfer(transfer)}
+                                variant="secondary"
+                                size="small"
+                                style={{ backgroundColor: colors.danger + '15' }}
+                              />
+                            </View>
                           </View>
 
                           <View style={styles.transferItems}>
@@ -508,6 +568,164 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
                 onPress={() => transferToDelete && confirmDeleteTransfer(transferToDelete.id)}
                 style={{ flex: 1 }}
                 variant="danger"
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Edit Transfer Modal */}
+      <Modal
+        visible={showEditModal}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setShowEditModal(false)}
+      >
+        <View style={styles.editModalOverlay}>
+          <View style={styles.editModalContent}>
+            <View style={styles.editModalHeaderRow}>
+              <Icon name="create" size={24} color={colors.primary} />
+              <Text style={styles.editModalTitle}>
+                Edit {editingTransfer?.type === 'incoming' ? 'Supply Received' : 'Transfer'}
+              </Text>
+              <TouchableOpacity onPress={() => { setShowEditModal(false); setEditingTransfer(null); }}>
+                <Icon name="close" size={24} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.editModalScroll} showsVerticalScrollIndicator={false}>
+              {/* Destination / Source */}
+              <View style={styles.editFormGroup}>
+                <Text style={styles.editLabel}>
+                  {editingTransfer?.type === 'incoming' ? 'Destination' : 'Destination'}
+                </Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={editDestination}
+                  onChangeText={setEditDestination}
+                  placeholder="Enter destination"
+                  placeholderTextColor={colors.textSecondary}
+                />
+              </View>
+
+              {editingTransfer?.type === 'incoming' && (
+                <>
+                  <View style={styles.editFormGroup}>
+                    <Text style={styles.editLabel}>Supplier / Source</Text>
+                    <TextInput
+                      style={styles.editInput}
+                      value={editSource}
+                      onChangeText={setEditSource}
+                      placeholder="Enter supplier name"
+                      placeholderTextColor={colors.textSecondary}
+                    />
+                  </View>
+
+                  <View style={styles.editFormGroup}>
+                    <Text style={styles.editLabel}>Order / Invoice Number</Text>
+                    <TextInput
+                      style={styles.editInput}
+                      value={editOrderNumber}
+                      onChangeText={setEditOrderNumber}
+                      placeholder="Enter order number"
+                      placeholderTextColor={colors.textSecondary}
+                    />
+                  </View>
+                </>
+              )}
+
+              {/* Items */}
+              <Text style={styles.editSectionTitle}>Items</Text>
+              {editItems.map((item, index) => (
+                <View key={index} style={styles.editItemCard}>
+                  <View style={styles.editFormGroup}>
+                    <Text style={styles.editLabel}>Item Name</Text>
+                    <TextInput
+                      style={styles.editInput}
+                      value={item.name}
+                      onChangeText={(text) => updateEditItem(index, 'name', text)}
+                      placeholder="Item name"
+                      placeholderTextColor={colors.textSecondary}
+                    />
+                  </View>
+
+                  <View style={styles.editItemRow}>
+                    <View style={[styles.editFormGroup, { flex: 1 }]}>
+                      <Text style={styles.editLabel}>Quantity</Text>
+                      <TextInput
+                        style={styles.editInput}
+                        value={item.quantity.toString()}
+                        onChangeText={(text) => {
+                          const num = parseInt(text) || 0;
+                          updateEditItem(index, 'quantity', num);
+                        }}
+                        keyboardType="numeric"
+                        placeholder="0"
+                        placeholderTextColor={colors.textSecondary}
+                      />
+                    </View>
+
+                    <View style={[styles.editFormGroup, { flex: 1 }]}>
+                      <Text style={styles.editLabel}>Unit</Text>
+                      <TextInput
+                        style={styles.editInput}
+                        value={item.unit}
+                        onChangeText={(text) => updateEditItem(index, 'unit', text)}
+                        placeholder="units"
+                        placeholderTextColor={colors.textSecondary}
+                      />
+                    </View>
+
+                    <View style={[styles.editFormGroup, { flex: 1 }]}>
+                      <Text style={styles.editLabel}>Unit Cost ($)</Text>
+                      <TextInput
+                        style={styles.editInput}
+                        value={(item.unitCost || 0).toString()}
+                        onChangeText={(text) => {
+                          const num = parseFloat(text) || 0;
+                          updateEditItem(index, 'unitCost', num);
+                        }}
+                        keyboardType="decimal-pad"
+                        placeholder="0.00"
+                        placeholderTextColor={colors.textSecondary}
+                      />
+                    </View>
+                  </View>
+
+                  <View style={styles.editItemTotal}>
+                    <Text style={styles.editItemTotalLabel}>Total:</Text>
+                    <Text style={styles.editItemTotalValue}>
+                      {formatCurrency((item.quantity || 0) * (item.unitCost || 0))}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+
+              {/* Notes */}
+              <View style={styles.editFormGroup}>
+                <Text style={styles.editLabel}>Notes</Text>
+                <TextInput
+                  style={[styles.editInput, { minHeight: 80, textAlignVertical: 'top' }]}
+                  value={editNotes}
+                  onChangeText={setEditNotes}
+                  placeholder="Add notes (optional)"
+                  placeholderTextColor={colors.textSecondary}
+                  multiline
+                />
+              </View>
+            </ScrollView>
+
+            <View style={styles.editModalActions}>
+              <Button
+                text="Cancel"
+                onPress={() => { setShowEditModal(false); setEditingTransfer(null); }}
+                style={{ flex: 1 }}
+                variant="secondary"
+              />
+              <Button
+                text="Save Changes"
+                onPress={handleSaveEdit}
+                style={{ flex: 1 }}
               />
             </View>
           </View>
@@ -879,6 +1097,112 @@ const styles = StyleSheet.create({
   deleteModalActions: {
     flexDirection: 'row',
     gap: spacing.md,
+  },
+  editModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  editModalContent: {
+    backgroundColor: colors.background,
+    borderRadius: 20,
+    padding: spacing.xl,
+    width: '100%',
+    maxWidth: 550,
+    maxHeight: '85%',
+    shadowColor: colors.text,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  editModalHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.lg,
+    paddingBottom: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  editModalTitle: {
+    ...typography.h2,
+    color: colors.text,
+    fontWeight: '700',
+    flex: 1,
+    marginLeft: spacing.sm,
+  },
+  editModalScroll: {
+    flex: 1,
+  },
+  editFormGroup: {
+    marginBottom: spacing.md,
+  },
+  editLabel: {
+    ...typography.small,
+    color: colors.textSecondary,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: spacing.xs,
+  },
+  editInput: {
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 10,
+    padding: spacing.md,
+    fontSize: 15,
+    color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  editSectionTitle: {
+    ...typography.h3,
+    color: colors.text,
+    fontWeight: '700',
+    marginBottom: spacing.md,
+    marginTop: spacing.sm,
+  },
+  editItemCard: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  editItemRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  editItemTotal: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    gap: spacing.xs,
+  },
+  editItemTotalLabel: {
+    ...typography.bodyMedium,
+    color: colors.textSecondary,
+    fontWeight: '600',
+  },
+  editItemTotalValue: {
+    ...typography.bodyMedium,
+    color: colors.primary,
+    fontWeight: '700',
+  },
+  editModalActions: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginTop: spacing.lg,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
   },
 });
 

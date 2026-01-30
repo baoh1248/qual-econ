@@ -97,6 +97,45 @@ export async function saveInventoryTransferLogs(logs: InventoryTransfer[]): Prom
   console.warn('saveInventoryTransferLogs is deprecated with Supabase storage');
 }
 
+export async function updateInventoryTransferLog(
+  transferId: string,
+  updates: Partial<Omit<InventoryTransfer, 'id'>>
+): Promise<void> {
+  try {
+    const dbUpdates: any = {};
+
+    if (updates.items !== undefined) dbUpdates.items = updates.items;
+    if (updates.destination !== undefined) dbUpdates.destination = updates.destination;
+    if (updates.timestamp !== undefined) dbUpdates.timestamp = updates.timestamp;
+    if (updates.transferredBy !== undefined) dbUpdates.transferred_by = updates.transferredBy;
+    if (updates.notes !== undefined) dbUpdates.notes = updates.notes || null;
+    if (updates.type !== undefined) dbUpdates.type = updates.type;
+    if (updates.source !== undefined) dbUpdates.source = updates.source || null;
+    if (updates.orderNumber !== undefined) dbUpdates.order_number = updates.orderNumber || null;
+
+    // Recalculate total value if items were updated
+    if (updates.items) {
+      dbUpdates.total_value = updates.items.reduce((sum, item) => sum + (item.totalCost || 0), 0);
+    } else if (updates.totalValue !== undefined) {
+      dbUpdates.total_value = updates.totalValue;
+    }
+
+    const { error } = await supabase
+      .from('inventory_transfers')
+      .update(dbUpdates)
+      .eq('id', transferId);
+
+    if (error) {
+      throw error;
+    }
+
+    console.log('Inventory transfer updated successfully:', transferId);
+  } catch (error) {
+    console.error('Failed to update inventory transfer:', error);
+    throw error;
+  }
+}
+
 export async function deleteInventoryTransferLog(transferId: string): Promise<void> {
   try {
     const { error } = await supabase

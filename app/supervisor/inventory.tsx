@@ -412,6 +412,7 @@ export default function SupervisorInventoryScreen() {
   const [showSendItemsModal, setShowSendItemsModal] = useState(false);
   const [showTransferHistoryModal, setShowTransferHistoryModal] = useState(false);
   const [showReceiveSupplyModal, setShowReceiveSupplyModal] = useState(false);
+  const [deleteConfirmItem, setDeleteConfirmItem] = useState<{ id: string; name: string } | null>(null);
 
   const [newItemForm, setNewItemForm] = useState<NewItemForm>({
     name: '',
@@ -632,42 +633,49 @@ export default function SupervisorInventoryScreen() {
     }
   };
 
-  const handleDeleteItem = async (itemId: string, itemName: string) => {
-    Alert.alert(
-      'Delete Item',
-      `Are you sure you want to delete ${itemName}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              console.log('🔄 Deleting inventory item:', itemId);
-
-              const { error } = await supabase
-                .from('inventory_items')
-                .delete()
-                .eq('id', itemId);
-
-              if (error) {
-                console.error('❌ Error deleting inventory item:', error);
-                throw error;
-              }
-
-              console.log('✅ Inventory item deleted successfully');
-              showToast('Item deleted successfully', 'success');
-              
-              // Refresh data to remove the deleted item
-              await loadInventoryData();
-            } catch (error) {
-              console.error('❌ Failed to delete inventory item:', error);
-              showToast('Failed to delete item', 'error');
-            }
+  const handleDeleteItem = (itemId: string, itemName: string) => {
+    if (Platform.OS === 'web') {
+      setDeleteConfirmItem({ id: itemId, name: itemName });
+    } else {
+      Alert.alert(
+        'Delete Item',
+        `Are you sure you want to delete ${itemName}?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: () => confirmDeleteItem(itemId),
           },
-        },
-      ]
-    );
+        ]
+      );
+    }
+  };
+
+  const confirmDeleteItem = async (itemId: string) => {
+    try {
+      console.log('🔄 Deleting inventory item:', itemId);
+
+      const { error } = await supabase
+        .from('inventory_items')
+        .delete()
+        .eq('id', itemId);
+
+      if (error) {
+        console.error('❌ Error deleting inventory item:', error);
+        throw error;
+      }
+
+      console.log('✅ Inventory item deleted successfully');
+      showToast('Item deleted successfully', 'success');
+
+      await loadInventoryData();
+    } catch (error) {
+      console.error('❌ Failed to delete inventory item:', error);
+      showToast('Failed to delete item', 'error');
+    } finally {
+      setDeleteConfirmItem(null);
+    }
   };
 
   const handleSendItems = async (itemIds: string[], quantities: number[]) => {
@@ -1423,6 +1431,33 @@ export default function SupervisorInventoryScreen() {
               <Button
                 title="Save Changes"
                 onPress={handleUpdateItem}
+                style={{ flex: 1 }}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Delete Confirmation Modal (web-compatible) */}
+      <Modal visible={deleteConfirmItem !== null} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxWidth: 400, alignItems: 'center' }]}>
+            <Icon name="trash" size={48} color={colors.error} />
+            <Text style={[styles.modalTitle, { textAlign: 'center', marginTop: spacing.md }]}>Delete Item</Text>
+            <Text style={{ fontSize: 16, color: colors.textSecondary, textAlign: 'center', marginBottom: spacing.lg }}>
+              Are you sure you want to delete {deleteConfirmItem?.name}? This action cannot be undone.
+            </Text>
+            <View style={styles.modalActions}>
+              <Button
+                title="Cancel"
+                onPress={() => setDeleteConfirmItem(null)}
+                variant="secondary"
+                style={{ flex: 1 }}
+              />
+              <Button
+                title="Delete"
+                onPress={() => deleteConfirmItem && confirmDeleteItem(deleteConfirmItem.id)}
+                variant="danger"
                 style={{ flex: 1 }}
               />
             </View>
