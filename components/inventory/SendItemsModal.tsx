@@ -49,6 +49,7 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
   const [selectedBuildingId, setSelectedBuildingId] = useState<string | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [selectedItems, setSelectedItems] = useState<SelectedItem[]>([]);
+  const [sentFrom, setSentFrom] = useState('');
   const [notes, setNotes] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [sending, setSending] = useState(false);
@@ -70,6 +71,7 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
       setSelectedBuildingId(null);
       setSelectedGroupId(null);
       setSelectedItems([]);
+      setSentFrom('');
       setNotes('');
       setSearchQuery('');
       setExpandedBuildingClients(new Set());
@@ -248,6 +250,7 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
         destination: destinationName,
         timestamp: new Date().toISOString(),
         transferredBy: 'Supervisor',
+        sentFrom: sentFrom.trim() || undefined,
         notes: notes.trim() || undefined,
         totalValue: totalValue,
       });
@@ -383,6 +386,20 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
           </View>
 
           <ScrollView style={commonStyles.content} showsVerticalScrollIndicator={false}>
+            {/* Sent From */}
+            <View style={{ marginBottom: spacing.lg }}>
+              <Text style={[typography.body, { color: colors.text, fontWeight: '600', marginBottom: spacing.sm }]}>
+                Sent From
+              </Text>
+              <TextInput
+                style={commonStyles.textInput}
+                placeholder="e.g. Company Warehouse, Client C - Building D"
+                placeholderTextColor={colors.textSecondary}
+                value={sentFrom}
+                onChangeText={setSentFrom}
+              />
+            </View>
+
             <View style={{ marginBottom: spacing.lg }}>
               <Text style={[typography.body, { color: colors.text, fontWeight: '600', marginBottom: spacing.sm }]}>
                 Destination

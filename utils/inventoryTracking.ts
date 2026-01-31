@@ -20,6 +20,7 @@ export interface InventoryTransfer {
   type: 'outgoing' | 'incoming'; // 'outgoing' = to client, 'incoming' = from supplier
   source?: string; // For incoming transfers, name of supplier
   orderNumber?: string; // For incoming transfers, order/invoice number
+  sentFrom?: string; // Where items were sent from (e.g. "Company Warehouse", "Client C - Building D")
 }
 
 export async function logInventoryTransfer(transfer: Omit<InventoryTransfer, 'id'>): Promise<void> {
@@ -45,6 +46,7 @@ export async function logInventoryTransfer(transfer: Omit<InventoryTransfer, 'id
         type: transfer.type || 'outgoing',
         source: transfer.source || null,
         order_number: transfer.orderNumber || null,
+        sent_from: transfer.sentFrom || null,
       });
 
     if (error) {
@@ -81,6 +83,7 @@ export async function getInventoryTransferLogs(): Promise<InventoryTransfer[]> {
       type: row.type || 'outgoing',
       source: row.source || undefined,
       orderNumber: row.order_number || undefined,
+      sentFrom: row.sent_from || undefined,
     }));
 
     console.log(`Retrieved ${logs.length} inventory transfer logs`);
@@ -112,6 +115,7 @@ export async function updateInventoryTransferLog(
     if (updates.type !== undefined) dbUpdates.type = updates.type;
     if (updates.source !== undefined) dbUpdates.source = updates.source || null;
     if (updates.orderNumber !== undefined) dbUpdates.order_number = updates.orderNumber || null;
+    if (updates.sentFrom !== undefined) dbUpdates.sent_from = updates.sentFrom || null;
 
     // Recalculate total value if items were updated
     if (updates.items) {
@@ -163,11 +167,13 @@ export function formatTransferSummary(transfer: InventoryTransfer): string {
   const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const dateString = date.toLocaleDateString([], { month: '2-digit', day: '2-digit' });
 
+  const fromPart = transfer.sentFrom ? ` from ${transfer.sentFrom}` : '';
+
   if (transfer.type === 'incoming') {
     const source = transfer.source || 'Supplier';
-    return `${itemSummaries.join(' and ')} received from ${source} at ${timeString} on ${dateString}`;
+    return `${itemSummaries.join(' and ')} received from ${source}${fromPart} at ${timeString} on ${dateString}`;
   } else {
-    return `${itemSummaries.join(' and ')} sent to ${transfer.destination} at ${timeString} on ${dateString}`;
+    return `${itemSummaries.join(' and ')} sent${fromPart} to ${transfer.destination} at ${timeString} on ${dateString}`;
   }
 }
 

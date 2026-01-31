@@ -21,6 +21,7 @@ interface ItemTransaction {
   type: 'incoming' | 'outgoing';
   quantity: number;
   location: string; // client name or supplier name
+  sentFrom?: string;
   transferId: string;
   transferredBy: string;
   notes?: string;
@@ -49,6 +50,7 @@ interface BuildingTransfer {
   items: { name: string; quantity: number; unit: string; unitCost?: number; totalCost?: number }[];
   transferredBy: string;
   notes?: string;
+  sentFrom?: string;
   type: 'incoming' | 'outgoing';
   totalValue?: number;
 }
@@ -592,6 +594,7 @@ export default function InventoryTransferStatementsScreen() {
             type: transfer.type,
             quantity: item.quantity,
             location: transfer.type === 'incoming' ? (transfer.source || 'Supplier') : transfer.destination,
+            sentFrom: transfer.sentFrom,
             transferId: transfer.id,
             transferredBy: transfer.transferredBy,
             notes: transfer.notes,
@@ -750,6 +753,7 @@ export default function InventoryTransferStatementsScreen() {
         })),
         transferredBy: t.transferredBy,
         notes: t.notes,
+        sentFrom: t.sentFrom,
         type: t.type,
         totalValue: t.totalValue,
       });
@@ -941,22 +945,27 @@ export default function InventoryTransferStatementsScreen() {
                           {/* Table Header */}
                           <View style={styles.tableHeader}>
                             <Text style={[styles.tableHeaderText, { width: 55 }]}>Date</Text>
-                            <Text style={[styles.tableHeaderText, { flex: 1 }]}>Location</Text>
-                            <Text style={[styles.tableHeaderText, { width: 75 }]}>Type</Text>
-                            <Text style={[styles.tableHeaderText, { width: 50, textAlign: 'right' }]}>Qty</Text>
+                            <Text style={[styles.tableHeaderText, { flex: 1 }]}>From</Text>
+                            <Text style={[styles.tableHeaderText, { flex: 1 }]}>To</Text>
+                            <Text style={[styles.tableHeaderText, { width: 55 }]}>Type</Text>
+                            <Text style={[styles.tableHeaderText, { width: 40, textAlign: 'right' }]}>Qty</Text>
                           </View>
                           {/* Table Rows */}
                           {ledger.transactions.map((transaction, txIndex) => (
                             <View key={txIndex} style={styles.transactionRow}>
                               <Text style={styles.transactionDate}>{transaction.date}</Text>
-                              <Text style={styles.transactionLocation} numberOfLines={1}>
+                              <Text style={[styles.transactionLocation, { flex: 1 }]} numberOfLines={1}>
+                                {transaction.sentFrom || '-'}
+                              </Text>
+                              <Text style={[styles.transactionLocation, { flex: 1 }]} numberOfLines={1}>
                                 {transaction.location}
                               </Text>
-                              <Text style={styles.transactionType}>
-                                {transaction.type === 'incoming' ? 'Received' : 'Sent'}
+                              <Text style={[styles.transactionType, { width: 55 }]}>
+                                {transaction.type === 'incoming' ? 'In' : 'Out'}
                               </Text>
                               <Text style={[
                                 styles.transactionQuantity,
+                                { width: 40 },
                                 transaction.type === 'incoming' ? styles.quantityIncoming : styles.quantityOutgoing
                               ]}>
                                 {transaction.type === 'incoming' ? '+' : '-'}{transaction.quantity}
@@ -1041,6 +1050,11 @@ export default function InventoryTransferStatementsScreen() {
                             ]}
                           >
                             <Text style={styles.transferDate}>{transfer.date}</Text>
+                            {transfer.sentFrom && (
+                              <Text style={[styles.transferBy, { marginTop: 0, marginBottom: 4, fontStyle: 'normal', color: colors.primary }]}>
+                                From: {transfer.sentFrom}
+                              </Text>
+                            )}
                             <View style={styles.transferItemsContainer}>
                               {transfer.items.map((item, itemIdx) => (
                                 <View key={itemIdx} style={styles.transferItemRow}>

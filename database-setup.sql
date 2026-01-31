@@ -231,6 +231,7 @@ CREATE TABLE IF NOT EXISTS inventory_transfers (
   type TEXT CHECK (type IN ('outgoing', 'incoming')) NOT NULL DEFAULT 'outgoing',
   source TEXT,
   order_number TEXT,
+  sent_from TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

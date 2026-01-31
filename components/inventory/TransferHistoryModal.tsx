@@ -31,6 +31,7 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
   const [editSource, setEditSource] = useState('');
   const [editOrderNumber, setEditOrderNumber] = useState('');
   const [editNotes, setEditNotes] = useState('');
+  const [editSentFrom, setEditSentFrom] = useState('');
   const [editItems, setEditItems] = useState<InventoryTransferItem[]>([]);
 
   useEffect(() => {
@@ -149,6 +150,7 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
     setEditSource(transfer.source || '');
     setEditOrderNumber(transfer.orderNumber || '');
     setEditNotes(transfer.notes || '');
+    setEditSentFrom(transfer.sentFrom || '');
     setEditItems(transfer.items.map(item => ({ ...item })));
     setShowEditModal(true);
   };
@@ -170,6 +172,7 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
         items: editItems,
         destination: editDestination,
         notes: editNotes || undefined,
+        sentFrom: editSentFrom || undefined,
       };
 
       if (editingTransfer.type === 'incoming') {
@@ -453,6 +456,14 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
                                   <Icon name="person" size={14} color={colors.textSecondary} />
                                   <Text style={styles.transferMetaText}>{transfer.transferredBy}</Text>
                                 </View>
+                                {transfer.sentFrom && (
+                                  <View style={[styles.transferMeta, { marginTop: spacing.xs }]}>
+                                    <Icon name="location" size={14} color={colors.primary} />
+                                    <Text style={[styles.transferMetaText, { color: colors.primary, fontWeight: '600' }]}>
+                                      From: {transfer.sentFrom}
+                                    </Text>
+                                  </View>
+                                )}
                               </View>
                             </View>
                             <View style={{ flexDirection: 'row', gap: spacing.xs }}>
@@ -594,11 +605,21 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
             </View>
 
             <ScrollView style={styles.editModalScroll} showsVerticalScrollIndicator={false}>
-              {/* Destination / Source */}
+              {/* Sent From */}
               <View style={styles.editFormGroup}>
-                <Text style={styles.editLabel}>
-                  {editingTransfer?.type === 'incoming' ? 'Destination' : 'Destination'}
-                </Text>
+                <Text style={styles.editLabel}>Sent From</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={editSentFrom}
+                  onChangeText={setEditSentFrom}
+                  placeholder="e.g. Company Warehouse, Client C - Building D"
+                  placeholderTextColor={colors.textSecondary}
+                />
+              </View>
+
+              {/* Destination */}
+              <View style={styles.editFormGroup}>
+                <Text style={styles.editLabel}>Destination</Text>
                 <TextInput
                   style={styles.editInput}
                   value={editDestination}
