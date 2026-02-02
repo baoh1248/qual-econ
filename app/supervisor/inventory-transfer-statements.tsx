@@ -55,10 +55,24 @@ interface BuildingTransfer {
   totalValue?: number;
 }
 
+interface BuildingItemBalance {
+  itemName: string;
+  unit: string;
+  quantity: number;
+}
+
+interface BuildingMonthData {
+  month: string;
+  transfers: BuildingTransfer[];
+  itemBeginningBalances: BuildingItemBalance[];
+  itemEndingBalances: BuildingItemBalance[];
+  totalValue: number;
+}
+
 interface BuildingLedger {
   buildingName: string;
   clientName: string;
-  transfers: BuildingTransfer[];
+  months: BuildingMonthData[];
   totalTransfers: number;
 }
 
@@ -339,6 +353,43 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  buildingMonthSection: {
+    marginBottom: spacing.lg,
+    paddingBottom: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border + '40',
+  },
+  buildingMonthHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: 2,
+    borderBottomColor: colors.primary,
+  },
+  buildingMonthTitle: {
+    fontSize: typography.sizes.lg,
+    fontWeight: typography.weights.bold as any,
+    color: colors.text,
+    flex: 1,
+  },
+  balanceItemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.lg,
+  },
+  balanceItemName: {
+    fontSize: typography.sizes.sm,
+    color: colors.text,
+  },
+  balanceItemValue: {
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.semibold as any,
+    color: colors.text,
   },
   buildingHeader: {
     flexDirection: 'row',
@@ -678,91 +729,136 @@ export default function InventoryTransferStatementsScreen() {
     });
   }, [transfers, selectedYear]);
 
-  // Build building ledgers for building view
+  // Build building ledgers for building view (with monthly breakdown and balances)
   const buildingLedgers = useMemo(() => {
-    const ledgersMap = new Map<string, BuildingLedger>();
+    const monthOrder = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
 
-    const filteredTransfers = transfers
+    const parseDestination = (dest: string) => {
+      const dashIndex = dest.indexOf(' - ');
+      if (dashIndex <= 0) return { clientName: 'Unknown', buildingName: dest, key: `Unknown|${dest}` };
+      const clientName = dest.substring(0, dashIndex);
+      let buildingName = dest.substring(dashIndex + 3);
+      const groupMatch = buildingName.match(/^(.+?)\s*\(\d+\s*buildings?\)$/i);
+      if (groupMatch) buildingName = groupMatch[1].trim();
+      return { clientName, buildingName, key: `${clientName}|${buildingName}` };
+    };
+
+    // Group ALL outgoing transfers by building (all years, for balance calculation)
+    const buildingGroups = new Map<string, {
+      buildingName: string;
+      clientName: string;
+      transfers: InventoryTransfer[];
+    }>();
+
+    transfers
+      .filter(t => t.type === 'outgoing')
       .filter(t => {
-        const year = new Date(t.timestamp).getFullYear();
-        if (year !== selectedYear) return false;
-        if (t.type !== 'outgoing') return false;
-
-        // Filter by selected building if not 'all'
-        if (selectedBuilding !== 'all') {
-          const destination = t.destination || '';
-          const dashIndex = destination.indexOf(' - ');
-          if (dashIndex > 0) {
-            const clientName = destination.substring(0, dashIndex);
-            let buildingName = destination.substring(dashIndex + 3);
-            const groupMatch = buildingName.match(/^(.+?)\s*\(\d+\s*buildings?\)$/i);
-            if (groupMatch) {
-              buildingName = groupMatch[1].trim();
-            }
-            const key = `${clientName}|${buildingName}`;
-            if (key !== selectedBuilding) return false;
-          }
-        }
-
-        return true;
+        if (selectedBuilding === 'all') return true;
+        const { key } = parseDestination(t.destination || '');
+        return key === selectedBuilding;
       })
-      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-
-    filteredTransfers.forEach(t => {
-      const destination = t.destination || 'Unknown';
-      const dashIndex = destination.indexOf(' - ');
-
-      let clientName = 'Unknown';
-      let buildingName = destination;
-
-      if (dashIndex > 0) {
-        clientName = destination.substring(0, dashIndex);
-        buildingName = destination.substring(dashIndex + 3);
-        const groupMatch = buildingName.match(/^(.+?)\s*\(\d+\s*buildings?\)$/i);
-        if (groupMatch) {
-          buildingName = groupMatch[1].trim();
+      .forEach(t => {
+        const { clientName, buildingName, key } = parseDestination(t.destination || 'Unknown');
+        if (!buildingGroups.has(key)) {
+          buildingGroups.set(key, { buildingName, clientName, transfers: [] });
         }
-      }
-
-      const key = `${clientName}|${buildingName}`;
-
-      if (!ledgersMap.has(key)) {
-        ledgersMap.set(key, {
-          buildingName,
-          clientName,
-          transfers: [],
-          totalTransfers: 0,
-        });
-      }
-
-      const ledger = ledgersMap.get(key)!;
-      ledger.transfers.push({
-        id: t.id,
-        date: new Date(t.timestamp).toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric'
-        }),
-        timestamp: t.timestamp,
-        items: t.items.map(item => ({
-          name: item.name,
-          quantity: item.quantity,
-          unit: item.unit,
-          unitCost: item.unitCost,
-          totalCost: item.totalCost,
-        })),
-        transferredBy: t.transferredBy,
-        notes: t.notes,
-        sentFrom: t.sentFrom,
-        type: t.type,
-        totalValue: t.totalValue,
+        buildingGroups.get(key)!.transfers.push(t);
       });
-      ledger.totalTransfers++;
+
+    const result: BuildingLedger[] = [];
+
+    buildingGroups.forEach(({ buildingName, clientName, transfers: bTransfers }) => {
+      // Sort chronologically for running balance
+      const sorted = [...bTransfers].sort((a, b) =>
+        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      );
+
+      // Running per-item balances
+      const runningBalances = new Map<string, { quantity: number; unit: string }>();
+
+      // Process all transfers BEFORE selected year to get opening balances
+      sorted
+        .filter(t => new Date(t.timestamp).getFullYear() < selectedYear)
+        .forEach(t => {
+          t.items.forEach(item => {
+            const cur = runningBalances.get(item.name) || { quantity: 0, unit: item.unit };
+            cur.quantity += item.quantity;
+            runningBalances.set(item.name, { ...cur });
+          });
+        });
+
+      // Process each month of the selected year
+      const yearTransfers = sorted.filter(t =>
+        new Date(t.timestamp).getFullYear() === selectedYear
+      );
+
+      const months: BuildingMonthData[] = [];
+      let totalTransfers = 0;
+
+      monthOrder.forEach(monthName => {
+        const monthTransfers = yearTransfers.filter(t =>
+          new Date(t.timestamp).toLocaleString('default', { month: 'long' }) === monthName
+        );
+        if (monthTransfers.length === 0) return;
+
+        totalTransfers += monthTransfers.length;
+
+        // Snapshot beginning balances
+        const beginningBalances = Array.from(runningBalances.entries())
+          .map(([name, { quantity, unit }]) => ({ itemName: name, unit, quantity }))
+          .sort((a, b) => a.itemName.localeCompare(b.itemName));
+
+        // Process transfers and update running balances
+        const converted: BuildingTransfer[] = [];
+        monthTransfers.forEach(t => {
+          t.items.forEach(item => {
+            const cur = runningBalances.get(item.name) || { quantity: 0, unit: item.unit };
+            cur.quantity += item.quantity;
+            runningBalances.set(item.name, { ...cur });
+          });
+          converted.push({
+            id: t.id,
+            date: new Date(t.timestamp).toLocaleDateString('en-US', {
+              month: 'short', day: 'numeric', year: 'numeric'
+            }),
+            timestamp: t.timestamp,
+            items: t.items.map(item => ({
+              name: item.name, quantity: item.quantity, unit: item.unit,
+              unitCost: item.unitCost, totalCost: item.totalCost,
+            })),
+            transferredBy: t.transferredBy,
+            notes: t.notes,
+            sentFrom: t.sentFrom,
+            type: t.type,
+            totalValue: t.totalValue,
+          });
+        });
+
+        // Snapshot ending balances
+        const endingBalances = Array.from(runningBalances.entries())
+          .map(([name, { quantity, unit }]) => ({ itemName: name, unit, quantity }))
+          .sort((a, b) => a.itemName.localeCompare(b.itemName));
+
+        months.push({
+          month: monthName,
+          transfers: converted,
+          itemBeginningBalances: beginningBalances,
+          itemEndingBalances: endingBalances,
+          totalValue: monthTransfers.reduce((sum, t) => sum + (t.totalValue || 0), 0),
+        });
+      });
+
+      if (totalTransfers > 0) {
+        result.push({ buildingName, clientName, months, totalTransfers });
+      }
     });
 
-    return Array.from(ledgersMap.values()).sort((a, b) => {
-      const clientCompare = a.clientName.localeCompare(b.clientName);
-      if (clientCompare !== 0) return clientCompare;
+    return result.sort((a, b) => {
+      const cc = a.clientName.localeCompare(b.clientName);
+      if (cc !== 0) return cc;
       return a.buildingName.localeCompare(b.buildingName);
     });
   }, [transfers, selectedYear, selectedBuilding]);
@@ -1041,58 +1137,110 @@ export default function InventoryTransferStatementsScreen() {
 
                     {isExpanded && (
                       <View style={{ marginTop: spacing.sm }}>
-                        {ledger.transfers.map((transfer, txIndex) => (
-                          <View
-                            key={transfer.id}
-                            style={[
-                              styles.transferCard,
-                              transfer.type === 'incoming' && styles.transferCardIncoming
-                            ]}
-                          >
-                            <Text style={styles.transferDate}>{transfer.date}</Text>
-                            {transfer.sentFrom && (
-                              <Text style={[styles.transferBy, { marginTop: 0, marginBottom: 4, fontStyle: 'normal', color: colors.primary }]}>
-                                From: {transfer.sentFrom}
+                        {ledger.months.map((monthData) => (
+                          <View key={monthData.month} style={styles.buildingMonthSection}>
+                            {/* Month Header */}
+                            <View style={styles.buildingMonthHeader}>
+                              <Icon name="calendar" size={16} color={colors.primary} />
+                              <Text style={styles.buildingMonthTitle}>{monthData.month}</Text>
+                              <Text style={styles.transferCount}>
+                                {monthData.transfers.length} {monthData.transfers.length === 1 ? 'transfer' : 'transfers'}
                               </Text>
-                            )}
-                            <View style={styles.transferItemsContainer}>
-                              {transfer.items.map((item, itemIdx) => (
-                                <View key={itemIdx} style={styles.transferItemRow}>
-                                  <Text style={styles.transferItemName}>{item.name}</Text>
-                                  <View style={styles.transferItemDetails}>
-                                    <Text style={styles.transferItemQty}>
-                                      {item.quantity} {item.unit}
-                                    </Text>
-                                    {item.unitCost !== undefined && item.unitCost > 0 && (
-                                      <Text style={styles.transferItemCost}>
-                                        @ {formatCurrency(item.unitCost)}/{item.unit}
-                                      </Text>
-                                    )}
-                                    {item.totalCost !== undefined && item.totalCost > 0 && (
-                                      <Text style={styles.transferItemTotal}>
-                                        {formatCurrency(item.totalCost)}
-                                      </Text>
-                                    )}
-                                  </View>
-                                </View>
-                              ))}
                             </View>
-                            {transfer.totalValue !== undefined && transfer.totalValue > 0 && (
-                              <View style={styles.transferTotalRow}>
-                                <Text style={styles.transferTotalLabel}>Total Value:</Text>
-                                <Text style={styles.transferTotalValue}>
-                                  {formatCurrency(transfer.totalValue)}
-                                </Text>
+
+                            {/* Beginning Balance */}
+                            <View style={styles.balanceRow}>
+                              <Text style={styles.balanceLabel}>Beginning Balance</Text>
+                            </View>
+                            {monthData.itemBeginningBalances.length > 0 ? (
+                              monthData.itemBeginningBalances.map((b, i) => (
+                                <View key={i} style={styles.balanceItemRow}>
+                                  <Text style={styles.balanceItemName}>{b.itemName}</Text>
+                                  <Text style={styles.balanceItemValue}>{b.quantity} {b.unit}</Text>
+                                </View>
+                              ))
+                            ) : (
+                              <View style={styles.balanceItemRow}>
+                                <Text style={[styles.balanceItemName, { fontStyle: 'italic', color: colors.textSecondary }]}>No previous items</Text>
                               </View>
                             )}
-                            {transfer.notes && (
-                              <Text style={[styles.transferItems, { marginTop: spacing.sm, fontStyle: 'italic' }]}>
-                                Note: {transfer.notes}
-                              </Text>
+
+                            {/* Transfers */}
+                            {monthData.transfers.map((transfer) => (
+                              <View
+                                key={transfer.id}
+                                style={[
+                                  styles.transferCard,
+                                  transfer.type === 'incoming' && styles.transferCardIncoming
+                                ]}
+                              >
+                                <Text style={styles.transferDate}>{transfer.date}</Text>
+                                {transfer.sentFrom && (
+                                  <Text style={[styles.transferBy, { marginTop: 0, marginBottom: 4, fontStyle: 'normal', color: colors.primary }]}>
+                                    From: {transfer.sentFrom}
+                                  </Text>
+                                )}
+                                <View style={styles.transferItemsContainer}>
+                                  {transfer.items.map((item, itemIdx) => (
+                                    <View key={itemIdx} style={styles.transferItemRow}>
+                                      <Text style={styles.transferItemName}>{item.name}</Text>
+                                      <View style={styles.transferItemDetails}>
+                                        <Text style={styles.transferItemQty}>
+                                          {item.quantity} {item.unit}
+                                        </Text>
+                                        {item.unitCost !== undefined && item.unitCost > 0 && (
+                                          <Text style={styles.transferItemCost}>
+                                            @ {formatCurrency(item.unitCost)}/{item.unit}
+                                          </Text>
+                                        )}
+                                        {item.totalCost !== undefined && item.totalCost > 0 && (
+                                          <Text style={styles.transferItemTotal}>
+                                            {formatCurrency(item.totalCost)}
+                                          </Text>
+                                        )}
+                                      </View>
+                                    </View>
+                                  ))}
+                                </View>
+                                {transfer.totalValue !== undefined && transfer.totalValue > 0 && (
+                                  <View style={styles.transferTotalRow}>
+                                    <Text style={styles.transferTotalLabel}>Total Value:</Text>
+                                    <Text style={styles.transferTotalValue}>
+                                      {formatCurrency(transfer.totalValue)}
+                                    </Text>
+                                  </View>
+                                )}
+                                {transfer.notes && (
+                                  <Text style={[styles.transferItems, { marginTop: spacing.sm, fontStyle: 'italic' }]}>
+                                    Note: {transfer.notes}
+                                  </Text>
+                                )}
+                                <Text style={styles.transferBy}>
+                                  By: {transfer.transferredBy}
+                                </Text>
+                              </View>
+                            ))}
+
+                            {/* Month Total Value */}
+                            {monthData.totalValue > 0 && (
+                              <View style={styles.summaryRow}>
+                                <Text style={styles.summaryLabel}>Month Total Value:</Text>
+                                <Text style={[styles.summaryValue, { color: colors.primary }]}>{formatCurrency(monthData.totalValue)}</Text>
+                              </View>
                             )}
-                            <Text style={styles.transferBy}>
-                              By: {transfer.transferredBy}
-                            </Text>
+
+                            {/* Ending Balance */}
+                            <View style={styles.endingBalanceRow}>
+                              <Text style={styles.endingBalanceLabel}>Ending Balance</Text>
+                            </View>
+                            {monthData.itemEndingBalances.map((b, i) => (
+                              <View key={i} style={styles.balanceItemRow}>
+                                <Text style={[styles.balanceItemName, { fontWeight: typography.weights.semibold as any }]}>{b.itemName}</Text>
+                                <Text style={[styles.balanceItemValue, { color: colors.primary, fontWeight: typography.weights.bold as any }]}>
+                                  {b.quantity} {b.unit}
+                                </Text>
+                              </View>
+                            ))}
                           </View>
                         ))}
                       </View>
