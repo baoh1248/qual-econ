@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Text, View, ScrollView, TouchableOpacity, Dimensions, RefreshControl, Modal, StyleSheet } from 'react-native';
 import { Platform } from 'react-native';
 import { router } from 'expo-router';
@@ -17,6 +17,7 @@ import { useDatabase } from '../../hooks/useDatabase';
 import { useScheduleStorage } from '../../hooks/useScheduleStorage';
 import { useClientData } from '../../hooks/useClientData';
 import { useTheme } from '../../hooks/useTheme';
+import { supabase } from '../integrations/supabase/client';
 
 interface TeamMember {
   id: string;
@@ -54,6 +55,7 @@ const SupervisorDashboard = () => {
   
   const [refreshing, setRefreshing] = useState(false);
   const [showLiveMap, setShowLiveMap] = useState(false);
+  const [activeClockedIn, setActiveClockedIn] = useState(0);
 
   // Get current week schedule and stats
   const currentWeekId = getCurrentWeekId();
@@ -167,14 +169,27 @@ const SupervisorDashboard = () => {
     return Array.from(clientMap.values());
   }, [currentWeekSchedule]);
 
-  useEffect(() => {
-    // Auto-refresh data every 30 seconds
-    const interval = setInterval(() => {
-      console.log('Auto-refreshing dashboard data...');
-    }, 30000);
-
-    return () => clearInterval(interval);
+  // Fetch active clocked-in count from clock_records
+  const fetchClockedInCount = useCallback(async () => {
+    try {
+      const { count, error } = await supabase
+        .from('clock_records')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'clocked_in');
+      if (!error && count !== null) {
+        setActiveClockedIn(count);
+      }
+    } catch (err) {
+      console.error('Error fetching clocked-in count:', err);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchClockedInCount();
+    // Auto-refresh data every 30 seconds
+    const interval = setInterval(fetchClockedInCount, 30000);
+    return () => clearInterval(interval);
+  }, [fetchClockedInCount]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -309,20 +324,20 @@ const SupervisorDashboard = () => {
           </Text>
           <View style={styles.liveMapStats}>
             <View style={styles.liveMapStat}>
-              <Text style={[styles.liveMapStatValue, { color: themeColor }]}>
-                {teamMembers.filter(m => m.status === 'on-duty').length}
+              <Text style={[styles.liveMapStatValue, { color: colors.success }]}>
+                {activeClockedIn}
               </Text>
-              <Text style={styles.liveMapStatLabel}>On Duty</Text>
+              <Text style={styles.liveMapStatLabel}>Clocked In</Text>
             </View>
             <View style={styles.liveMapStat}>
               <Text style={[styles.liveMapStatValue, { color: themeColor }]}>
-                {teamMembers.filter(m => m.status === 'break').length}
+                {cleaners.filter(c => c.isActive).length}
               </Text>
-              <Text style={styles.liveMapStatLabel}>On Break</Text>
+              <Text style={styles.liveMapStatLabel}>Total Active</Text>
             </View>
             <View style={styles.liveMapStat}>
-              <Text style={[styles.liveMapStatValue, { color: themeColor }]}>
-                {teamMembers.filter(m => m.status === 'off-duty').length}
+              <Text style={[styles.liveMapStatValue, { color: colors.textSecondary }]}>
+                {Math.max(cleaners.filter(c => c.isActive).length - activeClockedIn, 0)}
               </Text>
               <Text style={styles.liveMapStatLabel}>Off Duty</Text>
             </View>
