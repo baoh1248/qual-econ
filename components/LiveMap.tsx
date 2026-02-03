@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Dimensions, PanResponder } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Dimensions } from 'react-native';
 import MapView, { Marker, Callout, PROVIDER_GOOGLE } from './NativeMap';
 import { colors, spacing, typography } from '../styles/commonStyles';
 import Icon from './Icon';
@@ -40,35 +40,59 @@ const LiveMap: React.FC<LiveMapProps> = ({ onCleanerPress }) => {
   const mapRef = useRef<any>(null);
   const refreshTimer = useRef<NodeJS.Timeout | null>(null);
 
-  // Draggable divider refs
-  const dragStartRef = useRef(0);
+  // Draggable divider – uses pointer capture for smooth, uninterrupted dragging
+  const dividerRef = useRef<any>(null);
   const mapHeightRef = useRef(DEFAULT_MAP_HEIGHT);
   const containerHeightRef = useRef(Dimensions.get('window').height);
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dy) > 2,
-      onPanResponderGrant: () => {
-        dragStartRef.current = mapHeightRef.current;
-      },
-      onPanResponderMove: (_, gs) => {
-        const newHeight = dragStartRef.current + gs.dy;
-        const maxH = Math.max(containerHeightRef.current * MAX_MAP_HEIGHT_RATIO, 400);
-        const clamped = Math.max(MIN_MAP_HEIGHT, Math.min(maxH, newHeight));
-        mapHeightRef.current = clamped;
-        setMapHeight(clamped);
-      },
-      onPanResponderRelease: () => {
-        // Tell the map to re-measure after drag ends
-        setTimeout(() => {
-          if (mapRef.current?.invalidateSize) {
-            mapRef.current.invalidateSize();
-          }
-        }, 50);
-      },
-    })
-  ).current;
+  useEffect(() => {
+    const node = dividerRef.current;
+    if (!node || typeof window === 'undefined') return;
+
+    let active = false;
+    let startY = 0;
+    let startH = 0;
+
+    const onDown = (e: PointerEvent) => {
+      e.preventDefault();
+      active = true;
+      startY = e.clientY;
+      startH = mapHeightRef.current;
+      node.setPointerCapture(e.pointerId);
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'ns-resize';
+    };
+
+    const onMove = (e: PointerEvent) => {
+      if (!active) return;
+      const dy = e.clientY - startY;
+      const newH = startH + dy;
+      const maxH = Math.max(containerHeightRef.current * MAX_MAP_HEIGHT_RATIO, 400);
+      const clamped = Math.max(MIN_MAP_HEIGHT, Math.min(maxH, newH));
+      mapHeightRef.current = clamped;
+      setMapHeight(clamped);
+    };
+
+    const onUp = () => {
+      if (!active) return;
+      active = false;
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+      setTimeout(() => mapRef.current?.invalidateSize?.(), 50);
+    };
+
+    node.addEventListener('pointerdown', onDown);
+    node.addEventListener('pointermove', onMove);
+    node.addEventListener('pointerup', onUp);
+    node.addEventListener('lostpointercapture', onUp);
+
+    return () => {
+      node.removeEventListener('pointerdown', onDown);
+      node.removeEventListener('pointermove', onMove);
+      node.removeEventListener('pointerup', onUp);
+      node.removeEventListener('lostpointercapture', onUp);
+    };
+  }, []);
 
   const fetchActiveCleaners = useCallback(async () => {
     try {
@@ -330,7 +354,7 @@ const LiveMap: React.FC<LiveMapProps> = ({ onCleanerPress }) => {
       </View>
 
       {/* Draggable divider */}
-      <View style={styles.divider} {...panResponder.panHandlers}>
+      <View ref={dividerRef} style={styles.divider}>
         <View style={styles.dividerHandle} />
       </View>
 
@@ -544,8 +568,10 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderBottomWidth: 1,
     borderColor: colors.border,
-    // @ts-ignore – web-only cursor style
+    // @ts-ignore – web-only styles
     cursor: 'ns-resize',
+    // @ts-ignore
+    touchAction: 'none',
   },
   dividerHandle: {
     width: 40,
