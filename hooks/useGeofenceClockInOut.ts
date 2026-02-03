@@ -112,54 +112,66 @@ export function useGeofenceClockInOut({
 
   // Check geofence and time window when location or shift changes
   useEffect(() => {
-    if (currentLocation && shift?.buildingLatitude && shift?.buildingLongitude) {
-      const targetLocation: Coordinates = {
-        latitude: shift.buildingLatitude,
-        longitude: shift.buildingLongitude,
-      };
+    if (!currentLocation || !shift) return;
 
-      const geofenceResult = checkGeofence(
-        currentLocation,
-        targetLocation,
-        shift.geofenceRadiusFt || GEOFENCE_RADIUS_FT
-      );
-
-      const timeResult = checkClockInTimeWindow(
-        shift.startTime,
-        shift.date,
-        EARLY_CLOCK_IN_MINUTES
-      );
-
-      // Check if user just left the geofence while clocked in
-      if (
-        state.currentClockRecord?.status === 'clocked_in' &&
-        wasWithinGeofence.current &&
-        !geofenceResult.isWithinRadius
-      ) {
-        handleLeftGeofence();
-      }
-
-      wasWithinGeofence.current = geofenceResult.isWithinRadius;
-
-      const canClockIn =
-        geofenceResult.isWithinRadius &&
-        timeResult.canClockIn &&
-        !state.currentClockRecord;
-
+    // Handle missing building coordinates
+    if (!shift.buildingLatitude || !shift.buildingLongitude) {
       setState(prev => ({
         ...prev,
-        isWithinGeofence: geofenceResult.isWithinRadius,
-        distanceFromSite: geofenceResult.distanceFeet,
-        canClockIn,
-        clockInMessage: !geofenceResult.isWithinRadius
-          ? `You are ${formatDistance(geofenceResult.distanceFeet)} away from the work site. Move within ${GEOFENCE_RADIUS_FT}ft to clock in.`
-          : !timeResult.canClockIn
-          ? timeResult.message
-          : state.currentClockRecord
-          ? 'Already clocked in'
-          : 'Ready to clock in',
+        isWithinGeofence: false,
+        distanceFromSite: 0,
+        canClockIn: false,
+        clockInMessage: 'Building location not set. Please contact your supervisor to update the building address.',
       }));
+      return;
     }
+
+    const targetLocation: Coordinates = {
+      latitude: shift.buildingLatitude,
+      longitude: shift.buildingLongitude,
+    };
+
+    const geofenceResult = checkGeofence(
+      currentLocation,
+      targetLocation,
+      shift.geofenceRadiusFt || GEOFENCE_RADIUS_FT
+    );
+
+    const timeResult = checkClockInTimeWindow(
+      shift.startTime,
+      shift.date,
+      EARLY_CLOCK_IN_MINUTES
+    );
+
+    // Check if user just left the geofence while clocked in
+    if (
+      state.currentClockRecord?.status === 'clocked_in' &&
+      wasWithinGeofence.current &&
+      !geofenceResult.isWithinRadius
+    ) {
+      handleLeftGeofence();
+    }
+
+    wasWithinGeofence.current = geofenceResult.isWithinRadius;
+
+    const canClockIn =
+      geofenceResult.isWithinRadius &&
+      timeResult.canClockIn &&
+      !state.currentClockRecord;
+
+    setState(prev => ({
+      ...prev,
+      isWithinGeofence: geofenceResult.isWithinRadius,
+      distanceFromSite: geofenceResult.distanceFeet,
+      canClockIn,
+      clockInMessage: !geofenceResult.isWithinRadius
+        ? `You are ${formatDistance(geofenceResult.distanceFeet)} away from the work site. Move within ${GEOFENCE_RADIUS_FT}ft to clock in.`
+        : !timeResult.canClockIn
+        ? timeResult.message
+        : state.currentClockRecord
+        ? 'Already clocked in'
+        : 'Ready to clock in',
+    }));
   }, [currentLocation, shift, state.currentClockRecord]);
 
   const loadActiveClockRecord = async () => {
@@ -318,21 +330,28 @@ export function useGeofenceClockInOut({
       }
 
       // Check geofence
-      if (shift.buildingLatitude && shift.buildingLongitude) {
-        const geofenceResult = checkGeofence(
-          location,
-          { latitude: shift.buildingLatitude, longitude: shift.buildingLongitude },
-          shift.geofenceRadiusFt || GEOFENCE_RADIUS_FT
-        );
+      if (!shift.buildingLatitude || !shift.buildingLongitude) {
+        setState(prev => ({
+          ...prev,
+          isLoading: false,
+          error: 'Building location not set. Please contact your supervisor to update the building address.',
+        }));
+        return false;
+      }
 
-        if (!geofenceResult.isWithinRadius) {
-          setState(prev => ({
-            ...prev,
-            isLoading: false,
-            error: `You must be within ${GEOFENCE_RADIUS_FT}ft of the work site to clock in. You are currently ${formatDistance(geofenceResult.distanceFeet)} away.`,
-          }));
-          return false;
-        }
+      const geofenceResult = checkGeofence(
+        location,
+        { latitude: shift.buildingLatitude, longitude: shift.buildingLongitude },
+        shift.geofenceRadiusFt || GEOFENCE_RADIUS_FT
+      );
+
+      if (!geofenceResult.isWithinRadius) {
+        setState(prev => ({
+          ...prev,
+          isLoading: false,
+          error: `You must be within ${GEOFENCE_RADIUS_FT}ft of the work site to clock in. You are currently ${formatDistance(geofenceResult.distanceFeet)} away.`,
+        }));
+        return false;
       }
 
       // Check time window
@@ -351,16 +370,8 @@ export function useGeofenceClockInOut({
         return false;
       }
 
-      // Calculate distance for record
-      let distanceFt = 0;
-      if (shift.buildingLatitude && shift.buildingLongitude) {
-        const geofenceResult = checkGeofence(
-          location,
-          { latitude: shift.buildingLatitude, longitude: shift.buildingLongitude },
-          shift.geofenceRadiusFt || GEOFENCE_RADIUS_FT
-        );
-        distanceFt = geofenceResult.distanceFeet;
-      }
+      // Calculate distance for record (coordinates already validated above)
+      const distanceFt = geofenceResult.distanceFeet;
 
       // Create clock record
       const { data, error } = await supabase

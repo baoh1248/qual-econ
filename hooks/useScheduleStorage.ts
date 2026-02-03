@@ -35,6 +35,10 @@ export interface ScheduleEntry {
   deductions?: number;
   totalCalculatedPay?: number;
   address?: string;
+  // Geofence coordinates (populated from client_buildings)
+  buildingLatitude?: number;
+  buildingLongitude?: number;
+  geofenceRadiusFt?: number;
   created_at?: string;
   updated_at?: string;
 }
@@ -807,26 +811,36 @@ export const useScheduleStorage = () => {
         return entry.cleanerName === cleanerName;
       });
 
-      // Fetch building addresses from client_buildings table
+      // Fetch building addresses and coordinates from client_buildings table
       try {
         const buildingNames = [...new Set(cleanerEntries.map(e => e.buildingName))];
         if (buildingNames.length > 0) {
           const { data: buildings } = await supabase
             .from('client_buildings')
-            .select('building_name, address')
+            .select('building_name, address, latitude, longitude, geofence_radius_ft')
             .in('building_name', buildingNames);
 
           if (buildings && buildings.length > 0) {
-            const addressMap = new Map(buildings.map(b => [b.building_name, b.address]));
+            const buildingMap = new Map(buildings.map(b => [b.building_name, b]));
             cleanerEntries.forEach(entry => {
-              if (!entry.address && addressMap.has(entry.buildingName)) {
-                entry.address = addressMap.get(entry.buildingName) || undefined;
+              const building = buildingMap.get(entry.buildingName);
+              if (building) {
+                if (!entry.address && building.address) {
+                  entry.address = building.address;
+                }
+                if (building.latitude && building.longitude) {
+                  entry.buildingLatitude = parseFloat(building.latitude);
+                  entry.buildingLongitude = parseFloat(building.longitude);
+                }
+                if (building.geofence_radius_ft) {
+                  entry.geofenceRadiusFt = building.geofence_radius_ft;
+                }
               }
             });
           }
         }
       } catch (addressError) {
-        console.warn('Could not fetch building addresses:', addressError);
+        console.warn('Could not fetch building data:', addressError);
       }
 
       console.log(`✅ Found ${cleanerEntries.length} schedule entries for ${cleanerName}`);

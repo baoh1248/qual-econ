@@ -580,6 +580,9 @@ export default function CleanerDashboard() {
           hours: entry.hours,
           status: entry.status,
           priority: 'medium' as const,
+          buildingLatitude: entry.buildingLatitude,
+          buildingLongitude: entry.buildingLongitude,
+          geofenceRadiusFt: entry.geofenceRadiusFt,
         }));
 
       setShifts(todayShifts);
