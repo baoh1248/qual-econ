@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Dimensions } from 'react-native';
-import MapView, { Marker, Callout, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, Callout, PROVIDER_GOOGLE } from './NativeMap';
 import { colors, spacing, typography } from '../styles/commonStyles';
 import Icon from './Icon';
 import AnimatedCard from './AnimatedCard';
@@ -32,7 +32,7 @@ const LiveMap: React.FC<LiveMapProps> = ({ onCleanerPress }) => {
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const [selectedCleaner, setSelectedCleaner] = useState<ActiveCleaner | null>(null);
   const [mapError, setMapError] = useState(false);
-  const mapRef = useRef<MapView>(null);
+  const mapRef = useRef<any>(null);
   const refreshTimer = useRef<NodeJS.Timeout | null>(null);
 
   const fetchActiveCleaners = useCallback(async () => {
