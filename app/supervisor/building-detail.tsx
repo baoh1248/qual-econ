@@ -12,6 +12,7 @@ import Toast from '../../components/Toast';
 import AnimatedCard from '../../components/AnimatedCard';
 import { supabase } from '../integrations/supabase/client';
 import { useClientData } from '../../hooks/useClientData';
+import { geocodeAddress, isValidCoordinates } from '../../utils/geocoding';
 import LoadingSpinner from '../../components/LoadingSpinner';
 
 interface BuildingFormData {
@@ -77,12 +78,41 @@ export default function BuildingDetailScreen() {
       setSaving(true);
       console.log('🔄 Updating building:', buildingId);
 
-      // Use updateClientBuilding from hook - this handles geocoding and data refresh
+      const address = formData.address.trim() || undefined;
+      let latitude: number | undefined;
+      let longitude: number | undefined;
+
+      // Geocode the address if present and coordinates need updating
+      if (address) {
+        const existingBuilding = clientBuildings.find(b => b.id === buildingId);
+        const addressChanged = existingBuilding?.address !== address;
+        const missingCoords = !isValidCoordinates(existingBuilding?.latitude, existingBuilding?.longitude);
+
+        if (addressChanged || missingCoords) {
+          console.log('🌍 Geocoding address:', address);
+          const geocodeResult = await geocodeAddress(address);
+          if (geocodeResult.success) {
+            latitude = geocodeResult.latitude;
+            longitude = geocodeResult.longitude;
+            console.log('✅ Geocoded:', latitude, longitude);
+          } else {
+            console.warn('⚠️ Geocoding failed:', geocodeResult.error);
+            Alert.alert(
+              'Address Location Warning',
+              'Could not determine coordinates for this address. Clock-in geofencing will not work until the address can be located. Try using a more complete address format (e.g. "123 Main St, City, State, ZIP").',
+              [{ text: 'OK' }]
+            );
+          }
+        }
+      }
+
       await updateClientBuilding(buildingId!, {
         buildingName: formData.building_name.trim(),
         securityLevel: formData.security_level,
         security: formData.security.trim() || undefined,
-        address: formData.address.trim() || undefined,
+        address,
+        latitude,
+        longitude,
       });
 
       console.log('✅ Building updated successfully');

@@ -1,7 +1,11 @@
 /**
  * Geocoding Utility
- * Converts addresses to latitude/longitude coordinates using OpenStreetMap Nominatim API
+ * Converts addresses to latitude/longitude coordinates
+ * Uses expo-location native geocoder (Apple Maps / Google Maps) as primary,
+ * with OpenStreetMap Nominatim API as fallback
  */
+
+import * as Location from 'expo-location';
 
 export interface GeocodingResult {
   latitude: number;
@@ -19,7 +23,7 @@ interface NominatimResponse {
 
 /**
  * Convert an address to latitude/longitude coordinates
- * Uses OpenStreetMap Nominatim API (free, no API key required)
+ * Tries native platform geocoder first (more reliable), falls back to Nominatim
  * @param address The address to geocode
  * @returns GeocodingResult with coordinates or error
  */
@@ -34,8 +38,31 @@ export async function geocodeAddress(address: string): Promise<GeocodingResult> 
     };
   }
 
+  const trimmedAddress = address.trim();
+
+  // Try native platform geocoding first (Apple Maps on iOS, Google Maps on Android)
   try {
-    const encodedAddress = encodeURIComponent(address.trim());
+    const nativeResults = await Location.geocodeAsync(trimmedAddress);
+    if (nativeResults.length > 0) {
+      const result = nativeResults[0];
+      if (isValidCoordinates(result.latitude, result.longitude)) {
+        console.log('✅ Native geocoding succeeded for:', trimmedAddress);
+        return {
+          latitude: result.latitude,
+          longitude: result.longitude,
+          displayName: trimmedAddress,
+          success: true,
+        };
+      }
+    }
+    console.warn('⚠️ Native geocoding returned no valid results, trying Nominatim...');
+  } catch (nativeError) {
+    console.warn('⚠️ Native geocoding failed, trying Nominatim:', nativeError);
+  }
+
+  // Fall back to OpenStreetMap Nominatim API
+  try {
+    const encodedAddress = encodeURIComponent(trimmedAddress);
     const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodedAddress}&limit=1`;
 
     const response = await fetch(url, {
@@ -57,11 +84,12 @@ export async function geocodeAddress(address: string): Promise<GeocodingResult> 
         longitude: 0,
         displayName: '',
         success: false,
-        error: 'Address not found',
+        error: 'Address not found by any geocoding service',
       };
     }
 
     const result = data[0];
+    console.log('✅ Nominatim geocoding succeeded for:', trimmedAddress);
     return {
       latitude: parseFloat(result.lat),
       longitude: parseFloat(result.lon),
@@ -69,13 +97,13 @@ export async function geocodeAddress(address: string): Promise<GeocodingResult> 
       success: true,
     };
   } catch (error) {
-    console.error('Geocoding error:', error);
+    console.error('❌ All geocoding methods failed for:', trimmedAddress, error);
     return {
       latitude: 0,
       longitude: 0,
       displayName: '',
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown geocoding error',
+      error: error instanceof Error ? error.message : 'All geocoding methods failed',
     };
   }
 }
