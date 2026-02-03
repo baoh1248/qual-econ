@@ -21,6 +21,7 @@ import {
   formatMinutesAsTime,
   Coordinates,
 } from '../utils/geofence';
+import { geocodeAddress, isValidCoordinates } from '../utils/geocoding';
 import {
   ClockRecord,
   ClockInOutState,
@@ -76,6 +77,83 @@ export function useGeofenceClockInOut({
   const locationSubscription = useRef<Location.LocationSubscription | null>(null);
   const elapsedTimeInterval = useRef<NodeJS.Timeout | null>(null);
   const wasWithinGeofence = useRef(false);
+  // Resolved building coordinates (fetched directly from DB or geocoded on-the-fly)
+  const [resolvedCoords, setResolvedCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  const lastResolvedShiftId = useRef<string | null>(null);
+
+  // Function to resolve building coordinates from DB or geocoding
+  const resolveBuildingCoordinates = useCallback(async (shiftInfo: GeofenceShiftInfo) => {
+    console.log('🔍 Resolving coordinates for building:', shiftInfo.buildingName);
+
+    // Step 1: Try fetching directly from client_buildings table
+    try {
+      const { data } = await supabase
+        .from('client_buildings')
+        .select('latitude, longitude, address')
+        .eq('building_name', shiftInfo.buildingName)
+        .maybeSingle();
+
+      if (data && isValidCoordinates(
+        data.latitude ? parseFloat(data.latitude) : null,
+        data.longitude ? parseFloat(data.longitude) : null
+      )) {
+        const lat = parseFloat(data.latitude);
+        const lng = parseFloat(data.longitude);
+        console.log('✅ Found coordinates in DB:', lat, lng);
+        setResolvedCoords({ latitude: lat, longitude: lng });
+        return;
+      }
+
+      // Step 2: Try geocoding the address (from shift or from DB)
+      const addressToGeocode = shiftInfo.address || data?.address;
+      if (addressToGeocode) {
+        console.log('🌍 Geocoding address on-the-fly:', addressToGeocode);
+        const result = await geocodeAddress(addressToGeocode);
+        if (result.success && isValidCoordinates(result.latitude, result.longitude)) {
+          console.log('✅ Geocoded successfully:', result.latitude, result.longitude);
+          setResolvedCoords({ latitude: result.latitude, longitude: result.longitude });
+
+          // Save to DB so we don't have to geocode again
+          await supabase
+            .from('client_buildings')
+            .update({
+              latitude: result.latitude,
+              longitude: result.longitude,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('building_name', shiftInfo.buildingName);
+          console.log('✅ Saved coordinates to database');
+          return;
+        }
+      }
+
+      console.warn('⚠️ Could not resolve coordinates for:', shiftInfo.buildingName);
+    } catch (error) {
+      console.error('❌ Error resolving coordinates:', error);
+    }
+  }, []);
+
+  // Resolve building coordinates when shift changes
+  useEffect(() => {
+    if (!shift) {
+      setResolvedCoords(null);
+      lastResolvedShiftId.current = null;
+      return;
+    }
+
+    // If shift already has valid coordinates, use them directly
+    if (isValidCoordinates(shift.buildingLatitude, shift.buildingLongitude)) {
+      setResolvedCoords({ latitude: shift.buildingLatitude!, longitude: shift.buildingLongitude! });
+      lastResolvedShiftId.current = shift.id;
+      return;
+    }
+
+    // Don't re-attempt automatically for the same shift (refreshLocation can force retry)
+    if (lastResolvedShiftId.current === shift.id) return;
+    lastResolvedShiftId.current = shift.id;
+
+    resolveBuildingCoordinates(shift);
+  }, [shift?.id, shift?.buildingLatitude, shift?.buildingLongitude, shift?.buildingName, resolveBuildingCoordinates]);
 
   // Load active clock record on mount
   useEffect(() => {
@@ -110,25 +188,25 @@ export function useGeofenceClockInOut({
     }
   }, [state.currentClockRecord?.clockInTime, state.currentClockRecord?.status]);
 
-  // Check geofence and time window when location or shift changes
+  // Check geofence and time window when location, shift, or resolved coordinates change
   useEffect(() => {
     if (!currentLocation || !shift) return;
 
-    // Handle missing building coordinates
-    if (!shift.buildingLatitude || !shift.buildingLongitude) {
+    // Use resolved coordinates (which may come from shift, DB lookup, or on-the-fly geocoding)
+    if (!resolvedCoords) {
       setState(prev => ({
         ...prev,
         isWithinGeofence: false,
         distanceFromSite: 0,
         canClockIn: false,
-        clockInMessage: 'Building location not set. Please contact your supervisor to update the building address.',
+        clockInMessage: 'Locating building... If this persists, contact your supervisor to update the building address.',
       }));
       return;
     }
 
     const targetLocation: Coordinates = {
-      latitude: shift.buildingLatitude,
-      longitude: shift.buildingLongitude,
+      latitude: resolvedCoords.latitude,
+      longitude: resolvedCoords.longitude,
     };
 
     const geofenceResult = checkGeofence(
@@ -172,7 +250,7 @@ export function useGeofenceClockInOut({
         ? 'Already clocked in'
         : 'Ready to clock in',
     }));
-  }, [currentLocation, shift, state.currentClockRecord]);
+  }, [currentLocation, shift, resolvedCoords, state.currentClockRecord]);
 
   const loadActiveClockRecord = async () => {
     if (!cleanerId || !shift) return;
@@ -276,6 +354,13 @@ export function useGeofenceClockInOut({
   const refreshLocation = async () => {
     setState(prev => ({ ...prev, isLoading: true }));
     await getCurrentLocation();
+
+    // Re-attempt coordinate resolution if still missing
+    if (!resolvedCoords && shift) {
+      lastResolvedShiftId.current = null; // Reset so it tries again
+      await resolveBuildingCoordinates(shift);
+    }
+
     setState(prev => ({ ...prev, isLoading: false }));
   };
 
@@ -329,8 +414,8 @@ export function useGeofenceClockInOut({
         return false;
       }
 
-      // Check geofence
-      if (!shift.buildingLatitude || !shift.buildingLongitude) {
+      // Check geofence using resolved coordinates
+      if (!resolvedCoords) {
         setState(prev => ({
           ...prev,
           isLoading: false,
@@ -341,7 +426,7 @@ export function useGeofenceClockInOut({
 
       const geofenceResult = checkGeofence(
         location,
-        { latitude: shift.buildingLatitude, longitude: shift.buildingLongitude },
+        { latitude: resolvedCoords.latitude, longitude: resolvedCoords.longitude },
         shift.geofenceRadiusFt || GEOFENCE_RADIUS_FT
       );
 
@@ -454,11 +539,11 @@ export function useGeofenceClockInOut({
       const totalMinutes = calculateMinutesWorked(clockInTime, clockOutTime);
 
       let distanceFt = 0;
-      if (location && shift?.buildingLatitude && shift?.buildingLongitude) {
+      if (location && resolvedCoords) {
         const geofenceResult = checkGeofence(
           location,
-          { latitude: shift.buildingLatitude, longitude: shift.buildingLongitude },
-          shift.geofenceRadiusFt || GEOFENCE_RADIUS_FT
+          { latitude: resolvedCoords.latitude, longitude: resolvedCoords.longitude },
+          shift?.geofenceRadiusFt || GEOFENCE_RADIUS_FT
         );
         distanceFt = geofenceResult.distanceFeet;
       }
