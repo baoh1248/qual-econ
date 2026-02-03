@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Dimensions, PanResponder } from 'react-native';
 import MapView, { Marker, Callout, PROVIDER_GOOGLE } from './NativeMap';
 import { colors, spacing, typography } from '../styles/commonStyles';
 import Icon from './Icon';
@@ -8,6 +8,10 @@ import AnimatedCard from './AnimatedCard';
 import { supabase } from '../app/integrations/supabase/client';
 
 const REFRESH_INTERVAL = 30000; // 30 seconds
+
+const DEFAULT_MAP_HEIGHT = 340;
+const MIN_MAP_HEIGHT = 150;
+const MAX_MAP_HEIGHT_RATIO = 0.75; // 75% of container
 
 export interface ActiveCleaner {
   id: string;
@@ -32,8 +36,39 @@ const LiveMap: React.FC<LiveMapProps> = ({ onCleanerPress }) => {
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const [selectedCleaner, setSelectedCleaner] = useState<ActiveCleaner | null>(null);
   const [mapError, setMapError] = useState(false);
+  const [mapHeight, setMapHeight] = useState(DEFAULT_MAP_HEIGHT);
   const mapRef = useRef<any>(null);
   const refreshTimer = useRef<NodeJS.Timeout | null>(null);
+
+  // Draggable divider refs
+  const dragStartRef = useRef(0);
+  const mapHeightRef = useRef(DEFAULT_MAP_HEIGHT);
+  const containerHeightRef = useRef(Dimensions.get('window').height);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dy) > 2,
+      onPanResponderGrant: () => {
+        dragStartRef.current = mapHeightRef.current;
+      },
+      onPanResponderMove: (_, gs) => {
+        const newHeight = dragStartRef.current + gs.dy;
+        const maxH = Math.max(containerHeightRef.current * MAX_MAP_HEIGHT_RATIO, 400);
+        const clamped = Math.max(MIN_MAP_HEIGHT, Math.min(maxH, newHeight));
+        mapHeightRef.current = clamped;
+        setMapHeight(clamped);
+      },
+      onPanResponderRelease: () => {
+        // Tell the map to re-measure after drag ends
+        setTimeout(() => {
+          if (mapRef.current?.invalidateSize) {
+            mapRef.current.invalidateSize();
+          }
+        }, 50);
+      },
+    })
+  ).current;
 
   const fetchActiveCleaners = useCallback(async () => {
     try {
@@ -219,9 +254,14 @@ const LiveMap: React.FC<LiveMapProps> = ({ onCleanerPress }) => {
   };
 
   return (
-    <View style={styles.container}>
+    <View
+      style={styles.container}
+      onLayout={(e) => {
+        containerHeightRef.current = e.nativeEvent.layout.height;
+      }}
+    >
       {/* Map View */}
-      <View style={styles.mapContainer}>
+      <View style={[styles.mapContainer, { height: mapHeight }]}>
         {mapError ? (
           <View style={styles.mapFallback}>
             <Icon name="map" size={48} style={{ color: colors.textSecondary }} />
@@ -287,6 +327,11 @@ const LiveMap: React.FC<LiveMapProps> = ({ onCleanerPress }) => {
             {' '} - Updated {formatLastRefresh()}
           </Text>
         </View>
+      </View>
+
+      {/* Draggable divider */}
+      <View style={styles.divider} {...panResponder.panHandlers}>
+        <View style={styles.dividerHandle} />
       </View>
 
       {/* Active Cleaners List */}
@@ -385,7 +430,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   mapContainer: {
-    height: 280,
     position: 'relative',
   },
   map: {
@@ -491,6 +535,24 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: colors.textSecondary,
+  },
+  divider: {
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.backgroundAlt,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: colors.border,
+    // @ts-ignore – web-only cursor style
+    cursor: 'ns-resize',
+  },
+  dividerHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.textSecondary,
+    opacity: 0.4,
   },
   cleanerList: {
     flex: 1,

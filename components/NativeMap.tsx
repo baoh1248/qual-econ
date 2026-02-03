@@ -112,6 +112,11 @@ const MapView = forwardRef<any, any>(
           });
         }
       },
+      invalidateSize: () => {
+        if (mapRef.current) {
+          mapRef.current.invalidateSize();
+        }
+      },
     }));
 
     useEffect(() => {
