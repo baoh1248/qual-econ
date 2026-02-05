@@ -1,5 +1,5 @@
 
-import React, { memo, useState, useEffect } from 'react';
+import React, { memo, useState, useEffect, useMemo } from 'react';
 import { View, Text, Modal, ScrollView, TouchableOpacity, TextInput, StyleSheet, Platform, Alert } from 'react-native';
 import PropTypes from 'prop-types';
 import { colors, spacing, typography, commonStyles, buttonStyles, getContrastColor } from '../../styles/commonStyles';
@@ -17,6 +17,7 @@ interface InventoryItem {
   unit: string;
   category: string;
   cost?: number;
+  associated_buildings?: string[];
 }
 
 interface BuildingGroup {
@@ -181,6 +182,19 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
     item.current_stock > 0 &&
     !selectedItems.some(selected => selected.id === item.id)
   );
+
+  // Get items associated with the currently selected building destination
+  const associatedItems = useMemo(() => {
+    const destinationName = getDestinationName();
+    if (!destinationName || destinationType !== 'building') return [];
+    return inventory.filter(item =>
+      item.current_stock > 0 &&
+      item.associated_buildings &&
+      Array.isArray(item.associated_buildings) &&
+      item.associated_buildings.includes(destinationName) &&
+      !selectedItems.some(selected => selected.id === item.id)
+    );
+  }, [inventory, selectedItems, selectedBuildingId, buildings, destinationType]);
 
   const addItem = (item: InventoryItem) => {
     const unitCost = item.cost || 0;
@@ -810,6 +824,62 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
                 />
               </View>
 
+              {/* Suggested items for selected building */}
+              {associatedItems.length > 0 && (
+                <View style={{
+                  marginBottom: spacing.md,
+                  backgroundColor: colors.primary + '08',
+                  borderRadius: 12,
+                  padding: spacing.md,
+                  borderWidth: 1,
+                  borderColor: colors.primary + '20',
+                }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.sm }}>
+                    <Icon name="star" size={16} color={colors.primary} />
+                    <Text style={{ fontSize: typography.sizes.sm, color: colors.primary, fontWeight: '700' }}>
+                      Suggested Items for this Building
+                    </Text>
+                  </View>
+                  {associatedItems.map(item => (
+                    <View
+                      key={item.id}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        paddingVertical: spacing.sm,
+                        borderBottomWidth: 1,
+                        borderBottomColor: colors.border + '30',
+                      }}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: typography.sizes.sm, color: colors.text, fontWeight: '600' }}>
+                          {item.name}
+                        </Text>
+                        <Text style={{ fontSize: typography.sizes.xs, color: colors.textSecondary }}>
+                          Available: {item.current_stock} {item.unit}
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          backgroundColor: colors.primary,
+                          borderRadius: 8,
+                          paddingHorizontal: spacing.md,
+                          paddingVertical: spacing.xs,
+                          gap: spacing.xs,
+                        }}
+                        onPress={() => addItem(item)}
+                      >
+                        <Icon name="add" size={16} color={colors.background} />
+                        <Text style={{ fontSize: typography.sizes.sm, color: colors.background, fontWeight: '600' }}>Add</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              )}
+
               {searchQuery.length > 0 && (
                 <ScrollView style={{ maxHeight: 200 }} showsVerticalScrollIndicator={false}>
                   {filteredInventory.map(item => (
@@ -836,7 +906,7 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
                       </View>
                     </TouchableOpacity>
                   ))}
-                  
+
                   {filteredInventory.length === 0 && (
                     <Text style={[typography.caption, { color: colors.textSecondary, textAlign: 'center', padding: spacing.md }]}>
                       No available items found

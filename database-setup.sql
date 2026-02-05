@@ -186,6 +186,7 @@ CREATE TABLE IF NOT EXISTS inventory_items (
   supplier TEXT NOT NULL,
   auto_reorder_enabled BOOLEAN DEFAULT false,
   reorder_quantity INTEGER DEFAULT 0,
+  associated_buildings JSONB DEFAULT '[]',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

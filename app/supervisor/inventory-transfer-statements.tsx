@@ -1132,7 +1132,7 @@ export default function InventoryTransferStatementsScreen() {
                             <Text style={[styles.tableHeaderText, { flex: 1 }]}>To</Text>
                             <Text style={[styles.tableHeaderText, { width: 65 }]}>Type</Text>
                             <Text style={[styles.tableHeaderText, { width: 40, textAlign: 'right' }]}>Qty</Text>
-                            <Text style={[styles.tableHeaderText, { flex: 1 }]}>Notes</Text>
+                            <Text style={[styles.tableHeaderText, { flex: 1, marginLeft: spacing.md }]}>Notes</Text>
                           </View>
                           {/* Table Rows */}
                           {ledger.transactions.map((transaction, txIndex) => (
@@ -1157,7 +1157,7 @@ export default function InventoryTransferStatementsScreen() {
                               ]}>
                                 {transaction.type === 'incoming' ? '+' : '-'}{transaction.quantity}
                               </Text>
-                              <Text style={[styles.transactionLocation, { flex: 1, fontStyle: 'italic' }]} numberOfLines={2}>
+                              <Text style={[styles.transactionLocation, { flex: 1, fontStyle: 'italic', marginLeft: spacing.md }]} numberOfLines={2}>
                                 {transaction.notes || '-'}
                               </Text>
                             </View>
