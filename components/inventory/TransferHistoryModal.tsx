@@ -360,7 +360,7 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
 
                 {/* Enhanced Filter Dropdowns */}
                 <View style={styles.filterGrid}>
-                  <View style={styles.dropdownWrapper}>
+                  <View style={[styles.dropdownWrapper, { zIndex: 2 }]}>
                     <FilterDropdown
                       label="Client"
                       value={selectedClient}
@@ -377,7 +377,7 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
                     />
                   </View>
 
-                  <View style={styles.dropdownWrapper}>
+                  <View style={[styles.dropdownWrapper, { zIndex: 1 }]}>
                     <FilterDropdown
                       label="Building"
                       value={selectedBuilding}
