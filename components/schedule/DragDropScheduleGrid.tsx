@@ -543,10 +543,11 @@ const DragDropScheduleGrid = memo(({
 
   return (
     <GestureHandlerRootView style={styles.container}>
-      <ScrollView 
-        horizontal 
+      <ScrollView
+        horizontal
         showsHorizontalScrollIndicator={true}
         style={styles.horizontalScroll}
+        contentContainerStyle={styles.horizontalScrollContent}
         bounces={false}
       >
         <View style={styles.scheduleGrid}>
@@ -615,7 +616,11 @@ const styles = StyleSheet.create({
   horizontalScroll: {
     flex: 1,
   },
+  horizontalScrollContent: {
+    flexGrow: 1,
+  },
   scheduleGrid: {
+    flex: 1,
     minWidth: BUILDING_COLUMN_WIDTH + (DAY_COLUMN_WIDTH * 7),
   },
   headerRow: {
