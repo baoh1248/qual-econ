@@ -80,7 +80,7 @@ export default function FilterDropdown({
   const hasValue = inputValue.trim() !== '';
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, isOpen && { zIndex: 9999 }]}>
       <View style={styles.labelContainer}>
         <Text style={styles.label}>{label}</Text>
         {hasValue && (

@@ -278,10 +278,10 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
             maxHeight: Platform.OS === 'ios' ? '100%' : '85%',
             backgroundColor: colors.background,
             borderRadius: Platform.OS === 'ios' ? 0 : 16,
-            overflow: 'hidden',
             ...(Platform.OS === 'web' && {
               zIndex: 10000,
               position: 'relative' as any,
+              overflow: 'visible' as any,
             }),
           }}>
             <View style={commonStyles.header}>
@@ -814,6 +814,8 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: spacing.lg,
     marginBottom: spacing.lg,
+    overflow: 'visible' as any,
+    zIndex: 10,
   },
   filterHeader: {
     flexDirection: 'row',
@@ -859,9 +861,12 @@ const styles = StyleSheet.create({
   },
   filterGrid: {
     gap: spacing.lg,
+    overflow: 'visible' as any,
+    zIndex: 10,
   },
   dropdownWrapper: {
     zIndex: 1,
+    overflow: 'visible' as any,
   },
   transferList: {
     flex: 1,

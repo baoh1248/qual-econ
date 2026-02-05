@@ -13,6 +13,7 @@ import Icon from '../../components/Icon';
 import IconButton from '../../components/IconButton';
 import { commonStyles, colors, spacing, typography } from '../../styles/commonStyles';
 import { getInventoryTransferLogs, formatCurrency, type InventoryTransfer } from '../../utils/inventoryTracking';
+import { supabase } from '../integrations/supabase/client';
 
 type ViewMode = 'item' | 'building';
 
@@ -551,6 +552,7 @@ export default function InventoryTransferStatementsScreen() {
   const { config } = useDatabase();
 
   const [transfers, setTransfers] = useState<InventoryTransfer[]>([]);
+  const [inventoryStock, setInventoryStock] = useState<{ [itemName: string]: number }>({});
   const [isLoading, setIsLoading] = useState(true);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [monthlyStatements, setMonthlyStatements] = useState<MonthlyInventoryStatement[]>([]);
@@ -565,8 +567,20 @@ export default function InventoryTransferStatementsScreen() {
       setIsLoading(true);
       console.log('🔄 Loading inventory transfers for statements...');
 
-      const logs = await getInventoryTransferLogs();
+      const [logs, inventoryResult] = await Promise.all([
+        getInventoryTransferLogs(),
+        supabase.from('inventory_items').select('name, current_stock'),
+      ]);
       console.log(`✅ Loaded ${logs.length} transfer logs`);
+
+      // Build current stock map from inventory items
+      const stockMap: { [itemName: string]: number } = {};
+      if (inventoryResult.data) {
+        inventoryResult.data.forEach((item: any) => {
+          stockMap[item.name] = item.current_stock || 0;
+        });
+      }
+      setInventoryStock(stockMap);
 
       // Ensure all transfers have a type (default to 'outgoing' for backward compatibility)
       const normalizedLogs = logs.map(transfer => ({
@@ -593,7 +607,47 @@ export default function InventoryTransferStatementsScreen() {
   useEffect(() => {
     // Build monthly inventory statements with item ledgers
     const statementsByMonth: { [key: string]: MonthlyInventoryStatement } = {};
-    const itemBalances: { [itemName: string]: number } = {}; // Track running balances across months
+
+    // Calculate initial balances by reverse-calculating from current inventory stock:
+    // initial_balance = current_stock - total_incoming + total_outgoing
+    // This gives us what stock was before any transfers were recorded.
+    const itemTotals: { [itemName: string]: { incoming: number; outgoing: number } } = {};
+    transfers.forEach(transfer => {
+      transfer.items.forEach(item => {
+        if (!itemTotals[item.name]) {
+          itemTotals[item.name] = { incoming: 0, outgoing: 0 };
+        }
+        if (transfer.type === 'incoming') {
+          itemTotals[item.name].incoming += item.quantity;
+        } else {
+          itemTotals[item.name].outgoing += item.quantity;
+        }
+      });
+    });
+
+    const itemBalances: { [itemName: string]: number } = {};
+    Object.keys(itemTotals).forEach(itemName => {
+      const currentStock = inventoryStock[itemName] || 0;
+      const { incoming, outgoing } = itemTotals[itemName];
+      itemBalances[itemName] = currentStock - incoming + outgoing;
+    });
+
+    // For the selected year, also account for transfers from prior years
+    // by processing them against the initial balance
+    const priorYearTransfers = [...transfers]
+      .filter(t => new Date(t.timestamp).getFullYear() < selectedYear)
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+    priorYearTransfers.forEach(transfer => {
+      transfer.items.forEach(item => {
+        if (itemBalances[item.name] === undefined) return;
+        if (transfer.type === 'incoming') {
+          itemBalances[item.name] += item.quantity;
+        } else {
+          itemBalances[item.name] -= item.quantity;
+        }
+      });
+    });
 
     // Sort transfers chronologically to calculate balances correctly
     const sortedTransfers = [...transfers]
@@ -690,7 +744,7 @@ export default function InventoryTransferStatementsScreen() {
       .filter(Boolean);
 
     setMonthlyStatements(statements);
-  }, [transfers, selectedYear]);
+  }, [transfers, selectedYear, inventoryStock]);
 
   const availableYears = Array.from(
     new Set(transfers.map(t => new Date(t.timestamp).getFullYear()))
