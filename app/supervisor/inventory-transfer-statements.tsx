@@ -833,8 +833,36 @@ export default function InventoryTransferStatementsScreen() {
         new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
       );
 
-      // Running per-item balances
+      // Calculate initial balances from inventory stock (same as item view):
+      // initial = current_stock - total_incoming + total_outgoing (across ALL transfers, not just this building)
       const runningBalances = new Map<string, { quantity: number; unit: string }>();
+
+      // Collect all item names that appear in this building's transfers
+      const buildingItemNames = new Set<string>();
+      sorted.forEach(t => t.items.forEach(item => buildingItemNames.add(item.name)));
+
+      // For each item, calculate the initial balance from inventory stock
+      // using all transfers across all buildings (not just this building)
+      const allItemTotals: { [itemName: string]: { incoming: number; outgoing: number; unit: string } } = {};
+      transfers.forEach(transfer => {
+        transfer.items.forEach(item => {
+          if (!buildingItemNames.has(item.name)) return;
+          if (!allItemTotals[item.name]) {
+            allItemTotals[item.name] = { incoming: 0, outgoing: 0, unit: item.unit };
+          }
+          if (transfer.type === 'incoming') {
+            allItemTotals[item.name].incoming += item.quantity;
+          } else {
+            allItemTotals[item.name].outgoing += item.quantity;
+          }
+        });
+      });
+
+      // Set initial balances: current_stock - total_incoming + total_outgoing
+      Object.entries(allItemTotals).forEach(([itemName, { incoming, outgoing, unit }]) => {
+        const currentStock = inventoryStock[itemName] || 0;
+        runningBalances.set(itemName, { quantity: currentStock - incoming + outgoing, unit });
+      });
 
       // Process all transfers BEFORE selected year to get opening balances
       sorted
@@ -919,7 +947,7 @@ export default function InventoryTransferStatementsScreen() {
       if (cc !== 0) return cc;
       return a.buildingName.localeCompare(b.buildingName);
     });
-  }, [transfers, selectedYear, selectedBuilding]);
+  }, [transfers, selectedYear, selectedBuilding, inventoryStock]);
 
   const toggleMonth = (index: number) => {
     const newExpanded = new Set(expandedMonths);
@@ -1104,6 +1132,7 @@ export default function InventoryTransferStatementsScreen() {
                             <Text style={[styles.tableHeaderText, { flex: 1 }]}>To</Text>
                             <Text style={[styles.tableHeaderText, { width: 65 }]}>Type</Text>
                             <Text style={[styles.tableHeaderText, { width: 40, textAlign: 'right' }]}>Qty</Text>
+                            <Text style={[styles.tableHeaderText, { flex: 1 }]}>Notes</Text>
                           </View>
                           {/* Table Rows */}
                           {ledger.transactions.map((transaction, txIndex) => (
@@ -1127,6 +1156,9 @@ export default function InventoryTransferStatementsScreen() {
                                 transaction.type === 'incoming' ? styles.quantityIncoming : styles.quantityOutgoing
                               ]}>
                                 {transaction.type === 'incoming' ? '+' : '-'}{transaction.quantity}
+                              </Text>
+                              <Text style={[styles.transactionLocation, { flex: 1, fontStyle: 'italic' }]} numberOfLines={2}>
+                                {transaction.notes || '-'}
                               </Text>
                             </View>
                           ))}
@@ -1291,9 +1323,20 @@ export default function InventoryTransferStatementsScreen() {
                                   </View>
                                 )}
                                 {transfer.notes && (
-                                  <Text style={[styles.transferItems, { marginTop: spacing.sm, fontStyle: 'italic' }]}>
-                                    Note: {transfer.notes}
-                                  </Text>
+                                  <View style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'flex-start',
+                                    gap: spacing.xs,
+                                    marginTop: spacing.sm,
+                                    backgroundColor: colors.backgroundAlt,
+                                    padding: spacing.sm,
+                                    borderRadius: 8,
+                                  }}>
+                                    <Icon name="document-text" size={14} color={colors.textSecondary} style={{ marginTop: 2 }} />
+                                    <Text style={{ fontSize: typography.sizes.sm, color: colors.textSecondary, fontStyle: 'italic', flex: 1 }}>
+                                      {transfer.notes}
+                                    </Text>
+                                  </View>
                                 )}
                                 <Text style={styles.transferBy}>
                                   By: {transfer.transferredBy}
