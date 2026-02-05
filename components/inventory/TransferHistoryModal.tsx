@@ -173,11 +173,11 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
         destination: editDestination,
         notes: editNotes || undefined,
         sentFrom: editSentFrom || undefined,
+        orderNumber: editOrderNumber || undefined,
       };
 
       if (editingTransfer.type === 'incoming') {
         updates.source = editSource;
-        updates.orderNumber = editOrderNumber;
       }
 
       await updateInventoryTransferLog(editingTransfer.id, updates);
@@ -464,6 +464,14 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
                                     </Text>
                                   </View>
                                 )}
+                                {transfer.orderNumber && (
+                                  <View style={[styles.transferMeta, { marginTop: spacing.xs }]}>
+                                    <Icon name="document-text" size={14} color={colors.info} />
+                                    <Text style={[styles.transferMetaText, { color: colors.info, fontWeight: '600' }]}>
+                                      Order #: {transfer.orderNumber}
+                                    </Text>
+                                  </View>
+                                )}
                               </View>
                             </View>
                             <View style={{ flexDirection: 'row', gap: spacing.xs }}>
@@ -630,30 +638,28 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
               </View>
 
               {editingTransfer?.type === 'incoming' && (
-                <>
-                  <View style={styles.editFormGroup}>
-                    <Text style={styles.editLabel}>Supplier / Source</Text>
-                    <TextInput
-                      style={styles.editInput}
-                      value={editSource}
-                      onChangeText={setEditSource}
-                      placeholder="Enter supplier name"
-                      placeholderTextColor={colors.textSecondary}
-                    />
-                  </View>
-
-                  <View style={styles.editFormGroup}>
-                    <Text style={styles.editLabel}>Order / Invoice Number</Text>
-                    <TextInput
-                      style={styles.editInput}
-                      value={editOrderNumber}
-                      onChangeText={setEditOrderNumber}
-                      placeholder="Enter order number"
-                      placeholderTextColor={colors.textSecondary}
-                    />
-                  </View>
-                </>
+                <View style={styles.editFormGroup}>
+                  <Text style={styles.editLabel}>Supplier / Source</Text>
+                  <TextInput
+                    style={styles.editInput}
+                    value={editSource}
+                    onChangeText={setEditSource}
+                    placeholder="Enter supplier name"
+                    placeholderTextColor={colors.textSecondary}
+                  />
+                </View>
               )}
+
+              <View style={styles.editFormGroup}>
+                <Text style={styles.editLabel}>Order / Invoice Number</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={editOrderNumber}
+                  onChangeText={setEditOrderNumber}
+                  placeholder="Enter order number"
+                  placeholderTextColor={colors.textSecondary}
+                />
+              </View>
 
               {/* Items */}
               <Text style={styles.editSectionTitle}>Items</Text>

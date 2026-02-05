@@ -22,6 +22,7 @@ interface ItemTransaction {
   quantity: number;
   location: string; // client name or supplier name
   sentFrom?: string;
+  orderNumber?: string;
   transferId: string;
   transferredBy: string;
   notes?: string;
@@ -51,6 +52,7 @@ interface BuildingTransfer {
   transferredBy: string;
   notes?: string;
   sentFrom?: string;
+  orderNumber?: string;
   type: 'incoming' | 'outgoing';
   totalValue?: number;
 }
@@ -646,6 +648,7 @@ export default function InventoryTransferStatementsScreen() {
             quantity: item.quantity,
             location: transfer.type === 'incoming' ? (transfer.source || 'Supplier') : transfer.destination,
             sentFrom: transfer.sentFrom,
+            orderNumber: transfer.orderNumber,
             transferId: transfer.id,
             transferredBy: transfer.transferredBy,
             notes: transfer.notes,
@@ -832,6 +835,7 @@ export default function InventoryTransferStatementsScreen() {
             transferredBy: t.transferredBy,
             notes: t.notes,
             sentFrom: t.sentFrom,
+            orderNumber: t.orderNumber,
             type: t.type,
             totalValue: t.totalValue,
           });
@@ -1041,23 +1045,27 @@ export default function InventoryTransferStatementsScreen() {
                           {/* Table Header */}
                           <View style={styles.tableHeader}>
                             <Text style={[styles.tableHeaderText, { width: 55 }]}>Date</Text>
+                            <Text style={[styles.tableHeaderText, { width: 70 }]}>Order #</Text>
                             <Text style={[styles.tableHeaderText, { flex: 1 }]}>From</Text>
                             <Text style={[styles.tableHeaderText, { flex: 1 }]}>To</Text>
-                            <Text style={[styles.tableHeaderText, { width: 55 }]}>Type</Text>
+                            <Text style={[styles.tableHeaderText, { width: 65 }]}>Type</Text>
                             <Text style={[styles.tableHeaderText, { width: 40, textAlign: 'right' }]}>Qty</Text>
                           </View>
                           {/* Table Rows */}
                           {ledger.transactions.map((transaction, txIndex) => (
                             <View key={txIndex} style={styles.transactionRow}>
                               <Text style={styles.transactionDate}>{transaction.date}</Text>
+                              <Text style={[styles.transactionType, { width: 70 }]} numberOfLines={1}>
+                                {transaction.orderNumber || '-'}
+                              </Text>
                               <Text style={[styles.transactionLocation, { flex: 1 }]} numberOfLines={1}>
                                 {transaction.sentFrom || '-'}
                               </Text>
                               <Text style={[styles.transactionLocation, { flex: 1 }]} numberOfLines={1}>
                                 {transaction.location}
                               </Text>
-                              <Text style={[styles.transactionType, { width: 55 }]}>
-                                {transaction.type === 'incoming' ? 'In' : 'Out'}
+                              <Text style={[styles.transactionType, { width: 65 }]}>
+                                {transaction.type === 'incoming' ? 'Received' : 'Sent Out'}
                               </Text>
                               <Text style={[
                                 styles.transactionQuantity,
@@ -1174,7 +1182,25 @@ export default function InventoryTransferStatementsScreen() {
                                   transfer.type === 'incoming' && styles.transferCardIncoming
                                 ]}
                               >
-                                <Text style={styles.transferDate}>{transfer.date}</Text>
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                                  <Text style={styles.transferDate}>{transfer.date}</Text>
+                                  <Text style={{
+                                    fontSize: typography.sizes.xs,
+                                    fontWeight: typography.weights.bold as any,
+                                    color: transfer.type === 'incoming' ? colors.success : colors.error,
+                                    backgroundColor: (transfer.type === 'incoming' ? colors.success : colors.error) + '15',
+                                    paddingHorizontal: spacing.sm,
+                                    paddingVertical: 2,
+                                    borderRadius: 8,
+                                  }}>
+                                    {transfer.type === 'incoming' ? 'Received' : 'Sent Out'}
+                                  </Text>
+                                </View>
+                                {transfer.orderNumber && (
+                                  <Text style={[styles.transferBy, { marginTop: 0, marginBottom: 4, fontStyle: 'normal', color: colors.info }]}>
+                                    Order #: {transfer.orderNumber}
+                                  </Text>
+                                )}
                                 {transfer.sentFrom && (
                                   <Text style={[styles.transferBy, { marginTop: 0, marginBottom: 4, fontStyle: 'normal', color: colors.primary }]}>
                                     From: {transfer.sentFrom}

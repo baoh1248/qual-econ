@@ -41,15 +41,25 @@ interface SelectedItem extends InventoryTransferItem {
   maxQuantity: number;
 }
 
+const generateOrderNumber = (): string => {
+  const date = new Date();
+  const year = date.getFullYear().toString().slice(-2);
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const day = date.getDate().toString().padStart(2, '0');
+  const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+  return `ORD-${year}${month}${day}-${random}`;
+};
+
 const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory, onSend, onSuccess }) => {
   console.log('SendItemsModal rendered');
-  
+
   const [destination, setDestination] = useState('');
   const [destinationType, setDestinationType] = useState<'building' | 'group'>('building');
   const [selectedBuildingId, setSelectedBuildingId] = useState<string | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [selectedItems, setSelectedItems] = useState<SelectedItem[]>([]);
   const [sentFrom, setSentFrom] = useState('');
+  const [orderNumber, setOrderNumber] = useState('');
   const [notes, setNotes] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [sending, setSending] = useState(false);
@@ -72,6 +82,7 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
       setSelectedGroupId(null);
       setSelectedItems([]);
       setSentFrom('');
+      setOrderNumber('');
       setNotes('');
       setSearchQuery('');
       setExpandedBuildingClients(new Set());
@@ -251,6 +262,7 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
         timestamp: new Date().toISOString(),
         transferredBy: 'Supervisor',
         sentFrom: sentFrom.trim() || undefined,
+        orderNumber: orderNumber.trim() || undefined,
         notes: notes.trim() || undefined,
         totalValue: totalValue,
       });
@@ -398,6 +410,35 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
                 value={sentFrom}
                 onChangeText={setSentFrom}
               />
+            </View>
+
+            {/* Order Number (Optional) */}
+            <View style={{ marginBottom: spacing.lg }}>
+              <Text style={[typography.body, { color: colors.text, fontWeight: '600', marginBottom: spacing.sm }]}>
+                Order Number (Optional)
+              </Text>
+              <View style={[commonStyles.row, { gap: spacing.sm }]}>
+                <TextInput
+                  style={[commonStyles.textInput, { flex: 1 }]}
+                  placeholder="Enter or generate order number"
+                  placeholderTextColor={colors.textSecondary}
+                  value={orderNumber}
+                  onChangeText={setOrderNumber}
+                />
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: colors.primary,
+                    width: 44,
+                    height: 44,
+                    borderRadius: 8,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  onPress={() => setOrderNumber(generateOrderNumber())}
+                >
+                  <Icon name="refresh" size={20} color={colors.background} />
+                </TouchableOpacity>
+              </View>
             </View>
 
             <View style={{ marginBottom: spacing.lg }}>
