@@ -726,11 +726,11 @@ const ScheduleModal = memo(({
                     <Icon name="repeat" size={20} style={{ color: themeColor }} />
                     <View style={styles.recurringEditToggleLabels}>
                       <Text style={[styles.recurringEditToggleTitle, { color: colors.text }]}>
-                        Edit All Recurring Shifts
+                        Edit All Future Recurring Shifts
                       </Text>
                       <Text style={[styles.recurringEditToggleSubtitle, { color: colors.textSecondary }]}>
                         {editAllRecurring
-                          ? 'Changes will apply to all shifts in this recurring pattern'
+                          ? 'Changes will apply to this and all future shifts in this recurring pattern'
                           : 'Changes will only apply to this shift'}
                       </Text>
                     </View>

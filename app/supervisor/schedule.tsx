@@ -1340,11 +1340,12 @@ export default function ScheduleView() {
 
         // If edit all recurring is enabled, update ALL entries one by one
         if (editAllRecurring && selectedEntry.isRecurring && selectedEntry.recurringId) {
-          // Fetch ALL entries with the same recurringId
+          // Fetch future entries with the same recurringId (this shift's date and onwards)
           const { data: allRecurringEntries, error: fetchError } = await supabase
             .from('schedule_entries')
             .select('id')
-            .eq('recurring_id', selectedEntry.recurringId);
+            .eq('recurring_id', selectedEntry.recurringId)
+            .gte('date', selectedEntry.date);
 
           if (fetchError) {
             alert('Error fetching recurring shifts: ' + fetchError.message);
@@ -1396,7 +1397,7 @@ export default function ScheduleView() {
             return;
           }
 
-          showToast(`Updated ${successCount} of ${allRecurringEntries.length} recurring shifts`, 'success');
+          showToast(`Updated ${successCount} of ${allRecurringEntries.length} future recurring shifts`, 'success');
 
           // Log the edit
           try {
