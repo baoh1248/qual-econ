@@ -2217,6 +2217,14 @@ export default function ScheduleView() {
         )}
 
         <View style={styles.dateNavigation}>
+          {!isViewingCurrentPeriod() && (
+            <IconButton
+              icon="today"
+              onPress={() => setCurrentDate(new Date())}
+              size={20}
+              color={themeColor}
+            />
+          )}
           <IconButton
             icon="chevron-back"
             onPress={() => changeDate(-1)}
@@ -2232,14 +2240,6 @@ export default function ScheduleView() {
             size={20}
             color={themeColor}
           />
-          {!isViewingCurrentPeriod() && (
-            <IconButton
-              icon="today"
-              onPress={() => setCurrentDate(new Date())}
-              size={20}
-              color={themeColor}
-            />
-          )}
         </View>
       </View>
 
