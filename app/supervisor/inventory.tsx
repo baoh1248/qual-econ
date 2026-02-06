@@ -446,7 +446,7 @@ export default function SupervisorInventoryScreen() {
   const [buildingSearchQuery, setBuildingSearchQuery] = useState('');
 
   // Load available buildings for item association
-  const loadAvailableBuildings = useCallback(async () => {
+  const loadAvailableBuildings = async () => {
     try {
       const { data, error } = await supabase
         .from('client_buildings')
@@ -462,7 +462,7 @@ export default function SupervisorInventoryScreen() {
     } catch (e) {
       console.error('Failed to load buildings for association:', e);
     }
-  }, []);
+  };
 
   // Load inventory data from Supabase
   const loadInventoryData = useCallback(async () => {
@@ -634,7 +634,7 @@ export default function SupervisorInventoryScreen() {
         supplier: editItemForm.supplier.trim(),
         auto_reorder_enabled: editItemForm.auto_reorder_enabled,
         reorder_quantity: parseInt(editItemForm.reorder_quantity) || 50,
-        associated_buildings: editItemForm.associated_buildings,
+        associated_buildings: editItemForm.associated_buildings || [],
         updated_at: new Date().toISOString(),
       };
 
@@ -1453,7 +1453,7 @@ export default function SupervisorInventoryScreen() {
                   Select buildings that frequently use this item
                 </Text>
 
-                {/* Selected buildings */}
+                {/* Selected buildings chips */}
                 {editItemForm.associated_buildings && editItemForm.associated_buildings.length > 0 && (
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.sm }}>
                     {editItemForm.associated_buildings.map((dest) => (

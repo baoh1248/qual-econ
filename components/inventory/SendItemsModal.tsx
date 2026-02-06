@@ -1,5 +1,5 @@
 
-import React, { memo, useState, useEffect, useMemo } from 'react';
+import React, { memo, useState, useEffect } from 'react';
 import { View, Text, Modal, ScrollView, TouchableOpacity, TextInput, StyleSheet, Platform, Alert } from 'react-native';
 import PropTypes from 'prop-types';
 import { colors, spacing, typography, commonStyles, buttonStyles, getContrastColor } from '../../styles/commonStyles';
@@ -184,8 +184,16 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
   );
 
   // Get items associated with the currently selected building destination
+  const getDestinationNameForFilter = () => {
+    if (destinationType === 'building' && selectedBuildingId) {
+      const building = buildings.find(b => b.id === selectedBuildingId);
+      return building ? `${building.clientName} - ${building.buildingName}` : '';
+    }
+    return '';
+  };
+
   const associatedItems = useMemo(() => {
-    const destinationName = getDestinationName();
+    const destinationName = getDestinationNameForFilter();
     if (!destinationName || destinationType !== 'building') return [];
     return inventory.filter(item =>
       item.current_stock > 0 &&
@@ -906,7 +914,7 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
                       </View>
                     </TouchableOpacity>
                   ))}
-
+                  
                   {filteredInventory.length === 0 && (
                     <Text style={[typography.caption, { color: colors.textSecondary, textAlign: 'center', padding: spacing.md }]}>
                       No available items found
