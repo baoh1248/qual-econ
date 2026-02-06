@@ -396,6 +396,57 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     justifyContent: 'flex-end',
   },
+  buildingChipsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: spacing.sm,
+  },
+  buildingChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary + '15',
+    borderRadius: 20,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    marginRight: spacing.xs,
+    marginBottom: spacing.xs,
+  },
+  buildingChipText: {
+    fontSize: typography.sizes.sm,
+    color: colors.primary,
+    fontWeight: '600' as any,
+    marginRight: spacing.xs,
+  },
+  buildingListContainer: {
+    maxHeight: 200,
+    marginTop: spacing.sm,
+  },
+  buildingListItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border + '40',
+  },
+  buildingListItemText: {
+    flex: 1,
+    marginLeft: spacing.sm,
+  },
+  buildingListItemName: {
+    fontSize: typography.sizes.sm,
+    color: colors.text,
+    fontWeight: '600' as any,
+  },
+  buildingListItemClient: {
+    fontSize: typography.sizes.xs,
+    color: colors.textSecondary,
+  },
+  buildingAssocDescription: {
+    fontSize: typography.sizes.sm,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+  },
 });
 
 export default function SupervisorInventoryScreen() {
@@ -608,7 +659,10 @@ export default function SupervisorInventoryScreen() {
       supplier: item.supplier,
       auto_reorder_enabled: item.auto_reorder_enabled,
       reorder_quantity: item.reorder_quantity.toString(),
+      associated_buildings: item.associated_buildings ? item.associated_buildings : [],
     });
+    setBuildingSearchQuery('');
+    loadAvailableBuildings();
     setShowEditModal(true);
   };
 
@@ -631,6 +685,7 @@ export default function SupervisorInventoryScreen() {
         supplier: editItemForm.supplier.trim(),
         auto_reorder_enabled: editItemForm.auto_reorder_enabled,
         reorder_quantity: parseInt(editItemForm.reorder_quantity) || 50,
+        associated_buildings: editItemForm.associated_buildings ? editItemForm.associated_buildings : [],
         updated_at: new Date().toISOString(),
       };
 
@@ -1440,6 +1495,70 @@ export default function SupervisorInventoryScreen() {
                   value={editItemForm.supplier}
                   onChangeText={(text) => setEditItemForm({ ...editItemForm, supplier: text })}
                 />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Associated Buildings</Text>
+                <Text style={styles.buildingAssocDescription}>
+                  Select buildings that frequently use this item
+                </Text>
+
+                {editItemForm.associated_buildings && editItemForm.associated_buildings.length > 0 ? (
+                  <View style={styles.buildingChipsContainer}>
+                    {editItemForm.associated_buildings.map((dest) => (
+                      <TouchableOpacity
+                        key={dest}
+                        style={styles.buildingChip}
+                        onPress={() => {
+                          const filtered = editItemForm.associated_buildings.filter(b => b !== dest);
+                          setEditItemForm({ ...editItemForm, associated_buildings: filtered });
+                        }}
+                      >
+                        <Text style={styles.buildingChipText}>{dest}</Text>
+                        <Icon name="close-circle" size={16} color={colors.primary} />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                ) : null}
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="Search buildings..."
+                  placeholderTextColor={colors.textSecondary}
+                  value={buildingSearchQuery}
+                  onChangeText={setBuildingSearchQuery}
+                />
+
+                <View style={styles.buildingListContainer}>
+                  <ScrollView nestedScrollEnabled>
+                    {availableBuildings
+                      .filter(b => {
+                        const isSelected = editItemForm.associated_buildings && editItemForm.associated_buildings.includes(b.destination);
+                        return !isSelected;
+                      })
+                      .filter(b => {
+                        if (!buildingSearchQuery) return true;
+                        return b.destination.toLowerCase().includes(buildingSearchQuery.toLowerCase());
+                      })
+                      .map((b) => (
+                        <TouchableOpacity
+                          key={b.destination}
+                          style={styles.buildingListItem}
+                          onPress={() => {
+                            const current = editItemForm.associated_buildings ? editItemForm.associated_buildings : [];
+                            setEditItemForm({ ...editItemForm, associated_buildings: [...current, b.destination] });
+                            setBuildingSearchQuery('');
+                          }}
+                        >
+                          <Icon name="add-circle-outline" size={20} color={colors.primary} />
+                          <View style={styles.buildingListItemText}>
+                            <Text style={styles.buildingListItemName}>{b.buildingName}</Text>
+                            <Text style={styles.buildingListItemClient}>{b.clientName}</Text>
+                          </View>
+                        </TouchableOpacity>
+                      ))}
+                  </ScrollView>
+                </View>
               </View>
             </ScrollView>
 
