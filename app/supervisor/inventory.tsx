@@ -32,6 +32,7 @@ interface InventoryItem {
   supplier: string;
   auto_reorder_enabled: boolean;
   reorder_quantity: number;
+  associated_buildings?: string[];
   created_at?: string;
   updated_at?: string;
 }
@@ -73,6 +74,7 @@ interface EditItemForm {
   supplier: string;
   auto_reorder_enabled: boolean;
   reorder_quantity: string;
+  associated_buildings: string[];
 }
 
 const { width } = Dimensions.get('window');
@@ -437,7 +439,30 @@ export default function SupervisorInventoryScreen() {
     supplier: '',
     auto_reorder_enabled: false,
     reorder_quantity: '50',
+    associated_buildings: [],
   });
+
+  const [availableBuildings, setAvailableBuildings] = useState<Array<{ clientName: string; buildingName: string; destination: string }>>([]);
+  const [buildingSearchQuery, setBuildingSearchQuery] = useState('');
+
+  const loadAvailableBuildings = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('client_buildings')
+        .select('client_name, building_name')
+        .order('client_name', { ascending: true });
+      if (!error && data) {
+        const mapped = data.map((b: { client_name: string; building_name: string }) => ({
+          clientName: b.client_name,
+          buildingName: b.building_name,
+          destination: b.client_name + ' - ' + b.building_name,
+        }));
+        setAvailableBuildings(mapped);
+      }
+    } catch (e) {
+      console.error('Failed to load buildings:', e);
+    }
+  };
 
   // Load inventory data from Supabase
   const loadInventoryData = useCallback(async () => {
