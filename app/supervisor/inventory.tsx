@@ -32,7 +32,6 @@ interface InventoryItem {
   supplier: string;
   auto_reorder_enabled: boolean;
   reorder_quantity: number;
-  associated_buildings?: string[];
   created_at?: string;
   updated_at?: string;
 }
@@ -74,7 +73,6 @@ interface EditItemForm {
   supplier: string;
   auto_reorder_enabled: boolean;
   reorder_quantity: string;
-  associated_buildings: string[];
 }
 
 const { width } = Dimensions.get('window');
@@ -439,30 +437,7 @@ export default function SupervisorInventoryScreen() {
     supplier: '',
     auto_reorder_enabled: false,
     reorder_quantity: '50',
-    associated_buildings: [],
   });
-
-  const [availableBuildings, setAvailableBuildings] = useState<{ clientName: string; buildingName: string; destination: string }[]>([]);
-  const [buildingSearchQuery, setBuildingSearchQuery] = useState('');
-
-  // Load available buildings for item association
-  const loadAvailableBuildings = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('client_buildings')
-        .select('client_name, building_name')
-        .order('client_name', { ascending: true });
-      if (!error && data) {
-        setAvailableBuildings(data.map((b: any) => ({
-          clientName: b.client_name,
-          buildingName: b.building_name,
-          destination: `${b.client_name} - ${b.building_name}`,
-        })));
-      }
-    } catch (e) {
-      console.error('Failed to load buildings for association:', e);
-    }
-  };
 
   // Load inventory data from Supabase
   const loadInventoryData = useCallback(async () => {
@@ -608,10 +583,7 @@ export default function SupervisorInventoryScreen() {
       supplier: item.supplier,
       auto_reorder_enabled: item.auto_reorder_enabled,
       reorder_quantity: item.reorder_quantity.toString(),
-      associated_buildings: item.associated_buildings || [],
     });
-    setBuildingSearchQuery('');
-    loadAvailableBuildings();
     setShowEditModal(true);
   };
 
@@ -634,7 +606,6 @@ export default function SupervisorInventoryScreen() {
         supplier: editItemForm.supplier.trim(),
         auto_reorder_enabled: editItemForm.auto_reorder_enabled,
         reorder_quantity: parseInt(editItemForm.reorder_quantity) || 50,
-        associated_buildings: editItemForm.associated_buildings || [],
         updated_at: new Date().toISOString(),
       };
 
@@ -1444,88 +1415,6 @@ export default function SupervisorInventoryScreen() {
                   value={editItemForm.supplier}
                   onChangeText={(text) => setEditItemForm({ ...editItemForm, supplier: text })}
                 />
-              </View>
-
-              {/* Associated Buildings */}
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Associated Buildings</Text>
-                <Text style={{ fontSize: typography.sizes.sm, color: colors.textSecondary, marginBottom: spacing.sm }}>
-                  Select buildings that frequently use this item
-                </Text>
-
-                {/* Selected buildings chips */}
-                {editItemForm.associated_buildings && editItemForm.associated_buildings.length > 0 && (
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.sm }}>
-                    {editItemForm.associated_buildings.map((dest) => (
-                      <TouchableOpacity
-                        key={dest}
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          backgroundColor: colors.primary + '15',
-                          borderRadius: 20,
-                          paddingHorizontal: spacing.md,
-                          paddingVertical: spacing.xs,
-                          gap: spacing.xs,
-                        }}
-                        onPress={() => {
-                          setEditItemForm({
-                            ...editItemForm,
-                            associated_buildings: (editItemForm.associated_buildings || []).filter(b => b !== dest),
-                          });
-                        }}
-                      >
-                        <Text style={{ fontSize: typography.sizes.sm, color: colors.primary, fontWeight: '600' }}>{dest}</Text>
-                        <Icon name="close-circle" size={16} color={colors.primary} />
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
-
-                {/* Building search */}
-                <TextInput
-                  style={styles.input}
-                  placeholder="Search buildings..."
-                  placeholderTextColor={colors.textSecondary}
-                  value={buildingSearchQuery}
-                  onChangeText={setBuildingSearchQuery}
-                />
-
-                {/* Building list */}
-                <View style={{ maxHeight: 200, marginTop: spacing.sm }}>
-                  <ScrollView nestedScrollEnabled={true} showsVerticalScrollIndicator={true}>
-                    {availableBuildings
-                      .filter(b => !(editItemForm.associated_buildings || []).includes(b.destination))
-                      .filter(b => !buildingSearchQuery || b.destination.toLowerCase().includes(buildingSearchQuery.toLowerCase()))
-                      .map((b) => (
-                        <TouchableOpacity
-                          key={b.destination}
-                          style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            paddingVertical: spacing.sm,
-                            paddingHorizontal: spacing.md,
-                            borderBottomWidth: 1,
-                            borderBottomColor: colors.border + '40',
-                            gap: spacing.sm,
-                          }}
-                          onPress={() => {
-                            setEditItemForm({
-                              ...editItemForm,
-                              associated_buildings: [...(editItemForm.associated_buildings || []), b.destination],
-                            });
-                            setBuildingSearchQuery('');
-                          }}
-                        >
-                          <Icon name="add-circle-outline" size={20} color={colors.primary} />
-                          <View style={{ flex: 1 }}>
-                            <Text style={{ fontSize: typography.sizes.sm, color: colors.text, fontWeight: '600' }}>{b.buildingName}</Text>
-                            <Text style={{ fontSize: typography.sizes.xs, color: colors.textSecondary }}>{b.clientName}</Text>
-                          </View>
-                        </TouchableOpacity>
-                      ))}
-                  </ScrollView>
-                </View>
               </View>
             </ScrollView>
 
