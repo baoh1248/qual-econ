@@ -1454,7 +1454,7 @@ export default function SupervisorInventoryScreen() {
                 </Text>
 
                 {/* Selected buildings */}
-                {editItemForm.associated_buildings.length > 0 && (
+                {editItemForm.associated_buildings && editItemForm.associated_buildings.length > 0 && (
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.sm }}>
                     {editItemForm.associated_buildings.map((dest) => (
                       <TouchableOpacity
@@ -1471,7 +1471,7 @@ export default function SupervisorInventoryScreen() {
                         onPress={() => {
                           setEditItemForm({
                             ...editItemForm,
-                            associated_buildings: editItemForm.associated_buildings.filter(b => b !== dest),
+                            associated_buildings: (editItemForm.associated_buildings || []).filter(b => b !== dest),
                           });
                         }}
                       >
@@ -1493,9 +1493,9 @@ export default function SupervisorInventoryScreen() {
 
                 {/* Building list */}
                 <View style={{ maxHeight: 200, marginTop: spacing.sm }}>
-                  <ScrollView nestedScrollEnabled showsVerticalScrollIndicator>
+                  <ScrollView nestedScrollEnabled={true} showsVerticalScrollIndicator={true}>
                     {availableBuildings
-                      .filter(b => !editItemForm.associated_buildings.includes(b.destination))
+                      .filter(b => !(editItemForm.associated_buildings || []).includes(b.destination))
                       .filter(b => !buildingSearchQuery || b.destination.toLowerCase().includes(buildingSearchQuery.toLowerCase()))
                       .map((b) => (
                         <TouchableOpacity
@@ -1512,7 +1512,7 @@ export default function SupervisorInventoryScreen() {
                           onPress={() => {
                             setEditItemForm({
                               ...editItemForm,
-                              associated_buildings: [...editItemForm.associated_buildings, b.destination],
+                              associated_buildings: [...(editItemForm.associated_buildings || []), b.destination],
                             });
                             setBuildingSearchQuery('');
                           }}
