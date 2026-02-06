@@ -17,6 +17,7 @@ interface InventoryItem {
   unit: string;
   category: string;
   cost?: number;
+  location?: string;
   associated_buildings?: string[];
 }
 
@@ -35,6 +36,7 @@ interface SendItemsModalProps {
   inventory: InventoryItem[];
   onSend: (itemIds: string[], quantities: number[]) => void;
   onSuccess?: () => void;
+  warehouses?: string[];
 }
 
 interface SelectedItem extends InventoryTransferItem {
@@ -51,7 +53,7 @@ const generateOrderNumber = (): string => {
   return `ORD-${year}${month}${day}-${random}`;
 };
 
-const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory, onSend, onSuccess }) => {
+const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory, onSend, onSuccess, warehouses }) => {
   console.log('SendItemsModal rendered');
 
   const [destination, setDestination] = useState('');
@@ -76,13 +78,16 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
   useEffect(() => {
     if (visible) {
       loadDestinations();
+      if (warehouses && warehouses.length > 0) {
+        setSentFrom(warehouses[0]);
+      }
     } else {
       setDestination('');
       setDestinationType('building');
       setSelectedBuildingId(null);
       setSelectedGroupId(null);
       setSelectedItems([]);
-      setSentFrom('');
+      setSentFrom(warehouses && warehouses.length > 0 ? warehouses[0] : '');
       setOrderNumber('');
       setNotes('');
       setSearchQuery('');
@@ -177,11 +182,13 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
     }
   };
 
-  const filteredInventory = inventory.filter(item =>
-    item.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
-    item.current_stock > 0 &&
-    !selectedItems.some(selected => selected.id === item.id)
-  );
+  const filteredInventory = inventory.filter(item => {
+    const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase());
+    const hasStock = item.current_stock > 0;
+    const notSelected = !selectedItems.some(selected => selected.id === item.id);
+    const matchesWarehouse = !sentFrom || !warehouses || !warehouses.length || item.location === sentFrom;
+    return matchesSearch && hasStock && notSelected && matchesWarehouse;
+  });
 
   // Get items associated with the currently selected building
   const associatedItems = useMemo(() => {
@@ -199,9 +206,11 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
       if (!Array.isArray(item.associated_buildings)) return false;
       if (!item.associated_buildings.includes(destName)) return false;
       if (selectedItems.some(selected => selected.id === item.id)) return false;
+      const matchesWarehouse = !sentFrom || !warehouses || !warehouses.length || item.location === sentFrom;
+      if (!matchesWarehouse) return false;
       return true;
     });
-  }, [inventory, selectedItems, selectedBuildingId, buildings, destinationType]);
+  }, [inventory, selectedItems, selectedBuildingId, buildings, destinationType, sentFrom, warehouses]);
 
   const addItem = (item: InventoryItem) => {
     const unitCost = item.cost || 0;
@@ -419,18 +428,60 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
           </View>
 
           <ScrollView style={commonStyles.content} showsVerticalScrollIndicator={false}>
-            {/* Sent From */}
+            {/* Sent From Warehouse */}
             <View style={{ marginBottom: spacing.lg }}>
               <Text style={[typography.body, { color: colors.text, fontWeight: '600', marginBottom: spacing.sm }]}>
-                Sent From
+                Send From Warehouse
               </Text>
-              <TextInput
-                style={commonStyles.textInput}
-                placeholder="e.g. Company Warehouse, Client C - Building D"
-                placeholderTextColor={colors.textSecondary}
-                value={sentFrom}
-                onChangeText={setSentFrom}
-              />
+              {warehouses && warehouses.length > 0 ? (
+                <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                  {warehouses.map((wh) => (
+                    <TouchableOpacity
+                      key={wh}
+                      style={[
+                        {
+                          flex: 1,
+                          paddingVertical: spacing.md,
+                          paddingHorizontal: spacing.md,
+                          borderRadius: 12,
+                          borderWidth: 2,
+                          borderColor: sentFrom === wh ? colors.primary : colors.border,
+                          backgroundColor: sentFrom === wh ? colors.primary + '15' : colors.surface,
+                          alignItems: 'center',
+                        },
+                      ]}
+                      onPress={() => {
+                        setSentFrom(wh);
+                        setSelectedItems([]);
+                      }}
+                    >
+                      <Icon
+                        name="business"
+                        size={20}
+                        style={{ color: sentFrom === wh ? colors.primary : colors.textSecondary, marginBottom: spacing.xs }}
+                      />
+                      <Text style={[
+                        typography.caption,
+                        {
+                          color: sentFrom === wh ? colors.primary : colors.text,
+                          fontWeight: sentFrom === wh ? '700' : '500',
+                          textAlign: 'center',
+                        }
+                      ]}>
+                        {wh}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : (
+                <TextInput
+                  style={commonStyles.textInput}
+                  placeholder="e.g. Company Warehouse"
+                  placeholderTextColor={colors.textSecondary}
+                  value={sentFrom}
+                  onChangeText={setSentFrom}
+                />
+              )}
             </View>
 
             {/* Order Number (Optional) */}
@@ -955,6 +1006,7 @@ SendItemsModal.propTypes = {
   }).isRequired).isRequired,
   onSend: PropTypes.func.isRequired,
   onSuccess: PropTypes.func,
+  warehouses: PropTypes.arrayOf(PropTypes.string),
 };
 
 SendItemsModal.displayName = 'SendItemsModal';

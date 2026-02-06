@@ -19,6 +19,9 @@ import ReceiveSupplyModal from '../../components/inventory/ReceiveSupplyModal';
 import uuid from 'react-native-uuid';
 import { commonStyles, colors, spacing, typography, buttonStyles, getContrastColor } from '../../styles/commonStyles';
 
+const WAREHOUSES = ['Sparks Warehouse', 'Regular Warehouse'] as const;
+type Warehouse = typeof WAREHOUSES[number];
+
 interface InventoryItem {
   id: string;
   name: string;
@@ -459,6 +462,7 @@ export default function SupervisorInventoryScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState<'all' | 'cleaning-supplies' | 'equipment' | 'safety'>('all');
+  const [selectedWarehouse, setSelectedWarehouse] = useState<'all' | Warehouse>('all');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
@@ -473,7 +477,7 @@ export default function SupervisorInventoryScreen() {
     current_stock: '0',
     min_stock: '10',
     unit: 'units',
-    location: 'Main Storage',
+    location: 'Sparks Warehouse',
     cost: '0',
     supplier: '',
     auto_reorder_enabled: false,
@@ -485,7 +489,7 @@ export default function SupervisorInventoryScreen() {
     category: 'cleaning-supplies',
     min_stock: '10',
     unit: 'units',
-    location: 'Main Storage',
+    location: 'Sparks Warehouse',
     cost: '0',
     supplier: '',
     auto_reorder_enabled: false,
@@ -635,7 +639,7 @@ export default function SupervisorInventoryScreen() {
         current_stock: '0',
         min_stock: '10',
         unit: 'units',
-        location: 'Main Storage',
+        location: 'Sparks Warehouse',
         cost: '0',
         supplier: '',
         auto_reorder_enabled: false,
@@ -991,13 +995,15 @@ export default function SupervisorInventoryScreen() {
     const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          item.supplier.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = filterCategory === 'all' || item.category === filterCategory;
-    return matchesSearch && matchesCategory;
+    const matchesWarehouse = selectedWarehouse === 'all' || item.location === selectedWarehouse;
+    return matchesSearch && matchesCategory && matchesWarehouse;
   });
 
+  const warehouseItems = selectedWarehouse === 'all' ? items : items.filter(item => item.location === selectedWarehouse);
   const stats = {
-    totalItems: items.length,
-    lowStock: items.filter(item => item.current_stock <= item.min_stock).length,
-    totalValue: items.reduce((sum, item) => sum + (item.current_stock * item.cost), 0),
+    totalItems: warehouseItems.length,
+    lowStock: warehouseItems.filter(item => item.current_stock <= item.min_stock).length,
+    totalValue: warehouseItems.reduce((sum, item) => sum + (item.current_stock * item.cost), 0),
   };
 
   if (isLoading) {
@@ -1023,7 +1029,7 @@ export default function SupervisorInventoryScreen() {
         <View>
           <Text style={styles.headerTitle}>Inventory</Text>
           <Text style={styles.headerSubtitle}>
-            {items.length} items • {stats.lowStock} low stock alerts
+            {stats.totalItems} items{selectedWarehouse !== 'all' ? ` in ${selectedWarehouse}` : ''} • {stats.lowStock} low stock alerts
           </Text>
         </View>
 
@@ -1081,6 +1087,29 @@ export default function SupervisorInventoryScreen() {
           <Icon name="stats-chart" size={20} color={themeColor} />
           <Text style={[styles.actionButtonText, { color: themeColor }]}>Statements</Text>
         </TouchableOpacity>
+      </View>
+
+      {/* Warehouse Toggle */}
+      <View style={styles.filterContainer}>
+        <TouchableOpacity
+          style={[styles.filterChip, selectedWarehouse === 'all' && [styles.filterChipActive, { backgroundColor: themeColor, borderColor: themeColor }]]}
+          onPress={() => setSelectedWarehouse('all')}
+        >
+          <Text style={[styles.filterChipText, selectedWarehouse === 'all' && styles.filterChipTextActive]}>
+            All Warehouses
+          </Text>
+        </TouchableOpacity>
+        {WAREHOUSES.map((wh) => (
+          <TouchableOpacity
+            key={wh}
+            style={[styles.filterChip, selectedWarehouse === wh && [styles.filterChipActive, { backgroundColor: themeColor, borderColor: themeColor }]]}
+            onPress={() => setSelectedWarehouse(wh)}
+          >
+            <Text style={[styles.filterChipText, selectedWarehouse === wh && styles.filterChipTextActive]}>
+              {wh}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
       {/* Filter Chips */}
@@ -1249,6 +1278,7 @@ export default function SupervisorInventoryScreen() {
         inventory={items}
         onSend={handleSendItems}
         onSuccess={() => loadInventoryData()}
+        warehouses={WAREHOUSES as unknown as string[]}
       />
 
       {/* Transfer History Modal */}
@@ -1265,6 +1295,7 @@ export default function SupervisorInventoryScreen() {
         inventory={items}
         onReceive={handleReceiveSupply}
         onSuccess={() => loadInventoryData()}
+        warehouses={WAREHOUSES as unknown as string[]}
       />
 
       {/* Add Item Modal */}
@@ -1346,14 +1377,28 @@ export default function SupervisorInventoryScreen() {
               </View>
 
               <View style={styles.formGroup}>
-                <Text style={styles.label}>Location</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Main Storage"
-                  placeholderTextColor={colors.textSecondary}
-                  value={newItemForm.location}
-                  onChangeText={(text) => setNewItemForm({ ...newItemForm, location: text })}
-                />
+                <Text style={styles.label}>Warehouse *</Text>
+                <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                  {WAREHOUSES.map((wh) => (
+                    <TouchableOpacity
+                      key={wh}
+                      style={[
+                        styles.filterChip,
+                        newItemForm.location === wh && styles.filterChipActive,
+                      ]}
+                      onPress={() => setNewItemForm({ ...newItemForm, location: wh })}
+                    >
+                      <Text
+                        style={[
+                          styles.filterChipText,
+                          newItemForm.location === wh && styles.filterChipTextActive,
+                        ]}
+                      >
+                        {wh}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
               </View>
 
               <View style={styles.formGroup}>
@@ -1464,14 +1509,28 @@ export default function SupervisorInventoryScreen() {
               </View>
 
               <View style={styles.formGroup}>
-                <Text style={styles.label}>Location</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Main Storage"
-                  placeholderTextColor={colors.textSecondary}
-                  value={editItemForm.location}
-                  onChangeText={(text) => setEditItemForm({ ...editItemForm, location: text })}
-                />
+                <Text style={styles.label}>Warehouse *</Text>
+                <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                  {WAREHOUSES.map((wh) => (
+                    <TouchableOpacity
+                      key={wh}
+                      style={[
+                        styles.filterChip,
+                        editItemForm.location === wh && styles.filterChipActive,
+                      ]}
+                      onPress={() => setEditItemForm({ ...editItemForm, location: wh })}
+                    >
+                      <Text
+                        style={[
+                          styles.filterChipText,
+                          editItemForm.location === wh && styles.filterChipTextActive,
+                        ]}
+                      >
+                        {wh}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
               </View>
 
               <View style={styles.formGroup}>

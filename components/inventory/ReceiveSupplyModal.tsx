@@ -15,6 +15,7 @@ interface InventoryItem {
   unit: string;
   category: string;
   cost?: number;
+  location?: string;
 }
 
 interface ReceiveSupplyModalProps {
@@ -23,6 +24,7 @@ interface ReceiveSupplyModalProps {
   inventory: InventoryItem[];
   onReceive: (itemIds: string[], quantities: number[], costs: number[]) => void;
   onSuccess?: () => void;
+  warehouses?: string[];
 }
 
 interface SelectedItem extends InventoryTransferItem {
@@ -38,10 +40,11 @@ const generateOrderNumber = (): string => {
   return `ORD-${year}${month}${day}-${random}`;
 };
 
-const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, inventory, onReceive, onSuccess }) => {
+const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, inventory, onReceive, onSuccess, warehouses }) => {
   const [orderNumber, setOrderNumber] = useState('');
   const [supplierName, setSupplierName] = useState('');
   const [receiveDate, setReceiveDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedWarehouse, setSelectedWarehouse] = useState(warehouses && warehouses.length > 0 ? warehouses[0] : 'Warehouse');
   const [selectedItems, setSelectedItems] = useState<SelectedItem[]>([]);
   const [notes, setNotes] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -57,11 +60,13 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
       // Auto-generate order number when modal opens
       setOrderNumber(generateOrderNumber());
       setReceiveDate(new Date().toISOString().split('T')[0]);
+      setSelectedWarehouse(warehouses && warehouses.length > 0 ? warehouses[0] : 'Warehouse');
     } else {
       // Reset form when modal closes
       setOrderNumber('');
       setSupplierName('');
       setReceiveDate(new Date().toISOString().split('T')[0]);
+      setSelectedWarehouse(warehouses && warehouses.length > 0 ? warehouses[0] : 'Warehouse');
       setSelectedItems([]);
       setNotes('');
       setSearchQuery('');
@@ -69,10 +74,12 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
     }
   }, [visible]);
 
-  const filteredInventory = inventory.filter(item =>
-    item.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
-    !selectedItems.some(selected => selected.id === item.id)
-  );
+  const filteredInventory = inventory.filter(item => {
+    const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase());
+    const notSelected = !selectedItems.some(selected => selected.id === item.id);
+    const matchesWarehouse = !warehouses || !warehouses.length || item.location === selectedWarehouse;
+    return matchesSearch && notSelected && matchesWarehouse;
+  });
 
   const addItem = (item: InventoryItem) => {
     const newItem: SelectedItem = {
@@ -151,7 +158,7 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
           unitCost: item.unitCost,
           totalCost: item.totalCost,
         })),
-        destination: 'Warehouse', // Incoming supplies go to warehouse
+        destination: selectedWarehouse, // Incoming supplies go to selected warehouse
         timestamp: new Date(receiveDate).toISOString(),
         transferredBy: 'Supervisor',
         notes: notes.trim() || undefined,
@@ -292,6 +299,48 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
                 onChangeText={setReceiveDate}
               />
             </View>
+
+            {/* Receive Into Warehouse */}
+            {warehouses && warehouses.length > 0 && (
+              <View style={{ marginBottom: spacing.md }}>
+                <Text style={styles.sectionLabel}>Receive Into Warehouse *</Text>
+                <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                  {warehouses.map((wh) => (
+                    <TouchableOpacity
+                      key={wh}
+                      style={{
+                        flex: 1,
+                        paddingVertical: spacing.md,
+                        paddingHorizontal: spacing.md,
+                        borderRadius: 12,
+                        borderWidth: 2,
+                        borderColor: selectedWarehouse === wh ? colors.success : colors.border,
+                        backgroundColor: selectedWarehouse === wh ? colors.success + '15' : colors.surface,
+                        alignItems: 'center',
+                      }}
+                      onPress={() => {
+                        setSelectedWarehouse(wh);
+                        setSelectedItems([]);
+                      }}
+                    >
+                      <Icon
+                        name="business"
+                        size={20}
+                        style={{ color: selectedWarehouse === wh ? colors.success : colors.textSecondary, marginBottom: spacing.xs }}
+                      />
+                      <Text style={{
+                        fontSize: 13,
+                        color: selectedWarehouse === wh ? colors.success : colors.text,
+                        fontWeight: selectedWarehouse === wh ? '700' : '500',
+                        textAlign: 'center',
+                      }}>
+                        {wh}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            )}
 
             {/* Selected Items */}
             {selectedItems.length > 0 && (
@@ -597,6 +646,7 @@ ReceiveSupplyModal.propTypes = {
   }).isRequired).isRequired,
   onReceive: PropTypes.func.isRequired,
   onSuccess: PropTypes.func,
+  warehouses: PropTypes.arrayOf(PropTypes.string),
 };
 
 ReceiveSupplyModal.displayName = 'ReceiveSupplyModal';
