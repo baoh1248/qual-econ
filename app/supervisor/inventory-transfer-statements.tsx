@@ -921,14 +921,13 @@ export default function InventoryTransferStatementsScreen() {
     new Set(transfers.map(t => new Date(t.timestamp).getFullYear()))
   ).sort((a, b) => b - a);
 
-  // Extract unique buildings from outgoing transfers
+  // Extract unique buildings/locations from all transfers
   const uniqueBuildings = useMemo(() => {
     const buildings = new Map<string, { buildingName: string; clientName: string }>();
 
     transfers
-      .filter(t => t.type === 'outgoing' && new Date(t.timestamp).getFullYear() === selectedYear)
+      .filter(t => new Date(t.timestamp).getFullYear() === selectedYear)
       .forEach(t => {
-        // Parse destination format: "ClientName - BuildingName" or "ClientName - GroupName (X buildings)"
         const destination = t.destination;
         if (!destination) return;
 
@@ -946,6 +945,12 @@ export default function InventoryTransferStatementsScreen() {
           const key = `${clientName}|${buildingName}`;
           if (!buildings.has(key)) {
             buildings.set(key, { buildingName, clientName });
+          }
+        } else {
+          // Warehouse destination (incoming supplies)
+          const key = `Incoming Supplies|${destination}`;
+          if (!buildings.has(key)) {
+            buildings.set(key, { buildingName: destination, clientName: 'Incoming Supplies' });
           }
         }
       });
@@ -966,7 +971,10 @@ export default function InventoryTransferStatementsScreen() {
 
     const parseDestination = (dest: string) => {
       const dashIndex = dest.indexOf(' - ');
-      if (dashIndex <= 0) return { clientName: 'Unknown', buildingName: dest, key: `Unknown|${dest}` };
+      if (dashIndex <= 0) {
+        // Warehouse destination (incoming supplies)
+        return { clientName: 'Incoming Supplies', buildingName: dest, key: `Incoming Supplies|${dest}` };
+      }
       const clientName = dest.substring(0, dashIndex);
       let buildingName = dest.substring(dashIndex + 3);
       const groupMatch = buildingName.match(/^(.+?)\s*\(\d+\s*buildings?\)$/i);
@@ -974,7 +982,7 @@ export default function InventoryTransferStatementsScreen() {
       return { clientName, buildingName, key: `${clientName}|${buildingName}` };
     };
 
-    // Group ALL outgoing transfers by building (all years, for balance calculation)
+    // Group ALL transfers by building/location (all years, for balance calculation)
     const buildingGroups = new Map<string, {
       buildingName: string;
       clientName: string;
@@ -982,7 +990,6 @@ export default function InventoryTransferStatementsScreen() {
     }>();
 
     transfers
-      .filter(t => t.type === 'outgoing')
       .filter(t => {
         if (selectedBuilding === 'all') return true;
         const { key } = parseDestination(t.destination || '');
@@ -1134,6 +1141,18 @@ export default function InventoryTransferStatementsScreen() {
   const allBuildingsExpanded = buildingLedgers.length > 0 &&
     buildingLedgers.every(l => expandedBuildings.has(`${l.clientName}|${l.buildingName}`));
 
+  const expandAllMonths = useCallback(() => {
+    const allIndexes = new Set(monthlyStatements.map((_: any, i: number) => i));
+    setExpandedMonths(allIndexes);
+  }, [monthlyStatements]);
+
+  const collapseAllMonths = useCallback(() => {
+    setExpandedMonths(new Set());
+  }, []);
+
+  const allMonthsExpanded = monthlyStatements.length > 0 &&
+    monthlyStatements.every((_: any, i: number) => expandedMonths.has(i));
+
   const toggleMonth = (index: number) => {
     const newExpanded = new Set(expandedMonths);
     if (newExpanded.has(index)) {
@@ -1259,6 +1278,27 @@ export default function InventoryTransferStatementsScreen() {
         {/* Item View */}
         {viewMode === 'item' && (
           <>
+            {/* Print & Expand Controls */}
+            {monthlyStatements.length > 0 && (
+              <View style={styles.printButtonRow} nativeID="no-print-actions-item">
+                <TouchableOpacity
+                  style={styles.expandAllButton}
+                  onPress={allMonthsExpanded ? collapseAllMonths : expandAllMonths}
+                >
+                  <Icon name={allMonthsExpanded ? "contract" : "expand"} size={18} color={colors.text} />
+                  <Text style={styles.expandAllButtonText}>
+                    {allMonthsExpanded ? 'Collapse All' : 'Expand All'}
+                  </Text>
+                </TouchableOpacity>
+                {Platform.OS === 'web' && (
+                  <TouchableOpacity style={styles.printButton} onPress={handlePrint}>
+                    <Icon name="print" size={18} color={colors.background} />
+                    <Text style={styles.printButtonText}>Print Statement</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
             {monthlyStatements.length === 0 ? (
               <View style={styles.emptyState}>
                 <Icon name="document-text-outline" size={64} color={colors.textSecondary} />
@@ -1445,17 +1485,19 @@ export default function InventoryTransferStatementsScreen() {
                     {isExpanded && (
                       <View style={{ marginTop: spacing.md }}>
                         {ledger.months.map((monthData) => {
-                          // Aggregate items across all transfers in this month
-                          const itemSummary = new Map<string, { name: string; totalQty: number; unit: string; totalCost: number }>();
+                          // Aggregate items across all transfers in this month, grouped by name + type
+                          const itemSummary = new Map<string, { name: string; type: 'incoming' | 'outgoing'; totalQty: number; unit: string; totalCost: number }>();
                           monthData.transfers.forEach(transfer => {
                             transfer.items.forEach(item => {
-                              const existing = itemSummary.get(item.name);
+                              const mapKey = `${item.name}|${transfer.type}`;
+                              const existing = itemSummary.get(mapKey);
                               if (existing) {
                                 existing.totalQty += item.quantity;
                                 existing.totalCost += (item.totalCost || 0);
                               } else {
-                                itemSummary.set(item.name, {
+                                itemSummary.set(mapKey, {
                                   name: item.name,
+                                  type: transfer.type as 'incoming' | 'outgoing',
                                   totalQty: item.quantity,
                                   unit: item.unit,
                                   totalCost: item.totalCost || 0,
@@ -1465,7 +1507,11 @@ export default function InventoryTransferStatementsScreen() {
                           });
 
                           const aggregatedItems = Array.from(itemSummary.values())
-                            .sort((a, b) => a.name.localeCompare(b.name));
+                            .sort((a, b) => {
+                              // Sort: outgoing first, then incoming; within same type sort by name
+                              if (a.type !== b.type) return a.type === 'outgoing' ? -1 : 1;
+                              return a.name.localeCompare(b.name);
+                            });
                           const monthTotal = aggregatedItems.reduce((sum, item) => sum + item.totalCost, 0);
                           const transferDates = monthData.transfers
                             .map(t => t.date)
@@ -1478,7 +1524,7 @@ export default function InventoryTransferStatementsScreen() {
                                 <Text style={styles.monthSectionTitle}>{monthData.month}</Text>
                                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
                                   <Text style={styles.transferCount}>
-                                    {monthData.transfers.length} {monthData.transfers.length === 1 ? 'send' : 'sends'}
+                                    {monthData.transfers.length} {monthData.transfers.length === 1 ? 'transfer' : 'transfers'}
                                   </Text>
                                   {monthTotal > 0 && (
                                     <Text style={styles.monthTotalBadge}>{formatCurrency(monthTotal)}</Text>
@@ -1491,6 +1537,7 @@ export default function InventoryTransferStatementsScreen() {
                                 {/* Table Header */}
                                 <View style={styles.summaryTableHeaderRow}>
                                   <Text style={[styles.summaryTableHeaderCell, { flex: 3 }]}>Item</Text>
+                                  <Text style={[styles.summaryTableHeaderCell, { flex: 1.2, textAlign: 'center' }]}>Type</Text>
                                   <Text style={[styles.summaryTableHeaderCell, { flex: 1, textAlign: 'center' }]}>Qty</Text>
                                   <Text style={[styles.summaryTableHeaderCell, { flex: 1, textAlign: 'center' }]}>Unit</Text>
                                   <Text style={[styles.summaryTableHeaderCell, { flex: 1.5, textAlign: 'right' }]}>Total</Text>
@@ -1499,13 +1546,24 @@ export default function InventoryTransferStatementsScreen() {
                                 {/* Item Rows */}
                                 {aggregatedItems.map((item, idx) => (
                                   <View
-                                    key={item.name}
+                                    key={`${item.name}-${item.type}`}
                                     style={[
                                       styles.summaryTableRow,
                                       idx % 2 === 0 && { backgroundColor: colors.backgroundAlt },
                                     ]}
                                   >
                                     <Text style={[styles.summaryTableCell, { flex: 3 }]}>{item.name}</Text>
+                                    <Text style={[
+                                      styles.summaryTableCell,
+                                      {
+                                        flex: 1.2,
+                                        textAlign: 'center',
+                                        fontWeight: typography.weights.semibold as any,
+                                        color: item.type === 'incoming' ? colors.success : colors.error,
+                                      },
+                                    ]}>
+                                      {item.type === 'incoming' ? 'Received' : 'Sent'}
+                                    </Text>
                                     <Text style={[styles.summaryTableCell, { flex: 1, textAlign: 'center', fontWeight: typography.weights.semibold as any }]}>
                                       {item.totalQty}
                                     </Text>
@@ -1522,6 +1580,7 @@ export default function InventoryTransferStatementsScreen() {
                                 {monthTotal > 0 && (
                                   <View style={styles.summaryTableTotalRow}>
                                     <Text style={[styles.summaryTableTotalLabel, { flex: 3 }]}>Monthly Total</Text>
+                                    <Text style={{ flex: 1.2 }} />
                                     <Text style={{ flex: 1 }} />
                                     <Text style={{ flex: 1 }} />
                                     <Text style={[styles.summaryTableTotalValue, { flex: 1.5, textAlign: 'right' }]}>
@@ -1533,7 +1592,7 @@ export default function InventoryTransferStatementsScreen() {
 
                               {/* Transfer Dates Reference */}
                               <Text style={styles.transferDatesRef}>
-                                Sent on: {transferDates}
+                                Transfers on: {transferDates}
                               </Text>
                             </View>
                           );
