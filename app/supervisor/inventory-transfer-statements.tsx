@@ -544,6 +544,152 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: typography.weights.semibold as any,
   },
+  printButtonRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  printButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.md,
+    borderRadius: 12,
+  },
+  printButtonText: {
+    color: colors.background,
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.bold as any,
+  },
+  expandAllButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surface,
+    paddingVertical: spacing.md,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  expandAllButtonText: {
+    color: colors.text,
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.semibold as any,
+  },
+  buildingYearTotal: {
+    fontSize: typography.sizes.lg,
+    fontWeight: typography.weights.bold as any,
+    color: colors.primary,
+  },
+  monthSection: {
+    marginBottom: spacing.lg,
+  },
+  monthSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: spacing.sm,
+    marginBottom: spacing.sm,
+    borderBottomWidth: 2,
+    borderBottomColor: colors.primary,
+  },
+  monthSectionTitle: {
+    fontSize: typography.sizes.lg,
+    fontWeight: typography.weights.bold as any,
+    color: colors.text,
+  },
+  monthTotalBadge: {
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.bold as any,
+    color: colors.primary,
+    backgroundColor: colors.primary + '15',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: 8,
+  },
+  summaryTable: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  summaryTableHeaderRow: {
+    flexDirection: 'row',
+    backgroundColor: colors.primary + '15',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderBottomWidth: 2,
+    borderBottomColor: colors.primary,
+  },
+  summaryTableHeaderCell: {
+    fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.bold as any,
+    color: colors.text,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  summaryTableRow: {
+    flexDirection: 'row',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border + '40',
+  },
+  summaryTableCell: {
+    fontSize: typography.sizes.sm,
+    color: colors.text,
+  },
+  summaryTableTotalRow: {
+    flexDirection: 'row',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.primary + '10',
+    borderTopWidth: 2,
+    borderTopColor: colors.primary,
+  },
+  summaryTableTotalLabel: {
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.bold as any,
+    color: colors.text,
+  },
+  summaryTableTotalValue: {
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.bold as any,
+    color: colors.primary,
+  },
+  transferDatesRef: {
+    fontSize: typography.sizes.xs,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+    fontStyle: 'italic',
+  },
+  yearGrandTotalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.primary + '15',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    marginTop: spacing.sm,
+  },
+  yearGrandTotalLabel: {
+    fontSize: typography.sizes.lg,
+    fontWeight: typography.weights.bold as any,
+    color: colors.text,
+  },
+  yearGrandTotalValue: {
+    fontSize: typography.sizes.xl,
+    fontWeight: typography.weights.bold as any,
+    color: colors.primary,
+  },
 });
 
 export default function InventoryTransferStatementsScreen() {
@@ -561,6 +707,31 @@ export default function InventoryTransferStatementsScreen() {
   const [selectedBuilding, setSelectedBuilding] = useState<string>('all');
   const [showBuildingPicker, setShowBuildingPicker] = useState(false);
   const [expandedBuildings, setExpandedBuildings] = useState<Set<string>>(new Set());
+
+  // Print support (web only)
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const style = document.createElement('style');
+    style.id = 'inventory-print-styles';
+    style.textContent = `
+      @media print {
+        [id^="no-print"] { display: none !important; }
+        body { background: white !important; margin: 0; }
+        * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      }
+    `;
+    document.head.appendChild(style);
+    return () => {
+      const el = document.getElementById('inventory-print-styles');
+      if (el) el.remove();
+    };
+  }, []);
+
+  const handlePrint = useCallback(() => {
+    if (Platform.OS === 'web') {
+      (window as any).print();
+    }
+  }, []);
 
   const loadTransfers = useCallback(async () => {
     try {
@@ -949,6 +1120,20 @@ export default function InventoryTransferStatementsScreen() {
     });
   }, [transfers, selectedYear, selectedBuilding, inventoryStock]);
 
+  const expandAllBuildings = useCallback(() => {
+    const allKeys = new Set(
+      buildingLedgers.map(l => `${l.clientName}|${l.buildingName}`)
+    );
+    setExpandedBuildings(allKeys);
+  }, [buildingLedgers]);
+
+  const collapseAllBuildings = useCallback(() => {
+    setExpandedBuildings(new Set());
+  }, []);
+
+  const allBuildingsExpanded = buildingLedgers.length > 0 &&
+    buildingLedgers.every(l => expandedBuildings.has(`${l.clientName}|${l.buildingName}`));
+
   const toggleMonth = (index: number) => {
     const newExpanded = new Set(expandedMonths);
     if (newExpanded.has(index)) {
@@ -981,7 +1166,7 @@ export default function InventoryTransferStatementsScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={styles.header} nativeID="no-print-header">
         <TouchableOpacity onPress={() => router.back()}>
           <Icon name="arrow-back" size={24} color={colors.background} />
         </TouchableOpacity>
@@ -1036,7 +1221,7 @@ export default function InventoryTransferStatementsScreen() {
         )}
 
         {/* View Toggle */}
-        <View style={styles.viewToggleContainer}>
+        <View style={styles.viewToggleContainer} nativeID="no-print-toggle">
           <TouchableOpacity
             style={[styles.viewToggleButton, viewMode === 'item' && styles.viewToggleButtonActive]}
             onPress={() => setViewMode('item')}
@@ -1057,7 +1242,7 @@ export default function InventoryTransferStatementsScreen() {
 
         {/* Building Filter (only in building view) */}
         {viewMode === 'building' && uniqueBuildings.length > 0 && (
-          <View style={styles.filterContainer}>
+          <View style={styles.filterContainer} nativeID="no-print-filter">
             <Text style={styles.filterLabel}>Filter:</Text>
             <TouchableOpacity
               style={styles.filterDropdown}
@@ -1198,6 +1383,27 @@ export default function InventoryTransferStatementsScreen() {
         {/* Building View */}
         {viewMode === 'building' && (
           <>
+            {/* Print & Expand Controls */}
+            {buildingLedgers.length > 0 && (
+              <View style={styles.printButtonRow} nativeID="no-print-actions">
+                <TouchableOpacity
+                  style={styles.expandAllButton}
+                  onPress={allBuildingsExpanded ? collapseAllBuildings : expandAllBuildings}
+                >
+                  <Icon name={allBuildingsExpanded ? "contract" : "expand"} size={18} color={colors.text} />
+                  <Text style={styles.expandAllButtonText}>
+                    {allBuildingsExpanded ? 'Collapse All' : 'Expand All'}
+                  </Text>
+                </TouchableOpacity>
+                {Platform.OS === 'web' && (
+                  <TouchableOpacity style={styles.printButton} onPress={handlePrint}>
+                    <Icon name="print" size={18} color={colors.background} />
+                    <Text style={styles.printButtonText}>Print Statement</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
             {buildingLedgers.length === 0 ? (
               <View style={styles.emptyState}>
                 <Icon name="business-outline" size={64} color={colors.textSecondary} />
@@ -1206,169 +1412,143 @@ export default function InventoryTransferStatementsScreen() {
                 </Text>
               </View>
             ) : (
-              buildingLedgers.map((ledger, index) => {
+              buildingLedgers.map((ledger) => {
                 const key = `${ledger.clientName}|${ledger.buildingName}`;
                 const isExpanded = expandedBuildings.has(key);
+                const yearTotal = ledger.months.reduce((sum, m) => sum + m.totalValue, 0);
+
                 return (
-                  <AnimatedCard key={key} style={styles.buildingCard}>
+                  <View key={key} style={styles.buildingCard}>
+                    {/* Building Header */}
                     <TouchableOpacity onPress={() => toggleBuilding(key)}>
                       <View style={styles.buildingHeader}>
                         <View style={{ flex: 1 }}>
                           <Text style={styles.buildingName}>{ledger.buildingName}</Text>
                           <Text style={styles.buildingClient}>{ledger.clientName}</Text>
                         </View>
-                        <Text style={styles.transferCount}>
-                          {ledger.totalTransfers} {ledger.totalTransfers === 1 ? 'transfer' : 'transfers'}
-                        </Text>
+                        <View style={{ alignItems: 'flex-end', marginRight: spacing.sm }}>
+                          {yearTotal > 0 && (
+                            <Text style={styles.buildingYearTotal}>{formatCurrency(yearTotal)}</Text>
+                          )}
+                          <Text style={styles.transferCount}>
+                            {ledger.totalTransfers} {ledger.totalTransfers === 1 ? 'transfer' : 'transfers'}
+                          </Text>
+                        </View>
                         <Icon
                           name={isExpanded ? "chevron-up" : "chevron-down"}
                           size={24}
                           color={colors.primary}
-                          style={{ marginLeft: spacing.sm }}
                         />
                       </View>
                     </TouchableOpacity>
 
                     {isExpanded && (
-                      <View style={{ marginTop: spacing.sm }}>
-                        {ledger.months.map((monthData) => (
-                          <View key={monthData.month} style={styles.buildingMonthSection}>
-                            {/* Month Header */}
-                            <View style={styles.buildingMonthHeader}>
-                              <Icon name="calendar" size={16} color={colors.primary} />
-                              <Text style={styles.buildingMonthTitle}>{monthData.month}</Text>
-                              <Text style={styles.transferCount}>
-                                {monthData.transfers.length} {monthData.transfers.length === 1 ? 'transfer' : 'transfers'}
+                      <View style={{ marginTop: spacing.md }}>
+                        {ledger.months.map((monthData) => {
+                          // Aggregate items across all transfers in this month
+                          const itemSummary = new Map<string, { name: string; totalQty: number; unit: string; totalCost: number }>();
+                          monthData.transfers.forEach(transfer => {
+                            transfer.items.forEach(item => {
+                              const existing = itemSummary.get(item.name);
+                              if (existing) {
+                                existing.totalQty += item.quantity;
+                                existing.totalCost += (item.totalCost || 0);
+                              } else {
+                                itemSummary.set(item.name, {
+                                  name: item.name,
+                                  totalQty: item.quantity,
+                                  unit: item.unit,
+                                  totalCost: item.totalCost || 0,
+                                });
+                              }
+                            });
+                          });
+
+                          const aggregatedItems = Array.from(itemSummary.values())
+                            .sort((a, b) => a.name.localeCompare(b.name));
+                          const monthTotal = aggregatedItems.reduce((sum, item) => sum + item.totalCost, 0);
+                          const transferDates = monthData.transfers
+                            .map(t => t.date)
+                            .join('  |  ');
+
+                          return (
+                            <View key={monthData.month} style={styles.monthSection}>
+                              {/* Month Header */}
+                              <View style={styles.monthSectionHeader}>
+                                <Text style={styles.monthSectionTitle}>{monthData.month}</Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+                                  <Text style={styles.transferCount}>
+                                    {monthData.transfers.length} {monthData.transfers.length === 1 ? 'send' : 'sends'}
+                                  </Text>
+                                  {monthTotal > 0 && (
+                                    <Text style={styles.monthTotalBadge}>{formatCurrency(monthTotal)}</Text>
+                                  )}
+                                </View>
+                              </View>
+
+                              {/* Summary Table */}
+                              <View style={styles.summaryTable}>
+                                {/* Table Header */}
+                                <View style={styles.summaryTableHeaderRow}>
+                                  <Text style={[styles.summaryTableHeaderCell, { flex: 3 }]}>Item</Text>
+                                  <Text style={[styles.summaryTableHeaderCell, { flex: 1, textAlign: 'center' }]}>Qty</Text>
+                                  <Text style={[styles.summaryTableHeaderCell, { flex: 1, textAlign: 'center' }]}>Unit</Text>
+                                  <Text style={[styles.summaryTableHeaderCell, { flex: 1.5, textAlign: 'right' }]}>Total</Text>
+                                </View>
+
+                                {/* Item Rows */}
+                                {aggregatedItems.map((item, idx) => (
+                                  <View
+                                    key={item.name}
+                                    style={[
+                                      styles.summaryTableRow,
+                                      idx % 2 === 0 && { backgroundColor: colors.backgroundAlt },
+                                    ]}
+                                  >
+                                    <Text style={[styles.summaryTableCell, { flex: 3 }]}>{item.name}</Text>
+                                    <Text style={[styles.summaryTableCell, { flex: 1, textAlign: 'center', fontWeight: typography.weights.semibold as any }]}>
+                                      {item.totalQty}
+                                    </Text>
+                                    <Text style={[styles.summaryTableCell, { flex: 1, textAlign: 'center', color: colors.textSecondary }]}>
+                                      {item.unit}
+                                    </Text>
+                                    <Text style={[styles.summaryTableCell, { flex: 1.5, textAlign: 'right', fontWeight: typography.weights.semibold as any }]}>
+                                      {item.totalCost > 0 ? formatCurrency(item.totalCost) : '-'}
+                                    </Text>
+                                  </View>
+                                ))}
+
+                                {/* Monthly Total Row */}
+                                {monthTotal > 0 && (
+                                  <View style={styles.summaryTableTotalRow}>
+                                    <Text style={[styles.summaryTableTotalLabel, { flex: 3 }]}>Monthly Total</Text>
+                                    <Text style={{ flex: 1 }} />
+                                    <Text style={{ flex: 1 }} />
+                                    <Text style={[styles.summaryTableTotalValue, { flex: 1.5, textAlign: 'right' }]}>
+                                      {formatCurrency(monthTotal)}
+                                    </Text>
+                                  </View>
+                                )}
+                              </View>
+
+                              {/* Transfer Dates Reference */}
+                              <Text style={styles.transferDatesRef}>
+                                Sent on: {transferDates}
                               </Text>
                             </View>
+                          );
+                        })}
 
-                            {/* Beginning Balance */}
-                            <View style={styles.balanceRow}>
-                              <Text style={styles.balanceLabel}>Beginning Balance</Text>
-                            </View>
-                            {monthData.itemBeginningBalances.length > 0 ? (
-                              monthData.itemBeginningBalances.map((b, i) => (
-                                <View key={i} style={styles.balanceItemRow}>
-                                  <Text style={styles.balanceItemName}>{b.itemName}</Text>
-                                  <Text style={styles.balanceItemValue}>{b.quantity} {b.unit}</Text>
-                                </View>
-                              ))
-                            ) : (
-                              <View style={styles.balanceItemRow}>
-                                <Text style={[styles.balanceItemName, { fontStyle: 'italic', color: colors.textSecondary }]}>No previous items</Text>
-                              </View>
-                            )}
-
-                            {/* Transfers */}
-                            {monthData.transfers.map((transfer) => (
-                              <View
-                                key={transfer.id}
-                                style={[
-                                  styles.transferCard,
-                                  transfer.type === 'incoming' && styles.transferCardIncoming
-                                ]}
-                              >
-                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                                  <Text style={styles.transferDate}>{transfer.date}</Text>
-                                  <Text style={{
-                                    fontSize: typography.sizes.xs,
-                                    fontWeight: typography.weights.bold as any,
-                                    color: transfer.type === 'incoming' ? colors.success : colors.error,
-                                    backgroundColor: (transfer.type === 'incoming' ? colors.success : colors.error) + '15',
-                                    paddingHorizontal: spacing.sm,
-                                    paddingVertical: 2,
-                                    borderRadius: 8,
-                                  }}>
-                                    {transfer.type === 'incoming' ? 'Received' : 'Sent Out'}
-                                  </Text>
-                                </View>
-                                {transfer.orderNumber && (
-                                  <Text style={[styles.transferBy, { marginTop: 0, marginBottom: 4, fontStyle: 'normal', color: colors.info }]}>
-                                    Order #: {transfer.orderNumber}
-                                  </Text>
-                                )}
-                                {transfer.sentFrom && (
-                                  <Text style={[styles.transferBy, { marginTop: 0, marginBottom: 4, fontStyle: 'normal', color: colors.primary }]}>
-                                    From: {transfer.sentFrom}
-                                  </Text>
-                                )}
-                                <View style={styles.transferItemsContainer}>
-                                  {transfer.items.map((item, itemIdx) => (
-                                    <View key={itemIdx} style={styles.transferItemRow}>
-                                      <Text style={styles.transferItemName}>{item.name}</Text>
-                                      <View style={styles.transferItemDetails}>
-                                        <Text style={styles.transferItemQty}>
-                                          {item.quantity} {item.unit}
-                                        </Text>
-                                        {item.unitCost !== undefined && item.unitCost > 0 && (
-                                          <Text style={styles.transferItemCost}>
-                                            @ {formatCurrency(item.unitCost)}/{item.unit}
-                                          </Text>
-                                        )}
-                                        {item.totalCost !== undefined && item.totalCost > 0 && (
-                                          <Text style={styles.transferItemTotal}>
-                                            {formatCurrency(item.totalCost)}
-                                          </Text>
-                                        )}
-                                      </View>
-                                    </View>
-                                  ))}
-                                </View>
-                                {transfer.totalValue !== undefined && transfer.totalValue > 0 && (
-                                  <View style={styles.transferTotalRow}>
-                                    <Text style={styles.transferTotalLabel}>Total Value:</Text>
-                                    <Text style={styles.transferTotalValue}>
-                                      {formatCurrency(transfer.totalValue)}
-                                    </Text>
-                                  </View>
-                                )}
-                                {transfer.notes && (
-                                  <View style={{
-                                    flexDirection: 'row',
-                                    alignItems: 'flex-start',
-                                    gap: spacing.xs,
-                                    marginTop: spacing.sm,
-                                    backgroundColor: colors.backgroundAlt,
-                                    padding: spacing.sm,
-                                    borderRadius: 8,
-                                  }}>
-                                    <Icon name="document-text" size={14} color={colors.textSecondary} style={{ marginTop: 2 }} />
-                                    <Text style={{ fontSize: typography.sizes.sm, color: colors.textSecondary, fontStyle: 'italic', flex: 1 }}>
-                                      {transfer.notes}
-                                    </Text>
-                                  </View>
-                                )}
-                                <Text style={styles.transferBy}>
-                                  By: {transfer.transferredBy}
-                                </Text>
-                              </View>
-                            ))}
-
-                            {/* Month Total Value */}
-                            {monthData.totalValue > 0 && (
-                              <View style={styles.summaryRow}>
-                                <Text style={styles.summaryLabel}>Month Total Value:</Text>
-                                <Text style={[styles.summaryValue, { color: colors.primary }]}>{formatCurrency(monthData.totalValue)}</Text>
-                              </View>
-                            )}
-
-                            {/* Ending Balance */}
-                            <View style={styles.endingBalanceRow}>
-                              <Text style={styles.endingBalanceLabel}>Ending Balance</Text>
-                            </View>
-                            {monthData.itemEndingBalances.map((b, i) => (
-                              <View key={i} style={styles.balanceItemRow}>
-                                <Text style={[styles.balanceItemName, { fontWeight: typography.weights.semibold as any }]}>{b.itemName}</Text>
-                                <Text style={[styles.balanceItemValue, { color: colors.primary, fontWeight: typography.weights.bold as any }]}>
-                                  {b.quantity} {b.unit}
-                                </Text>
-                              </View>
-                            ))}
+                        {/* Year Grand Total */}
+                        {yearTotal > 0 && (
+                          <View style={styles.yearGrandTotalRow}>
+                            <Text style={styles.yearGrandTotalLabel}>{selectedYear} Total</Text>
+                            <Text style={styles.yearGrandTotalValue}>{formatCurrency(yearTotal)}</Text>
                           </View>
-                        ))}
+                        )}
                       </View>
                     )}
-                  </AnimatedCard>
+                  </View>
                 );
               })
             )}
