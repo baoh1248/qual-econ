@@ -685,15 +685,54 @@ const ScheduleModal = memo(({
                   </View>
                 </View>
                 
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Payment Amount:</Text>
-                  <Text style={[styles.detailValue, { color: colors.success, fontWeight: 'bold' }]}>
-                    ${selectedEntry.paymentType === 'flat_rate' 
-                      ? (selectedEntry.flatRateAmount || 0).toFixed(2)
-                      : ((selectedEntry.hourlyRate || 15) * selectedEntry.hours).toFixed(2)
-                    }
-                  </Text>
-                </View>
+                {(() => {
+                  const cleanerNames = getEntryCleaners(selectedEntry);
+                  const hasMultipleCleaners = cleanerNames.length >= 2;
+                  const hasCleanerHours = selectedEntry.cleanerHours && Object.keys(selectedEntry.cleanerHours).length > 0;
+                  const rate = selectedEntry.hourlyRate || 15;
+
+                  if (selectedEntry.paymentType === 'flat_rate') {
+                    return (
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Payment Amount:</Text>
+                        <Text style={[styles.detailValue, { color: colors.success, fontWeight: 'bold' }]}>
+                          ${(selectedEntry.flatRateAmount || 0).toFixed(2)}
+                        </Text>
+                      </View>
+                    );
+                  }
+
+                  if (hasMultipleCleaners && hasCleanerHours) {
+                    const totalPay = Object.values(selectedEntry.cleanerHours!).reduce((sum, h) => sum + h * rate, 0);
+                    return (
+                      <View style={[styles.detailRow, { alignItems: 'flex-start' }]}>
+                        <Text style={[styles.detailLabel, { marginTop: 2 }]}>Payment Amount:</Text>
+                        <View style={{ alignItems: 'flex-end', flex: 1 }}>
+                          <Text style={[styles.detailValue, { color: colors.success, fontWeight: 'bold' }]}>
+                            ${totalPay.toFixed(2)} total
+                          </Text>
+                          {cleanerNames.map((name, idx) => {
+                            const hrs = selectedEntry.cleanerHours![name];
+                            return hrs !== undefined ? (
+                              <Text key={idx} style={[styles.detailLabel, { fontSize: 12, marginTop: 2 }]}>
+                                {name}: {hrs} hrs x ${rate.toFixed(2)} = ${(hrs * rate).toFixed(2)}
+                              </Text>
+                            ) : null;
+                          })}
+                        </View>
+                      </View>
+                    );
+                  }
+
+                  return (
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Payment Amount:</Text>
+                      <Text style={[styles.detailValue, { color: colors.success, fontWeight: 'bold' }]}>
+                        ${(rate * selectedEntry.hours).toFixed(2)}
+                      </Text>
+                    </View>
+                  );
+                })()}
                 
                 {selectedEntry.paymentType === 'hourly' && (
                   <View style={styles.detailRow}>
