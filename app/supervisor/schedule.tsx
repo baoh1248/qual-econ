@@ -121,7 +121,8 @@ export default function ScheduleView() {
   const [buildingGroups, setBuildingGroups] = useState<BuildingGroup[]>([]);
   const [cleanerGroups, setCleanerGroups] = useState<CleanerGroup[]>([]);
   const [scheduleKey, setScheduleKey] = useState(0);
-  
+  const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set());
+
   const [showFiltersModal, setShowFiltersModal] = useState(false);
   const [showChangeNotifications, setShowChangeNotifications] = useState(false);
   const [filters, setFilters] = useState<ScheduleFilters>({
@@ -1061,6 +1062,18 @@ export default function ScheduleView() {
     return `${String(newHours).padStart(2, '0')}:${String(newMinutes).padStart(2, '0')}`;
   }, []);
 
+  const handleToggleClientExpansion = useCallback((clientName: string) => {
+    setExpandedClients(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(clientName)) {
+        newSet.delete(clientName);
+      } else {
+        newSet.add(clientName);
+      }
+      return newSet;
+    });
+  }, []);
+
   const handleCellPress = useCallback((building: ClientBuilding, day: string) => {
     console.log('Cell pressed - Auto-filling client and building:', building.buildingName, building.clientName, day);
     setSelectedClientBuilding(building);
@@ -1862,6 +1875,8 @@ export default function ScheduleView() {
             viewMode={viewMode}
             onAddShiftToCleaner={handleAddShiftToCleaner}
             currentWeekId={currentWeekId}
+            expandedClients={expandedClients}
+            onToggleClientExpansion={handleToggleClientExpansion}
           />
         </GestureHandlerRootView>
       </ErrorBoundary>

@@ -44,6 +44,8 @@ interface DragDropScheduleGridProps {
   onAddShiftToCleaner?: (cleaner: Cleaner, day: string) => void;
   currentWeekId?: string;
   onTaskPress?: (entry: ScheduleEntry) => void;
+  expandedClients?: Set<string>;
+  onToggleClientExpansion?: (clientName: string) => void;
 }
 
 const DragDropScheduleGrid = memo(({
@@ -64,6 +66,8 @@ const DragDropScheduleGrid = memo(({
   onAddShiftToCleaner,
   currentWeekId,
   onTaskPress,
+  expandedClients: expandedClientsProp,
+  onToggleClientExpansion,
 }: DragDropScheduleGridProps) => {
   console.log('🔍 DragDropScheduleGrid rendered with viewMode:', viewMode, 'currentWeekId:', currentWeekId);
   console.log('🔍 Building groups received:', buildingGroups.length);
@@ -77,21 +81,26 @@ const DragDropScheduleGrid = memo(({
     });
   });
 
-  // State to track which clients are expanded
-  const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set());
+  // State to track which clients are expanded - use parent state if provided
+  const [localExpandedClients, setLocalExpandedClients] = useState<Set<string>>(new Set());
+  const expandedClients = expandedClientsProp ?? localExpandedClients;
 
   // Toggle client expansion
   const toggleClientExpansion = useCallback((clientName: string) => {
-    setExpandedClients(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(clientName)) {
-        newSet.delete(clientName);
-      } else {
-        newSet.add(clientName);
-      }
-      return newSet;
-    });
-  }, []);
+    if (onToggleClientExpansion) {
+      onToggleClientExpansion(clientName);
+    } else {
+      setLocalExpandedClients(prev => {
+        const newSet = new Set(prev);
+        if (newSet.has(clientName)) {
+          newSet.delete(clientName);
+        } else {
+          newSet.add(clientName);
+        }
+        return newSet;
+      });
+    }
+  }, [onToggleClientExpansion]);
 
   // Calculate the week's dates based on currentWeekId
   const days = useMemo(() => {
