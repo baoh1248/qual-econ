@@ -72,7 +72,7 @@ interface ScheduleModalProps {
 
   // Actions
   onClose: () => void;
-  onSave: (editAllRecurring?: boolean) => Promise<void>;
+  onSave: (editAllRecurring?: boolean, scheduleDate?: string) => Promise<void>;
   onDelete: (deleteType?: 'single' | 'allFuture') => void;
   onAddClient: () => void;
   onAddBuilding: () => void;
@@ -227,14 +227,16 @@ const ScheduleModal = memo(({
   };
 
   // Date field - Initialize with proper date format
-  // Note: Only initialize with selectedEntry date or default. Let useEffect handle selectedDay calculation
-  // to avoid stale closure issues
+  // Calculate from selectedDay/currentDate when available to avoid showing wrong date on first render
   const [scheduleDate, setScheduleDate] = useState(() => {
     try {
       if (selectedEntry?.date) {
         // Ensure date is in YYYY-MM-DD format
         const dateStr = selectedEntry.date.split('T')[0];
         return dateStr;
+      }
+      if (selectedDay && currentDate) {
+        return calculateDateFromDay(selectedDay, currentDate);
       }
       return formatLocalDate(new Date());
     } catch (error) {
@@ -540,8 +542,8 @@ const ScheduleModal = memo(({
 
       setIsSaving(true);
 
-      console.log('Calling parent onSave function with editAllRecurring:', editAllRecurring);
-      await onSave(editAllRecurring);
+      console.log('Calling parent onSave function with editAllRecurring:', editAllRecurring, 'scheduleDate:', scheduleDate);
+      await onSave(editAllRecurring, scheduleDate);
       console.log('Parent onSave completed successfully');
       
       await new Promise(resolve => setTimeout(resolve, 100));

@@ -1168,9 +1168,9 @@ export default function ScheduleView() {
     setRecurringModalVisible(true);
   }, []);
 
-  const handleModalSave = useCallback(async (editAllRecurring: boolean = false) => {
+  const handleModalSave = useCallback(async (editAllRecurring: boolean = false, scheduleDate?: string) => {
     console.log('=== SCHEDULE MODAL SAVE HANDLER (SIMPLIFIED) ===');
-    console.log('Edit all recurring:', editAllRecurring);
+    console.log('Edit all recurring:', editAllRecurring, 'scheduleDate:', scheduleDate);
 
     try {
       if (modalType === 'add') {
@@ -1192,18 +1192,39 @@ export default function ScheduleView() {
           showToast('Please assign hours for all selected cleaners', 'error');
           return;
         }
-        if (!selectedDay || !selectedDay.trim()) {
-          showToast('Please select a day', 'error');
+
+        // Determine the entry date and day name from the modal's date field
+        const validDays = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        const validDaysMonFirst = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+        let entryDateStr: string;
+        let dayName: string;
+
+        if (scheduleDate && /^\d{4}-\d{2}-\d{2}$/.test(scheduleDate)) {
+          // Use the date from the modal's DateInput directly
+          entryDateStr = scheduleDate;
+          const parsedDate = new Date(scheduleDate + 'T00:00:00');
+          dayName = validDays[parsedDate.getDay()];
+        } else if (selectedDay && selectedDay.trim()) {
+          // Fall back to calculating from selectedDay (legacy path)
+          dayName = selectedDay.toLowerCase();
+          if (!validDaysMonFirst.includes(dayName)) {
+            showToast('Invalid day selected', 'error');
+            return;
+          }
+          const weekStart = new Date(currentDate);
+          const dayOfWeek = weekStart.getDay();
+          const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+          weekStart.setDate(weekStart.getDate() + diff);
+          const dayIndex = validDaysMonFirst.indexOf(dayName);
+          const entryDate = new Date(weekStart);
+          entryDate.setDate(weekStart.getDate() + dayIndex);
+          entryDateStr = `${entryDate.getFullYear()}-${String(entryDate.getMonth() + 1).padStart(2, '0')}-${String(entryDate.getDate()).padStart(2, '0')}`;
+        } else {
+          showToast('Please select a date', 'error');
           return;
         }
 
-        const validDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-        if (!validDays.includes(selectedDay.toLowerCase())) {
-          showToast('Invalid day selected', 'error');
-          return;
-        }
-
-        // Calculate entry date and hours
+        // Calculate hours
         // Convert cleanerHours to a clean object with number values
         const cleanerHoursObj: { [cleanerName: string]: number } = {};
         let totalHours = 0;
@@ -1216,14 +1237,6 @@ export default function ScheduleView() {
         }
 
         const endTime = addHoursToTime(startTime, maxHours);
-        const weekStart = new Date(currentDate);
-        const dayOfWeek = weekStart.getDay();
-        const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-        weekStart.setDate(weekStart.getDate() + diff);
-
-        const dayIndex = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].indexOf(selectedDay.toLowerCase());
-        const entryDate = new Date(weekStart);
-        entryDate.setDate(weekStart.getDate() + dayIndex);
 
         // Create the new entry
         const newEntry: ScheduleEntry = {
@@ -1232,8 +1245,8 @@ export default function ScheduleView() {
           buildingName: selectedClientBuilding.buildingName,
           cleanerName: selectedCleaners[0],
           cleanerNames: selectedCleaners,
-          day: selectedDay.toLowerCase() as any,
-          date: entryDate.toISOString().split('T')[0],
+          day: dayName as any,
+          date: entryDateStr,
           hours: maxHours, // Use max hours for backward compatibility
           cleanerHours: cleanerHoursObj, // Individual hours per cleaner
           startTime,
@@ -2251,6 +2264,7 @@ export default function ScheduleView() {
           console.log('Add shift pressed from action button');
           setSelectedClientBuilding(null);
           setSelectedCleaners([]);
+          setSelectedDay('');
           setHours('');
           setStartTime('17:00');
           setIsAddingFromGrid(false);
