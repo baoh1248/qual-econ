@@ -201,15 +201,30 @@ export const useScheduleData = () => {
 
       const dbEntry = toDatabase(entryWithId);
 
-      const { data, error: insertError } = await supabase
+      let data: any;
+      const { data: insertData, error: insertError } = await supabase
         .from('schedule_entries')
         .insert(dbEntry)
         .select()
         .single();
 
       if (insertError) {
-        console.error('❌ [useScheduleData] Insert error:', insertError);
-        throw insertError;
+        // Retry without cleaner_hours in case the column doesn't exist yet
+        console.warn('⚠️ [useScheduleData] Insert failed, retrying without cleaner_hours:', insertError.message);
+        const { cleaner_hours, ...dbEntryFallback } = dbEntry;
+        const { data: retryData, error: retryError } = await supabase
+          .from('schedule_entries')
+          .insert(dbEntryFallback)
+          .select()
+          .single();
+
+        if (retryError) {
+          console.error('❌ [useScheduleData] Insert retry error:', retryError);
+          throw retryError;
+        }
+        data = retryData;
+      } else {
+        data = insertData;
       }
 
       // Refetch the week to ensure UI is in sync
@@ -252,7 +267,8 @@ export const useScheduleData = () => {
 
       const dbEntry = toDatabase(mergedEntry);
 
-      const { data, error: updateError } = await supabase
+      let data: any;
+      const { data: updateData, error: updateError } = await supabase
         .from('schedule_entries')
         .update(dbEntry)
         .eq('id', id)
@@ -260,8 +276,23 @@ export const useScheduleData = () => {
         .single();
 
       if (updateError) {
-        console.error('❌ [useScheduleData] Update error:', updateError);
-        throw updateError;
+        // Retry without cleaner_hours in case the column doesn't exist yet
+        console.warn('⚠️ [useScheduleData] Update failed, retrying without cleaner_hours:', updateError.message);
+        const { cleaner_hours, ...dbEntryFallback } = dbEntry;
+        const { data: retryData, error: retryError } = await supabase
+          .from('schedule_entries')
+          .update(dbEntryFallback)
+          .eq('id', id)
+          .select()
+          .single();
+
+        if (retryError) {
+          console.error('❌ [useScheduleData] Update retry error:', retryError);
+          throw retryError;
+        }
+        data = retryData;
+      } else {
+        data = updateData;
       }
 
       // Refetch the week to ensure UI is in sync
