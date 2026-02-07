@@ -619,10 +619,38 @@ const ScheduleModal = memo(({
                   <Text style={styles.detailLabel}>Date:</Text>
                   <Text style={styles.detailValue}>{selectedEntry.date.split('T')[0]}</Text>
                 </View>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Hours:</Text>
-                  <Text style={styles.detailValue}>{selectedEntry.hours} hrs</Text>
-                </View>
+                {(() => {
+                  const cleanerNames = getEntryCleaners(selectedEntry);
+                  const hasMultipleCleaners = cleanerNames.length >= 2;
+                  const hasCleanerHours = selectedEntry.cleanerHours && Object.keys(selectedEntry.cleanerHours).length > 0;
+
+                  if (hasMultipleCleaners && hasCleanerHours) {
+                    const totalHours = Object.values(selectedEntry.cleanerHours!).reduce((sum, h) => sum + h, 0);
+                    return (
+                      <View style={[styles.detailRow, { alignItems: 'flex-start' }]}>
+                        <Text style={[styles.detailLabel, { marginTop: 2 }]}>Hours:</Text>
+                        <View style={{ alignItems: 'flex-end', flex: 1 }}>
+                          <Text style={styles.detailValue}>{totalHours} hrs total</Text>
+                          {cleanerNames.map((name, idx) => {
+                            const hrs = selectedEntry.cleanerHours![name];
+                            return hrs !== undefined ? (
+                              <Text key={idx} style={[styles.detailLabel, { fontSize: 12, marginTop: 2 }]}>
+                                {name}: {hrs} hrs
+                              </Text>
+                            ) : null;
+                          })}
+                        </View>
+                      </View>
+                    );
+                  }
+
+                  return (
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Hours:</Text>
+                      <Text style={styles.detailValue}>{selectedEntry.hours} hrs</Text>
+                    </View>
+                  );
+                })()}
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Time:</Text>
                   <Text style={styles.detailValue}>
