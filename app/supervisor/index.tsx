@@ -472,30 +472,6 @@ const SupervisorDashboard = () => {
         <View style={styles.quickActions}>
           <TouchableOpacity
             style={styles.actionButton}
-            onPress={() => router.push('/supervisor/schedule')}
-          >
-            <Icon name="calendar" size={24} style={{ color: themeColor }} />
-            <Text style={styles.actionButtonText}>Schedule</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => router.push('/supervisor/cleaners')}
-          >
-            <Icon name="people" size={24} style={{ color: themeColor }} />
-            <Text style={styles.actionButtonText}>Cleaners</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => router.push('/supervisor/inventory')}
-          >
-            <Icon name="cube" size={24} style={{ color: themeColor }} />
-            <Text style={styles.actionButtonText}>Inventory</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.actionButton}
             onPress={() => router.push('/supervisor/payroll')}
           >
             <Icon name="card" size={24} style={{ color: themeColor }} />
