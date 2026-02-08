@@ -518,7 +518,8 @@ const SupervisorDashboard = () => {
               <Text style={[styles.viewAllText, { color: themeColor }]}>View All</Text>
             </TouchableOpacity>
           </View>
-          {teamMembers.slice(0, 5).map((member) => (
+          <ScrollView style={styles.teamList} nestedScrollEnabled showsVerticalScrollIndicator>
+          {teamMembers.map((member) => (
             <View key={member.id} style={styles.teamMember}>
               <View style={styles.memberInfo}>
                 <View style={styles.memberHeader}>
@@ -542,6 +543,7 @@ const SupervisorDashboard = () => {
               </View>
             </View>
           ))}
+          </ScrollView>
         </AnimatedCard>
 
         {/* Client Status */}
@@ -867,6 +869,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
     elevation: 4,
+  },
+  teamList: {
+    maxHeight: 400,
   },
   cardHeader: {
     flexDirection: 'row',
