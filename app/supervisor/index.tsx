@@ -344,37 +344,6 @@ const SupervisorDashboard = () => {
           </View>
         </AnimatedCard>
 
-        {/* Cleaners Management Card */}
-        <AnimatedCard style={styles.cleanersCard}>
-          <TouchableOpacity 
-            style={styles.cleanersHeader}
-            onPress={() => router.push('/supervisor/cleaners')}
-          >
-            <View style={styles.cleanersTitleRow}>
-              <Icon name="people" size={24} style={{ color: themeColor }} />
-              <Text style={styles.cardTitle}>Cleaners Management</Text>
-            </View>
-            <Icon name="chevron-forward" size={20} style={{ color: colors.textSecondary }} />
-          </TouchableOpacity>
-          <Text style={styles.cleanersDescription}>
-            Manage your cleaning staff, view profiles, and track performance
-          </Text>
-          <View style={styles.cleanersStats}>
-            <View style={styles.cleanersStat}>
-              <Text style={[styles.cleanersStatValue, { color: themeColor }]}>
-                {teamMembers.length}
-              </Text>
-              <Text style={styles.cleanersStatLabel}>Total Cleaners</Text>
-            </View>
-            <View style={styles.cleanersStat}>
-              <Text style={[styles.cleanersStatValue, { color: colors.success }]}>
-                {teamMembers.filter(m => m.status === 'on-duty').length}
-              </Text>
-              <Text style={styles.cleanersStatLabel}>Active Now</Text>
-            </View>
-          </View>
-        </AnimatedCard>
-
         {/* Task Progress */}
         <AnimatedCard style={styles.progressCard}>
           <View style={styles.progressHeader}>
@@ -666,48 +635,6 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   liveMapStatLabel: {
-    ...typography.small,
-    color: colors.textSecondary,
-  },
-  cleanersCard: {
-    marginBottom: spacing.lg,
-    padding: spacing.lg,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    elevation: 4,
-  },
-  cleanersHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-  cleanersTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  cleanersDescription: {
-    ...typography.small,
-    color: colors.textSecondary,
-    marginBottom: spacing.md,
-  },
-  cleanersStats: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingTop: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  cleanersStat: {
-    alignItems: 'center',
-  },
-  cleanersStatValue: {
-    ...typography.h2,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  cleanersStatLabel: {
     ...typography.small,
     color: colors.textSecondary,
   },
