@@ -9,7 +9,8 @@ import AnimatedCard from '../../components/AnimatedCard';
 import ProgressRing from '../../components/ProgressRing';
 import CompanyLogo from '../../components/CompanyLogo';
 import Toast from '../../components/Toast';
-import LiveMap from '../../components/LiveMap';
+import LiveMap, { ActiveCleaner } from '../../components/LiveMap';
+import MapView, { Marker } from '../../components/NativeMap';
 import { commonStyles, colors, spacing, typography, statusColors } from '../../styles/commonStyles';
 import { useToast } from '../../hooks/useToast';
 import { useInventoryAlerts } from '../../hooks/useInventoryAlerts';
@@ -56,6 +57,7 @@ const SupervisorDashboard = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [showLiveMap, setShowLiveMap] = useState(false);
   const [activeClockedIn, setActiveClockedIn] = useState(0);
+  const [mapCleaners, setMapCleaners] = useState<ActiveCleaner[]>([]);
 
   // Get current week schedule and stats
   const currentWeekId = getCurrentWeekId();
@@ -169,16 +171,104 @@ const SupervisorDashboard = () => {
     return Array.from(clientMap.values());
   }, [currentWeekSchedule]);
 
-  // Fetch active clocked-in count from clock_records
+  // Compute map region from active cleaners for the preview
+  const mapPreviewRegion = useMemo(() => {
+    if (mapCleaners.length === 0) {
+      return { latitude: 39.8283, longitude: -98.5795, latitudeDelta: 40, longitudeDelta: 40 };
+    }
+    if (mapCleaners.length === 1) {
+      return {
+        latitude: mapCleaners[0].latitude,
+        longitude: mapCleaners[0].longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      };
+    }
+    const lats = mapCleaners.map(c => c.latitude);
+    const lngs = mapCleaners.map(c => c.longitude);
+    const minLat = Math.min(...lats);
+    const maxLat = Math.max(...lats);
+    const minLng = Math.min(...lngs);
+    const maxLng = Math.max(...lngs);
+    return {
+      latitude: (minLat + maxLat) / 2,
+      longitude: (minLng + maxLng) / 2,
+      latitudeDelta: Math.max((maxLat - minLat) * 1.5, 0.01),
+      longitudeDelta: Math.max((maxLng - minLng) * 1.5, 0.01),
+    };
+  }, [mapCleaners]);
+
+  // Fetch active clocked-in count and locations from clock_records
   const fetchClockedInCount = useCallback(async () => {
     try {
-      const { count, error } = await supabase
+      const { data: clockRecords, error } = await supabase
         .from('clock_records')
-        .select('id', { count: 'exact', head: true })
-        .eq('status', 'clocked_in');
-      if (!error && count !== null) {
-        setActiveClockedIn(count);
+        .select('id, cleaner_id, cleaner_name, building_name, client_name, clock_in_time, clock_in_latitude, clock_in_longitude, clock_in_distance_ft, status')
+        .eq('status', 'clocked_in')
+        .order('clock_in_time', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching clocked-in data:', error);
+        return;
       }
+
+      setActiveClockedIn(clockRecords?.length ?? 0);
+
+      if (!clockRecords || clockRecords.length === 0) {
+        setMapCleaners([]);
+        return;
+      }
+
+      // Get building coordinates for cleaners without clock-in coordinates
+      const buildingNames = [...new Set(clockRecords.map(r => r.building_name).filter(Boolean))];
+      let buildingCoords = new Map<string, { lat: number; lng: number }>();
+
+      if (buildingNames.length > 0) {
+        const { data: buildings } = await supabase
+          .from('client_buildings')
+          .select('building_name, latitude, longitude')
+          .in('building_name', buildingNames);
+
+        if (buildings) {
+          buildings.forEach(b => {
+            if (b.latitude && b.longitude) {
+              buildingCoords.set(b.building_name, {
+                lat: parseFloat(b.latitude),
+                lng: parseFloat(b.longitude),
+              });
+            }
+          });
+        }
+      }
+
+      const mapped: ActiveCleaner[] = clockRecords
+        .map(record => {
+          let lat = record.clock_in_latitude ? parseFloat(record.clock_in_latitude) : 0;
+          let lng = record.clock_in_longitude ? parseFloat(record.clock_in_longitude) : 0;
+
+          if ((!lat || !lng) && record.building_name) {
+            const coord = buildingCoords.get(record.building_name);
+            if (coord) { lat = coord.lat; lng = coord.lng; }
+          }
+
+          if (!lat || !lng || (lat === 0 && lng === 0)) return null;
+
+          return {
+            id: record.id,
+            cleanerId: record.cleaner_id,
+            cleanerName: record.cleaner_name,
+            buildingName: record.building_name || 'Unknown Building',
+            clientName: record.client_name || '',
+            latitude: lat,
+            longitude: lng,
+            clockInTime: record.clock_in_time,
+            distanceFt: record.clock_in_distance_ft ? parseFloat(record.clock_in_distance_ft) : 0,
+            status: 'on-duty' as const,
+          };
+        })
+        .filter((c): c is ActiveCleaner => c !== null);
+
+      setMapCleaners(mapped);
     } catch (err) {
       console.error('Error fetching clocked-in count:', err);
     }
@@ -309,7 +399,7 @@ const SupervisorDashboard = () => {
 
         {/* Live Map Card */}
         <AnimatedCard style={styles.liveMapCard}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.liveMapHeader}
             onPress={() => setShowLiveMap(true)}
           >
@@ -322,6 +412,50 @@ const SupervisorDashboard = () => {
           <Text style={styles.liveMapDescription}>
             Monitor your team&apos;s real-time locations and status
           </Text>
+
+          {/* Map Preview */}
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={() => setShowLiveMap(true)}
+            style={styles.mapPreviewContainer}
+          >
+            {mapCleaners.length > 0 ? (
+              <MapView
+                style={styles.mapPreview}
+                initialRegion={mapPreviewRegion}
+                scrollEnabled={false}
+                zoomEnabled={false}
+                rotateEnabled={false}
+                pitchEnabled={false}
+                showsUserLocation={false}
+                showsMyLocationButton={false}
+                toolbarEnabled={false}
+              >
+                {mapCleaners.map(cleaner => (
+                  <Marker
+                    key={cleaner.id}
+                    coordinate={{ latitude: cleaner.latitude, longitude: cleaner.longitude }}
+                    title={cleaner.cleanerName}
+                    description={cleaner.buildingName}
+                    pinColor={colors.success}
+                  >
+                    <View style={styles.mapPreviewMarker}>
+                      <Icon name="person" size={12} style={{ color: '#FFF' }} />
+                    </View>
+                  </Marker>
+                ))}
+              </MapView>
+            ) : (
+              <View style={styles.mapPreviewEmpty}>
+                <Icon name="map-outline" size={32} style={{ color: colors.textSecondary }} />
+                <Text style={styles.mapPreviewEmptyText}>No active cleaners to display</Text>
+              </View>
+            )}
+            <View style={styles.mapPreviewOverlay}>
+              <Text style={styles.mapPreviewOverlayText}>Tap to expand</Text>
+            </View>
+          </TouchableOpacity>
+
           <View style={styles.liveMapStats}>
             <View style={styles.liveMapStat}>
               <Text style={[styles.liveMapStatValue, { color: colors.success }]}>
@@ -618,6 +752,50 @@ const styles = StyleSheet.create({
     ...typography.small,
     color: colors.textSecondary,
     marginBottom: spacing.md,
+  },
+  mapPreviewContainer: {
+    height: 160,
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: spacing.md,
+    backgroundColor: colors.backgroundAlt,
+  },
+  mapPreview: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  mapPreviewMarker: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.success,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFF',
+  },
+  mapPreviewEmpty: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  mapPreviewEmptyText: {
+    ...typography.small,
+    color: colors.textSecondary,
+  },
+  mapPreviewOverlay: {
+    position: 'absolute',
+    bottom: spacing.sm,
+    right: spacing.sm,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  mapPreviewOverlayText: {
+    color: '#FFF',
+    fontSize: 11,
+    fontWeight: '600',
   },
   liveMapStats: {
     flexDirection: 'row',
