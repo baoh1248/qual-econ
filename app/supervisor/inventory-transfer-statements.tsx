@@ -714,7 +714,7 @@ export default function InventoryTransferStatementsScreen() {
   const handlePrint = useCallback(() => {
     if (Platform.OS !== 'web') return;
 
-    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(new RegExp('<', 'g'), '&lt;').replace(new RegExp('>', 'g'), '&gt;');
     const fmtCost = (v?: number) => v && v > 0 ? `$${v.toFixed(2)}` : '-';
     const generated = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 
