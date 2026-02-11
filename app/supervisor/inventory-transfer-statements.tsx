@@ -27,6 +27,8 @@ interface ItemTransaction {
   transferId: string;
   transferredBy: string;
   notes?: string;
+  unitCost?: number;
+  totalCost?: number;
 }
 
 interface ItemLedger {
@@ -708,30 +710,150 @@ export default function InventoryTransferStatementsScreen() {
   const [showBuildingPicker, setShowBuildingPicker] = useState(false);
   const [expandedBuildings, setExpandedBuildings] = useState<Set<string>>(new Set());
 
-  // Print support (web only)
-  useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    const style = document.createElement('style');
-    style.id = 'inventory-print-styles';
-    style.textContent = `
-      @media print {
-        [id^="no-print"] { display: none !important; }
-        body { background: white !important; margin: 0; }
-        * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      }
-    `;
-    document.head.appendChild(style);
-    return () => {
-      const el = document.getElementById('inventory-print-styles');
-      if (el) el.remove();
-    };
-  }, []);
 
   const handlePrint = useCallback(() => {
-    if (Platform.OS === 'web') {
-      (window as any).print();
+    if (Platform.OS !== 'web') return;
+
+    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const fmtCost = (v?: number) => v && v > 0 ? `$${v.toFixed(2)}` : '-';
+    const generated = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+
+    let tableHtml = '';
+
+    if (viewMode === 'item') {
+      // Item View: one table per month, each row is a transaction with item name
+      monthlyStatements.forEach(statement => {
+        tableHtml += `<h3 style="margin:18px 0 6px;border-bottom:2px solid #333;padding-bottom:4px;">${esc(statement.month)} ${statement.year}</h3>`;
+        tableHtml += `<table><thead><tr>
+          <th>Date</th><th>Order #</th><th>Item</th><th>Qty</th>
+          <th>Type</th><th>From</th><th>To</th>
+          <th>Notes</th><th>Price/Unit</th><th>Total</th>
+        </tr></thead><tbody>`;
+
+        statement.itemLedgers.forEach(ledger => {
+          ledger.transactions.forEach(tx => {
+            const typeLabel = tx.type === 'incoming' ? 'Received' : 'Sent Out';
+            const typeClass = tx.type === 'incoming' ? 'received' : 'sent';
+            tableHtml += `<tr>
+              <td>${esc(tx.date)}</td>
+              <td>${esc(tx.orderNumber || '-')}</td>
+              <td><strong>${esc(ledger.itemName)}</strong></td>
+              <td class="text-right">${tx.type === 'incoming' ? '+' : '-'}${tx.quantity}</td>
+              <td class="${typeClass}">${typeLabel}</td>
+              <td>${esc(tx.sentFrom || '-')}</td>
+              <td>${esc(tx.location)}</td>
+              <td class="notes">${esc(tx.notes || '-')}</td>
+              <td class="text-right">${fmtCost(tx.unitCost)}</td>
+              <td class="text-right">${fmtCost(tx.totalCost)}</td>
+            </tr>`;
+          });
+        });
+
+        tableHtml += '</tbody></table>';
+
+        // Item summary below the table
+        tableHtml += '<table style="width:auto;margin-bottom:20px;"><tbody>';
+        statement.itemLedgers.forEach(ledger => {
+          tableHtml += `<tr>
+            <td style="padding-right:24px;"><strong>${esc(ledger.itemName)}</strong></td>
+            <td style="padding-right:16px;">Begin: ${ledger.beginningBalance} ${esc(ledger.unit)}</td>
+            <td style="padding-right:16px;color:green;">+${ledger.totalIncoming}</td>
+            <td style="padding-right:16px;color:red;">-${ledger.totalOutgoing}</td>
+            <td><strong>End: ${ledger.endingBalance} ${esc(ledger.unit)}</strong></td>
+          </tr>`;
+        });
+        tableHtml += '</tbody></table>';
+      });
+    } else {
+      // Building View: one section per building, one table per month
+      buildingLedgers.forEach(ledger => {
+        const yearTotal = ledger.months.reduce((sum, m) => m.totalValue + sum, 0);
+        tableHtml += `<h3 style="margin:18px 0 2px;">${esc(ledger.buildingName)}</h3>`;
+        tableHtml += `<p style="margin:0 0 8px;color:#666;font-size:9pt;">${esc(ledger.clientName)} &mdash; ${ledger.totalTransfers} transfer${ledger.totalTransfers !== 1 ? 's' : ''}${yearTotal > 0 ? ` &mdash; Year Total: $${yearTotal.toFixed(2)}` : ''}</p>`;
+
+        ledger.months.forEach(monthData => {
+          tableHtml += `<h4 style="margin:12px 0 4px;border-bottom:1px solid #999;padding-bottom:2px;">${esc(monthData.month)}</h4>`;
+          tableHtml += `<table><thead><tr>
+            <th>Date</th><th>Order #</th><th>Item</th><th>Qty</th>
+            <th>Type</th><th>From</th><th>To</th>
+            <th>Notes</th><th>Price/Unit</th><th>Total</th>
+          </tr></thead><tbody>`;
+
+          monthData.transfers.forEach(transfer => {
+            const typeLabel = transfer.type === 'incoming' ? 'Received' : 'Sent Out';
+            const typeClass = transfer.type === 'incoming' ? 'received' : 'sent';
+            // Extract destination from the building context
+            const to = transfer.type === 'incoming'
+              ? `${ledger.clientName} - ${ledger.buildingName}`
+              : `${ledger.clientName} - ${ledger.buildingName}`;
+            const from = transfer.sentFrom || (transfer.type === 'incoming' ? 'Supplier' : '-');
+
+            transfer.items.forEach(item => {
+              tableHtml += `<tr>
+                <td>${esc(transfer.date)}</td>
+                <td>${esc(transfer.orderNumber || '-')}</td>
+                <td><strong>${esc(item.name)}</strong></td>
+                <td class="text-right">${item.quantity} ${esc(item.unit)}</td>
+                <td class="${typeClass}">${typeLabel}</td>
+                <td>${esc(from)}</td>
+                <td>${esc(to)}</td>
+                <td class="notes">${esc(transfer.notes || '-')}</td>
+                <td class="text-right">${fmtCost(item.unitCost)}</td>
+                <td class="text-right">${fmtCost(item.totalCost)}</td>
+              </tr>`;
+            });
+          });
+
+          const monthTotal = monthData.transfers.reduce((sum, t) =>
+            sum + t.items.reduce((s, i) => s + (i.totalCost || 0), 0), 0);
+          if (monthTotal > 0) {
+            tableHtml += `<tr class="total-row">
+              <td colspan="9" class="text-right"><strong>Monthly Total</strong></td>
+              <td class="text-right"><strong>$${monthTotal.toFixed(2)}</strong></td>
+            </tr>`;
+          }
+          tableHtml += '</tbody></table>';
+        });
+      });
     }
-  }, []);
+
+    const viewLabel = viewMode === 'item' ? 'Item View' : 'Building View';
+    const html = `<!DOCTYPE html><html><head>
+      <title>Inventory Statement - ${selectedYear}</title>
+      <style>
+        body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; margin: 24px; color: #222; }
+        h2 { margin: 0 0 4px; font-size: 16pt; }
+        h3 { font-size: 13pt; }
+        h4 { font-size: 11pt; }
+        .meta { color: #666; font-size: 9pt; margin-bottom: 16px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 12px; page-break-inside: auto; }
+        tr { page-break-inside: avoid; }
+        th, td { border: 1px solid #bbb; padding: 3px 6px; text-align: left; font-size: 9pt; }
+        th { background: #eee; font-weight: bold; text-transform: uppercase; font-size: 8pt; letter-spacing: 0.3px; }
+        .text-right { text-align: right; }
+        .notes { max-width: 140px; font-style: italic; color: #555; }
+        .received { color: #16a34a; font-weight: 600; }
+        .sent { color: #dc2626; font-weight: 600; }
+        .total-row td { background: #f5f5f5; border-top: 2px solid #333; }
+        @media print {
+          body { margin: 12px; }
+          h3 { page-break-before: auto; }
+        }
+      </style>
+    </head><body>
+      <h2>Monthly Inventory Statement &mdash; ${selectedYear}</h2>
+      <p class="meta">${viewLabel} &bull; Generated ${esc(generated)}</p>
+      ${tableHtml}
+    </body></html>`;
+
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(html);
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.print();
+    }
+  }, [viewMode, selectedYear, monthlyStatements, buildingLedgers]);
 
   const loadTransfers = useCallback(async () => {
     try {
@@ -877,6 +999,8 @@ export default function InventoryTransferStatementsScreen() {
             transferId: transfer.id,
             transferredBy: transfer.transferredBy,
             notes: transfer.notes,
+            unitCost: item.unitCost,
+            totalCost: item.totalCost,
           };
 
           itemLedgersMap[item.name].transactions.push(transaction);
