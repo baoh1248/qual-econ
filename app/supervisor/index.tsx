@@ -687,7 +687,7 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: spacing.lg,
-    paddingBottom: 80,
+    paddingBottom: spacing.lg,
   },
   statsContainer: {
     flexDirection: 'row',
