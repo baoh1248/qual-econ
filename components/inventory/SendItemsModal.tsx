@@ -35,6 +35,7 @@ interface SendItemsModalProps {
   onClose: () => void;
   inventory: InventoryItem[];
   onSend: (itemIds: string[], quantities: number[]) => void;
+  onWarehouseTransfer?: (itemIds: string[], quantities: number[], destinationWarehouse: string) => Promise<void>;
   onSuccess?: () => void;
   warehouses?: string[];
 }
@@ -53,13 +54,14 @@ const generateOrderNumber = (): string => {
   return `ORD-${year}${month}${day}-${random}`;
 };
 
-const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory, onSend, onSuccess, warehouses }) => {
+const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory, onSend, onWarehouseTransfer, onSuccess, warehouses }) => {
   console.log('SendItemsModal rendered');
 
   const [destination, setDestination] = useState('');
-  const [destinationType, setDestinationType] = useState<'building' | 'group'>('building');
+  const [destinationType, setDestinationType] = useState<'building' | 'group' | 'warehouse'>('building');
   const [selectedBuildingId, setSelectedBuildingId] = useState<string | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [selectedWarehouseDestination, setSelectedWarehouseDestination] = useState<string | null>(null);
   const [selectedItems, setSelectedItems] = useState<SelectedItem[]>([]);
   const [sentFrom, setSentFrom] = useState('');
   const [orderNumber, setOrderNumber] = useState('');
@@ -86,6 +88,7 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
       setDestinationType('building');
       setSelectedBuildingId(null);
       setSelectedGroupId(null);
+      setSelectedWarehouseDestination(null);
       setSelectedItems([]);
       setSentFrom(warehouses && warehouses.length > 0 ? warehouses[0] : '');
       setOrderNumber('');
@@ -252,13 +255,15 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
     } else if (destinationType === 'group' && selectedGroupId) {
       const group = buildingGroups.find(g => g.id === selectedGroupId);
       return group ? `${group.client_name} - ${group.group_name} (${group.buildings.length} buildings)` : '';
+    } else if (destinationType === 'warehouse' && selectedWarehouseDestination) {
+      return selectedWarehouseDestination;
     }
     return '';
   };
 
   const handleSendItems = async () => {
     const destinationName = getDestinationName();
-    
+
     if (!destinationName.trim()) {
       Alert.alert('Error', 'Please select or enter a destination');
       return;
@@ -271,44 +276,68 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
 
     try {
       setSending(true);
-      
+
       console.log('=== SENDING ITEMS ===');
       console.log('Destination Type:', destinationType);
       console.log('Destination:', destinationName);
       console.log('Selected items:', selectedItems);
-      
-      // Calculate total value
-      const totalValue = selectedItems.reduce((sum, item) => sum + (item.totalCost || 0), 0);
-      
-      await logInventoryTransfer({
-        items: selectedItems.map(item => ({
-          name: item.name,
-          quantity: item.quantity,
-          unit: item.unit,
-          unitCost: item.unitCost,
-          totalCost: item.totalCost,
-        })),
-        destination: destinationName,
-        timestamp: new Date().toISOString(),
-        transferredBy: 'Supervisor',
-        sentFrom: sentFrom.trim() || undefined,
-        orderNumber: orderNumber.trim() || undefined,
-        notes: notes.trim() || undefined,
-        totalValue: totalValue,
-      });
 
       const itemIds = selectedItems.map(item => item.id);
       const quantities = selectedItems.map(item => item.quantity);
-      
-      console.log('Calling onSend with:', { itemIds, quantities });
-      await onSend(itemIds, quantities);
+      const totalValue = selectedItems.reduce((sum, item) => sum + (item.totalCost || 0), 0);
+
+      if (destinationType === 'warehouse' && selectedWarehouseDestination) {
+        // Warehouse-to-warehouse transfer
+        await logInventoryTransfer({
+          items: selectedItems.map(item => ({
+            name: item.name,
+            quantity: item.quantity,
+            unit: item.unit,
+            unitCost: item.unitCost,
+            totalCost: item.totalCost,
+          })),
+          destination: selectedWarehouseDestination,
+          timestamp: new Date().toISOString(),
+          transferredBy: 'Supervisor',
+          sentFrom: sentFrom.trim() || undefined,
+          orderNumber: orderNumber.trim() || undefined,
+          notes: notes.trim() || undefined,
+          totalValue,
+          type: 'outgoing',
+        });
+
+        if (onWarehouseTransfer) {
+          await onWarehouseTransfer(itemIds, quantities, selectedWarehouseDestination);
+        }
+      } else {
+        // Normal outgoing transfer to building/group
+        await logInventoryTransfer({
+          items: selectedItems.map(item => ({
+            name: item.name,
+            quantity: item.quantity,
+            unit: item.unit,
+            unitCost: item.unitCost,
+            totalCost: item.totalCost,
+          })),
+          destination: destinationName,
+          timestamp: new Date().toISOString(),
+          transferredBy: 'Supervisor',
+          sentFrom: sentFrom.trim() || undefined,
+          orderNumber: orderNumber.trim() || undefined,
+          notes: notes.trim() || undefined,
+          totalValue,
+        });
+
+        console.log('Calling onSend with:', { itemIds, quantities });
+        await onSend(itemIds, quantities);
+      }
 
       const itemSummary = selectedItems.map(item => `${item.quantity} ${item.name}`).join(', ');
-      
+
       console.log('Items sent successfully, closing modal...');
-      
+
       onClose();
-      
+
       setTimeout(() => {
         Alert.alert(
           'Items Sent Successfully',
@@ -529,6 +558,7 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
                     setDestinationType('building');
                     setDestination('');
                     setSelectedGroupId(null);
+                    setSelectedWarehouseDestination(null);
                   }}
                 >
                   <Icon
@@ -563,6 +593,7 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
                     setDestinationType('group');
                     setDestination('');
                     setSelectedBuildingId(null);
+                    setSelectedWarehouseDestination(null);
                   }}
                 >
                   <Icon
@@ -587,6 +618,44 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
                     Group
                   </Text>
                 </TouchableOpacity>
+
+                {warehouses && warehouses.length > 1 && (
+                  <TouchableOpacity
+                    style={[
+                      destinationType === 'warehouse' ? buttonStyles.quickSelectButtonActive : buttonStyles.quickSelectButton,
+                      { flex: 1, borderWidth: 0 }
+                    ]}
+                    onPress={() => {
+                      setDestinationType('warehouse');
+                      setDestination('');
+                      setSelectedBuildingId(null);
+                      setSelectedGroupId(null);
+                      setSelectedWarehouseDestination(null);
+                    }}
+                  >
+                    <Icon
+                      name="swap-horizontal"
+                      size={16}
+                      style={{
+                        color: destinationType === 'warehouse'
+                          ? getContrastColor(colors.primary)
+                          : getContrastColor(colors.background),
+                        marginRight: spacing.xs
+                      }}
+                    />
+                    <Text style={[
+                      typography.caption,
+                      {
+                        color: destinationType === 'warehouse'
+                          ? getContrastColor(colors.primary)
+                          : getContrastColor(colors.background),
+                        fontWeight: destinationType === 'warehouse' ? '700' : '500'
+                      }
+                    ]}>
+                      Warehouse
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
 
               {/* Building Selector - Collapsible by Client */}
@@ -674,6 +743,54 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
                     </Text>
                   )}
                 </ScrollView>
+              )}
+
+              {/* Warehouse Destination Selector */}
+              {destinationType === 'warehouse' && (
+                <View style={{ marginTop: spacing.sm }}>
+                  <Text style={[typography.caption, { color: colors.textSecondary, marginBottom: spacing.sm }]}>
+                    Select the destination warehouse to transfer items into:
+                  </Text>
+                  {(warehouses || [])
+                    .filter(wh => wh !== sentFrom)
+                    .map(wh => (
+                      <TouchableOpacity
+                        key={wh}
+                        style={[
+                          commonStyles.card,
+                          {
+                            marginBottom: spacing.sm,
+                            backgroundColor: selectedWarehouseDestination === wh ? colors.primary + '20' : colors.surface,
+                            borderWidth: selectedWarehouseDestination === wh ? 2 : 1,
+                            borderColor: selectedWarehouseDestination === wh ? colors.primary : colors.border,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                          }
+                        ]}
+                        onPress={() => setSelectedWarehouseDestination(wh)}
+                      >
+                        <Icon
+                          name={selectedWarehouseDestination === wh ? 'radio-button-on' : 'radio-button-off'}
+                          size={20}
+                          style={{ color: selectedWarehouseDestination === wh ? colors.primary : colors.textSecondary, marginRight: spacing.sm }}
+                        />
+                        <Icon
+                          name="business"
+                          size={20}
+                          style={{ color: selectedWarehouseDestination === wh ? colors.primary : colors.textSecondary, marginRight: spacing.sm }}
+                        />
+                        <Text style={[typography.body, { color: colors.text, fontWeight: '600' }]}>
+                          {wh}
+                        </Text>
+                      </TouchableOpacity>
+                    ))
+                  }
+                  {(warehouses || []).filter(wh => wh !== sentFrom).length === 0 && (
+                    <Text style={[typography.caption, { color: colors.textSecondary, textAlign: 'center', padding: spacing.md }]}>
+                      No other warehouses available
+                    </Text>
+                  )}
+                </View>
               )}
 
               {/* Building Group Selector - Collapsible by Client */}

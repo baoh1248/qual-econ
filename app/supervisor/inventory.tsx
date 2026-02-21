@@ -25,6 +25,7 @@ type Warehouse = typeof WAREHOUSES[number];
 interface InventoryItem {
   id: string;
   name: string;
+  item_number?: string;
   category: 'cleaning-supplies' | 'equipment' | 'safety';
   current_stock: number;
   min_stock: number;
@@ -56,6 +57,7 @@ interface RestockRequest {
 
 interface NewItemForm {
   name: string;
+  item_number: string;
   category: 'cleaning-supplies' | 'equipment' | 'safety';
   current_stock: string;
   min_stock: string;
@@ -69,6 +71,7 @@ interface NewItemForm {
 
 interface EditItemForm {
   name: string;
+  item_number: string;
   category: 'cleaning-supplies' | 'equipment' | 'safety';
   min_stock: string;
   unit: string;
@@ -79,6 +82,11 @@ interface EditItemForm {
   reorder_quantity: string;
   associated_buildings: string[];
 }
+
+const generateItemNumber = (): string => {
+  const random = Math.random().toString(36).substring(2, 8).toUpperCase();
+  return `ITM-${random}`;
+};
 
 const { width } = Dimensions.get('window');
 const ITEMS_PER_ROW = 7;
@@ -473,6 +481,7 @@ export default function SupervisorInventoryScreen() {
 
   const [newItemForm, setNewItemForm] = useState<NewItemForm>({
     name: '',
+    item_number: '',
     category: 'cleaning-supplies',
     current_stock: '0',
     min_stock: '10',
@@ -486,6 +495,7 @@ export default function SupervisorInventoryScreen() {
 
   const [editItemForm, setEditItemForm] = useState<EditItemForm>({
     name: '',
+    item_number: '',
     category: 'cleaning-supplies',
     min_stock: '10',
     unit: 'units',
@@ -603,6 +613,7 @@ export default function SupervisorInventoryScreen() {
       const newItem: InventoryItem = {
         id: uuid.v4() as string,
         name: newItemForm.name.trim(),
+        item_number: newItemForm.item_number.trim() || generateItemNumber(),
         category: newItemForm.category,
         current_stock: parseInt(newItemForm.current_stock) || 0,
         min_stock: parseInt(newItemForm.min_stock) || 10,
@@ -635,6 +646,7 @@ export default function SupervisorInventoryScreen() {
       setShowAddModal(false);
       setNewItemForm({
         name: '',
+        item_number: '',
         category: 'cleaning-supplies',
         current_stock: '0',
         min_stock: '10',
@@ -655,6 +667,7 @@ export default function SupervisorInventoryScreen() {
     setSelectedItem(item);
     setEditItemForm({
       name: item.name,
+      item_number: item.item_number || '',
       category: item.category,
       min_stock: item.min_stock.toString(),
       unit: item.unit,
@@ -681,6 +694,7 @@ export default function SupervisorInventoryScreen() {
 
       const updates = {
         name: editItemForm.name.trim(),
+        item_number: editItemForm.item_number.trim() || undefined,
         category: editItemForm.category,
         min_stock: parseInt(editItemForm.min_stock) || 10,
         unit: editItemForm.unit.trim(),
@@ -814,6 +828,85 @@ export default function SupervisorInventoryScreen() {
       await loadInventoryData();
     } catch (error) {
       console.error('❌ Failed to send items:', error);
+      throw error;
+    }
+  };
+
+  const handleWarehouseTransfer = async (itemIds: string[], quantities: number[], destinationWarehouse: string) => {
+    try {
+      console.log('🔄 Transferring items between warehouses:', itemIds, quantities, '->', destinationWarehouse);
+
+      for (let i = 0; i < itemIds.length; i++) {
+        const itemId = itemIds[i];
+        const quantity = quantities[i];
+        const sourceItem = items.find(item => item.id === itemId);
+
+        if (sourceItem) {
+          // Decrement source warehouse stock
+          const newSourceStock = sourceItem.current_stock - quantity;
+          const { error: sourceError } = await supabase
+            .from('inventory_items')
+            .update({ current_stock: newSourceStock, updated_at: new Date().toISOString() })
+            .eq('id', itemId);
+
+          if (sourceError) throw sourceError;
+
+          // Find matching item by name in destination warehouse and increment its stock
+          const destItem = items.find(item => item.name === sourceItem.name && item.location === destinationWarehouse);
+          if (destItem) {
+            const newDestStock = destItem.current_stock + quantity;
+            const { error: destError } = await supabase
+              .from('inventory_items')
+              .update({ current_stock: newDestStock, updated_at: new Date().toISOString() })
+              .eq('id', destItem.id);
+
+            if (destError) throw destError;
+          } else {
+            // Item doesn't exist in the destination warehouse — create it there
+            const { error: createError } = await supabase
+              .from('inventory_items')
+              .insert({
+                id: uuid.v4() as string,
+                name: sourceItem.name,
+                item_number: sourceItem.item_number,
+                category: sourceItem.category,
+                current_stock: quantity,
+                min_stock: sourceItem.min_stock,
+                max_stock: sourceItem.max_stock,
+                unit: sourceItem.unit,
+                location: destinationWarehouse,
+                cost: sourceItem.cost,
+                supplier: sourceItem.supplier,
+                auto_reorder_enabled: sourceItem.auto_reorder_enabled,
+                reorder_quantity: sourceItem.reorder_quantity,
+                associated_buildings: sourceItem.associated_buildings || [],
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              });
+
+            if (createError) throw createError;
+          }
+
+          // Log the transactions
+          await supabase.from('inventory_transactions').insert({
+            id: uuid.v4() as string,
+            item_id: itemId,
+            item_name: sourceItem.name,
+            transaction_type: 'out',
+            quantity,
+            previous_stock: sourceItem.current_stock,
+            new_stock: newSourceStock,
+            reason: `Transferred to ${destinationWarehouse}`,
+            performed_by: 'Supervisor',
+            created_at: new Date().toISOString(),
+          });
+        }
+      }
+
+      console.log('✅ Warehouse transfer completed');
+      await loadInventoryData();
+    } catch (error) {
+      console.error('❌ Failed to transfer between warehouses:', error);
       throw error;
     }
   };
@@ -1068,8 +1161,8 @@ export default function SupervisorInventoryScreen() {
           style={styles.actionButton}
           onPress={() => setShowTransferHistoryModal(true)}
         >
-          <Icon name="time" size={20} color={themeColor} />
-          <Text style={[styles.actionButtonText, { color: themeColor }]}>History</Text>
+          <Icon name="create" size={20} color={themeColor} />
+          <Text style={[styles.actionButtonText, { color: themeColor }]}>Edit Transfer</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -1190,6 +1283,11 @@ export default function SupervisorInventoryScreen() {
                   <View style={styles.itemHeader}>
                     <Icon name={getCategoryIcon(item.category)} size={32} color={themeColor} />
                     <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
+                    {item.item_number && (
+                      <Text style={[styles.infoText, { color: themeColor, fontWeight: '600', fontSize: 10 }]}>
+                        {item.item_number}
+                      </Text>
+                    )}
                   </View>
 
                   <View style={styles.itemInfo}>
@@ -1277,6 +1375,7 @@ export default function SupervisorInventoryScreen() {
         onClose={() => setShowSendItemsModal(false)}
         inventory={items}
         onSend={handleSendItems}
+        onWarehouseTransfer={handleWarehouseTransfer}
         onSuccess={() => loadInventoryData()}
         warehouses={WAREHOUSES as unknown as string[]}
       />
@@ -1314,6 +1413,31 @@ export default function SupervisorInventoryScreen() {
                   value={newItemForm.name}
                   onChangeText={(text) => setNewItemForm({ ...newItemForm, name: text })}
                 />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Item / Product Number</Text>
+                <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                  <TextInput
+                    style={[styles.input, { flex: 1 }]}
+                    placeholder="e.g. ITM-A1B2C3 (auto-generated if blank)"
+                    placeholderTextColor={colors.textSecondary}
+                    value={newItemForm.item_number}
+                    onChangeText={(text) => setNewItemForm({ ...newItemForm, item_number: text })}
+                  />
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: themeColor,
+                      paddingHorizontal: spacing.md,
+                      borderRadius: 8,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                    onPress={() => setNewItemForm({ ...newItemForm, item_number: generateItemNumber() })}
+                  >
+                    <Icon name="refresh" size={20} color="#FFFFFF" />
+                  </TouchableOpacity>
+                </View>
               </View>
 
               <View style={styles.formGroup}>
@@ -1458,6 +1582,31 @@ export default function SupervisorInventoryScreen() {
                   value={editItemForm.name}
                   onChangeText={(text) => setEditItemForm({ ...editItemForm, name: text })}
                 />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Item / Product Number</Text>
+                <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                  <TextInput
+                    style={[styles.input, { flex: 1 }]}
+                    placeholder="e.g. ITM-A1B2C3"
+                    placeholderTextColor={colors.textSecondary}
+                    value={editItemForm.item_number}
+                    onChangeText={(text) => setEditItemForm({ ...editItemForm, item_number: text })}
+                  />
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: themeColor,
+                      paddingHorizontal: spacing.md,
+                      borderRadius: 8,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                    onPress={() => setEditItemForm({ ...editItemForm, item_number: generateItemNumber() })}
+                  >
+                    <Icon name="refresh" size={20} color="#FFFFFF" />
+                  </TouchableOpacity>
+                </View>
               </View>
 
               <View style={styles.formGroup}>
