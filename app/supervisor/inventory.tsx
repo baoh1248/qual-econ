@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Text, View, ScrollView, TouchableOpacity, TextInput, Alert, Modal, StyleSheet, Platform, Dimensions } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useToast } from '../../hooks/useToast';
@@ -458,6 +458,145 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: spacing.sm,
   },
+  viewToggleContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+    gap: spacing.sm,
+  },
+  viewToggleBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#E0E6ED',
+    backgroundColor: '#FFFFFF',
+  },
+  viewToggleBtnActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary,
+  },
+  viewToggleBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  viewToggleBtnTextActive: {
+    color: '#FFFFFF',
+  },
+  buildingViewContainer: {
+    paddingHorizontal: spacing.lg,
+  },
+  bvClientHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    marginBottom: spacing.xs,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  bvClientName: {
+    flex: 1,
+    fontSize: typography.sizes.md,
+    fontWeight: typography.weights.bold as any,
+    color: colors.text,
+    marginLeft: spacing.sm,
+  },
+  bvClientBadge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: 10,
+    marginRight: spacing.sm,
+  },
+  bvClientBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  bvBuildingCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    marginLeft: spacing.lg,
+    marginBottom: spacing.sm,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 1,
+    overflow: 'hidden',
+  },
+  bvBuildingHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border + '60',
+  },
+  bvBuildingName: {
+    flex: 1,
+    fontSize: typography.sizes.sm,
+    fontWeight: '700',
+    color: colors.text,
+    marginLeft: spacing.sm,
+  },
+  bvBuildingCount: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    fontWeight: '600',
+    marginRight: spacing.sm,
+  },
+  bvItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border + '30',
+  },
+  bvItemName: {
+    flex: 1,
+    fontSize: typography.sizes.sm,
+    fontWeight: '600',
+    color: colors.text,
+    marginLeft: spacing.sm,
+  },
+  bvItemNumber: {
+    fontSize: 10,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  bvItemStock: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginRight: spacing.sm,
+  },
+  bvItemStockText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  bvNoItems: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+  },
+  bvNoItemsText: {
+    fontSize: typography.sizes.sm,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
+  },
 });
 
 export default function SupervisorInventoryScreen() {
@@ -509,6 +648,8 @@ export default function SupervisorInventoryScreen() {
 
   const [availableBuildings, setAvailableBuildings] = useState<Array<{ clientName: string; buildingName: string; destination: string }>>([]);
   const [buildingSearchQuery, setBuildingSearchQuery] = useState('');
+  const [viewMode, setViewMode] = useState<'items' | 'by-building'>('items');
+  const [expandedBuildingViewClients, setExpandedBuildingViewClients] = useState<Set<string>>(new Set());
 
   const loadAvailableBuildings = async () => {
     try {
@@ -564,6 +705,9 @@ export default function SupervisorInventoryScreen() {
 
       console.log(`✅ Loaded ${requestsData?.length || 0} restock requests`);
       setRestockRequests(requestsData || []);
+
+      // Always keep buildings list fresh for By Building view
+      await loadAvailableBuildings();
     } catch (error) {
       console.error('❌ Failed to load inventory data:', error);
       showToast('Failed to load inventory data', 'error');
@@ -1113,6 +1257,36 @@ export default function SupervisorInventoryScreen() {
     return matchesSearch && matchesCategory && matchesWarehouse;
   });
 
+  // By Building view: group buildings by client, find associated items for each
+  const buildingViewData = useMemo(() => {
+    const grouped: Record<string, Array<{ building: { clientName: string; buildingName: string; destination: string }; buildingItems: InventoryItem[] }>> = {};
+    availableBuildings.forEach(b => {
+      const bItems = items.filter(item => {
+        if (!item.associated_buildings?.includes(b.destination)) return false;
+        if (filterCategory !== 'all' && item.category !== filterCategory) return false;
+        if (selectedWarehouse !== 'all' && item.location !== selectedWarehouse) return false;
+        if (searchQuery && !item.name.toLowerCase().includes(searchQuery.toLowerCase()) && !item.supplier?.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+        return true;
+      });
+      if (!grouped[b.clientName]) grouped[b.clientName] = [];
+      grouped[b.clientName].push({ building: b, buildingItems: bItems });
+    });
+    return grouped;
+  }, [availableBuildings, items, filterCategory, selectedWarehouse, searchQuery]);
+
+  // Items that have no associated buildings at all (unassigned)
+  const unassignedItems = useMemo(() => {
+    return items.filter(item => {
+      if (!item.associated_buildings || item.associated_buildings.length === 0) {
+        if (filterCategory !== 'all' && item.category !== filterCategory) return false;
+        if (selectedWarehouse !== 'all' && item.location !== selectedWarehouse) return false;
+        if (searchQuery && !item.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+        return true;
+      }
+      return false;
+    });
+  }, [items, filterCategory, selectedWarehouse, searchQuery]);
+
   const warehouseItems = selectedWarehouse === 'all' ? items : items.filter(item => item.location === selectedWarehouse);
   const stats = {
     totalItems: warehouseItems.length,
@@ -1262,6 +1436,24 @@ export default function SupervisorInventoryScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* View Toggle: Items / By Building */}
+      <View style={styles.viewToggleContainer}>
+        <TouchableOpacity
+          style={[styles.viewToggleBtn, viewMode === 'items' && [styles.viewToggleBtnActive, { borderColor: themeColor, backgroundColor: themeColor }]]}
+          onPress={() => setViewMode('items')}
+        >
+          <Icon name="grid" size={16} color={viewMode === 'items' ? '#FFFFFF' : colors.text} />
+          <Text style={[styles.viewToggleBtnText, viewMode === 'items' && styles.viewToggleBtnTextActive]}>Items</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.viewToggleBtn, viewMode === 'by-building' && [styles.viewToggleBtnActive, { borderColor: themeColor, backgroundColor: themeColor }]]}
+          onPress={() => setViewMode('by-building')}
+        >
+          <Icon name="business" size={16} color={viewMode === 'by-building' ? '#FFFFFF' : colors.text} />
+          <Text style={[styles.viewToggleBtnText, viewMode === 'by-building' && styles.viewToggleBtnTextActive]}>By Building</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* Enhanced Stats */}
       <View style={styles.statsContainer}>
         <View style={[styles.statCard, { borderLeftColor: themeColor }]}>
@@ -1288,50 +1480,216 @@ export default function SupervisorInventoryScreen() {
       </View>
 
       <ScrollView>
-        {filteredItems.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Icon name="cube-outline" size={64} color={colors.textSecondary} />
-            <Text style={styles.emptyStateText}>
-              {searchQuery ? 'No items found' : 'No inventory items yet'}
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.gridContainer}>
-            {filteredItems.map((item) => {
-              const stockStatus = getStockStatus(item);
-              return (
-                <AnimatedCard key={item.id} style={styles.itemCard}>
-                  <View style={styles.itemHeader}>
-                    <Icon name={getCategoryIcon(item.category)} size={32} color={themeColor} />
-                    <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
-                    {item.item_number && (
-                      <Text style={[styles.infoText, { color: themeColor, fontWeight: '600', fontSize: 10 }]}>
-                        {item.item_number}
-                      </Text>
-                    )}
-                  </View>
-
-                  <View style={styles.itemInfo}>
-                    <View style={[styles.stockBadge, { backgroundColor: stockStatus.color + '20' }]}>
-                      <Text style={[styles.stockBadgeText, { color: stockStatus.color }]}>
-                        {item.current_stock} {item.unit}
-                      </Text>
+        {viewMode === 'items' ? (
+          /* ── Items grid view ── */
+          filteredItems.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Icon name="cube-outline" size={64} color={colors.textSecondary} />
+              <Text style={styles.emptyStateText}>
+                {searchQuery ? 'No items found' : 'No inventory items yet'}
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.gridContainer}>
+              {filteredItems.map((item) => {
+                const stockStatus = getStockStatus(item);
+                return (
+                  <AnimatedCard key={item.id} style={styles.itemCard}>
+                    <View style={styles.itemHeader}>
+                      <Icon name={getCategoryIcon(item.category)} size={32} color={themeColor} />
+                      <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
+                      {item.item_number && (
+                        <Text style={[styles.infoText, { color: themeColor, fontWeight: '600', fontSize: 10 }]}>
+                          {item.item_number}
+                        </Text>
+                      )}
                     </View>
-                    <Text style={styles.infoText} numberOfLines={1}>{item.location}</Text>
-                    <Text style={styles.infoText}>${item.cost.toFixed(2)}</Text>
-                  </View>
 
-                  <View style={styles.itemActions}>
-                    <TouchableOpacity onPress={() => openEditModal(item)}>
-                      <Icon name="create" size={18} color={themeColor} />
+                    <View style={styles.itemInfo}>
+                      <View style={[styles.stockBadge, { backgroundColor: stockStatus.color + '20' }]}>
+                        <Text style={[styles.stockBadgeText, { color: stockStatus.color }]}>
+                          {item.current_stock} {item.unit}
+                        </Text>
+                      </View>
+                      <Text style={styles.infoText} numberOfLines={1}>{item.location}</Text>
+                      <Text style={styles.infoText}>${item.cost.toFixed(2)}</Text>
+                    </View>
+
+                    <View style={styles.itemActions}>
+                      <TouchableOpacity onPress={() => openEditModal(item)}>
+                        <Icon name="create" size={18} color={themeColor} />
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => handleDeleteItem(item.id, item.name)}>
+                        <Icon name="trash" size={18} color={colors.error} />
+                      </TouchableOpacity>
+                    </View>
+                  </AnimatedCard>
+                );
+              })}
+            </View>
+          )
+        ) : (
+          /* ── By Building view ── */
+          <View style={styles.buildingViewContainer}>
+            {availableBuildings.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Icon name="business-outline" size={64} color={colors.textSecondary} />
+                <Text style={styles.emptyStateText}>No buildings found</Text>
+              </View>
+            ) : (
+              Object.entries(buildingViewData).map(([clientName, buildingEntries]) => {
+                const isExpanded = expandedBuildingViewClients.has(clientName);
+                const totalItemsForClient = buildingEntries.reduce((sum, e) => sum + e.buildingItems.length, 0);
+                return (
+                  <View key={clientName} style={{ marginBottom: spacing.sm }}>
+                    {/* Client header (collapsible) */}
+                    <TouchableOpacity
+                      style={styles.bvClientHeader}
+                      onPress={() => {
+                        setExpandedBuildingViewClients(prev => {
+                          const next = new Set(prev);
+                          if (next.has(clientName)) next.delete(clientName);
+                          else next.add(clientName);
+                          return next;
+                        });
+                      }}
+                    >
+                      <Icon
+                        name={isExpanded ? 'chevron-down' : 'chevron-forward'}
+                        size={20}
+                        style={{ color: themeColor }}
+                      />
+                      <Text style={styles.bvClientName}>{clientName}</Text>
+                      <View style={[styles.bvClientBadge, { backgroundColor: themeColor + '20' }]}>
+                        <Text style={[styles.bvClientBadgeText, { color: themeColor }]}>
+                          {buildingEntries.length} {buildingEntries.length === 1 ? 'building' : 'buildings'}
+                        </Text>
+                      </View>
+                      <View style={[styles.bvClientBadge, { backgroundColor: totalItemsForClient > 0 ? colors.success + '20' : colors.border + '40' }]}>
+                        <Text style={[styles.bvClientBadgeText, { color: totalItemsForClient > 0 ? colors.success : colors.textSecondary }]}>
+                          {totalItemsForClient} items
+                        </Text>
+                      </View>
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => handleDeleteItem(item.id, item.name)}>
-                      <Icon name="trash" size={18} color={colors.error} />
-                    </TouchableOpacity>
+
+                    {/* Building cards under this client */}
+                    {isExpanded && buildingEntries.map(({ building, buildingItems }) => (
+                      <View key={building.destination} style={styles.bvBuildingCard}>
+                        {/* Building header */}
+                        <View style={styles.bvBuildingHeader}>
+                          <Icon name="location" size={16} style={{ color: themeColor }} />
+                          <Text style={styles.bvBuildingName}>{building.buildingName}</Text>
+                          <Text style={styles.bvBuildingCount}>
+                            {buildingItems.length} {buildingItems.length === 1 ? 'item' : 'items'}
+                          </Text>
+                          <TouchableOpacity
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              backgroundColor: themeColor,
+                              paddingHorizontal: spacing.sm,
+                              paddingVertical: 4,
+                              borderRadius: 8,
+                              gap: 3,
+                            }}
+                            onPress={() => setShowSendItemsModal(true)}
+                          >
+                            <Icon name="send" size={12} style={{ color: '#FFFFFF' }} />
+                            <Text style={{ fontSize: 11, color: '#FFFFFF', fontWeight: '700' }}>Send</Text>
+                          </TouchableOpacity>
+                        </View>
+
+                        {/* Item rows */}
+                        {buildingItems.length === 0 ? (
+                          <View style={styles.bvNoItems}>
+                            <Text style={styles.bvNoItemsText}>No items associated with this building</Text>
+                          </View>
+                        ) : (
+                          buildingItems.map((item) => {
+                            const stockStatus = getStockStatus(item);
+                            return (
+                              <View key={item.id} style={styles.bvItemRow}>
+                                <Icon name={getCategoryIcon(item.category)} size={20} style={{ color: themeColor }} />
+                                <View style={{ flex: 1, marginLeft: spacing.sm }}>
+                                  <Text style={styles.bvItemName}>{item.name}</Text>
+                                  <Text style={styles.bvItemNumber}>
+                                    {item.item_number ? item.item_number + ' · ' : ''}{item.location}
+                                  </Text>
+                                </View>
+                                <View style={[styles.bvItemStock, { backgroundColor: stockStatus.color + '20' }]}>
+                                  <Text style={[styles.bvItemStockText, { color: stockStatus.color }]}>
+                                    {item.current_stock} {item.unit}
+                                  </Text>
+                                </View>
+                                <TouchableOpacity onPress={() => openEditModal(item)}>
+                                  <Icon name="create" size={16} style={{ color: colors.textSecondary }} />
+                                </TouchableOpacity>
+                              </View>
+                            );
+                          })
+                        )}
+                      </View>
+                    ))}
                   </View>
-                </AnimatedCard>
-              );
-            })}
+                );
+              })
+            )}
+
+            {/* Unassigned items section */}
+            {unassignedItems.length > 0 && (
+              <View style={{ marginBottom: spacing.md }}>
+                <TouchableOpacity
+                  style={styles.bvClientHeader}
+                  onPress={() => {
+                    setExpandedBuildingViewClients(prev => {
+                      const next = new Set(prev);
+                      if (next.has('__unassigned__')) next.delete('__unassigned__');
+                      else next.add('__unassigned__');
+                      return next;
+                    });
+                  }}
+                >
+                  <Icon
+                    name={expandedBuildingViewClients.has('__unassigned__') ? 'chevron-down' : 'chevron-forward'}
+                    size={20}
+                    style={{ color: colors.textSecondary }}
+                  />
+                  <Text style={[styles.bvClientName, { color: colors.textSecondary }]}>Unassigned Items</Text>
+                  <View style={[styles.bvClientBadge, { backgroundColor: colors.border + '40' }]}>
+                    <Text style={[styles.bvClientBadgeText, { color: colors.textSecondary }]}>
+                      {unassignedItems.length}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+
+                {expandedBuildingViewClients.has('__unassigned__') && (
+                  <View style={[styles.bvBuildingCard, { marginLeft: 0 }]}>
+                    {unassignedItems.map((item) => {
+                      const stockStatus = getStockStatus(item);
+                      return (
+                        <View key={item.id} style={styles.bvItemRow}>
+                          <Icon name={getCategoryIcon(item.category)} size={20} style={{ color: colors.textSecondary }} />
+                          <View style={{ flex: 1, marginLeft: spacing.sm }}>
+                            <Text style={styles.bvItemName}>{item.name}</Text>
+                            <Text style={styles.bvItemNumber}>
+                              {item.item_number ? item.item_number + ' · ' : ''}{item.location}
+                            </Text>
+                          </View>
+                          <View style={[styles.bvItemStock, { backgroundColor: stockStatus.color + '20' }]}>
+                            <Text style={[styles.bvItemStockText, { color: stockStatus.color }]}>
+                              {item.current_stock} {item.unit}
+                            </Text>
+                          </View>
+                          <TouchableOpacity onPress={() => openEditModal(item)}>
+                            <Icon name="create" size={16} style={{ color: colors.textSecondary }} />
+                          </TouchableOpacity>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
+            )}
           </View>
         )}
 
