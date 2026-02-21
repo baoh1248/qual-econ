@@ -5,8 +5,7 @@ import { colors, spacing, typography, commonStyles, getContrastColor } from '../
 import Icon from '../Icon';
 import Button from '../Button';
 import IconButton from '../IconButton';
-import FilterDropdown from '../FilterDropdown';
-import { getInventoryTransferLogs, deleteInventoryTransferLog, updateInventoryTransferLog, formatTransferSummary, formatCurrency, type InventoryTransfer, type InventoryTransferItem } from '../../utils/inventoryTracking';
+import { getInventoryTransferLogs, deleteInventoryTransferLog, updateInventoryTransferLog, formatCurrency, type InventoryTransfer, type InventoryTransferItem } from '../../utils/inventoryTracking';
 import PropTypes from 'prop-types';
 
 interface TransferHistoryModalProps {
@@ -15,16 +14,37 @@ interface TransferHistoryModalProps {
   onRefresh?: () => void;
 }
 
+// ─── helpers ────────────────────────────────────────────────────────────────
+
+const toDateString = (iso: string) => new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+const toTimeString = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+/** Parse a YYYY-MM-DD string into a Date object at midnight local time, or null */
+const parseLocalDate = (s: string): Date | null => {
+  if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const [y, m, d] = s.split('-').map(Number);
+  return new Date(y, m - 1, d);
+};
+
+// ─── component ──────────────────────────────────────────────────────────────
+
 const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose, onRefresh }) => {
-  console.log('TransferHistoryModal rendered');
-  
   const [transfers, setTransfers] = useState<InventoryTransfer[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
+
+  // Filters
+  const [filterClient, setFilterClient] = useState('');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
+  const [filterType, setFilterType] = useState<'all' | 'outgoing' | 'incoming'>('all');
+  const [showFilters, setShowFilters] = useState(false);
+
+  // Delete confirm
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [transferToDelete, setTransferToDelete] = useState<InventoryTransfer | null>(null);
-  const [selectedClient, setSelectedClient] = useState<string>('');
-  const [selectedBuilding, setSelectedBuilding] = useState<string>('');
+
+  // Edit
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingTransfer, setEditingTransfer] = useState<InventoryTransfer | null>(null);
   const [editDestination, setEditDestination] = useState('');
@@ -35,138 +55,150 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
   const [editItems, setEditItems] = useState<InventoryTransferItem[]>([]);
 
   useEffect(() => {
-    if (visible) {
-      loadTransfers();
-    }
+    if (visible) loadTransfers();
   }, [visible]);
 
   const loadTransfers = async () => {
     try {
       setLoading(true);
       const logs = await getInventoryTransferLogs();
-      const sortedLogs = logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      setTransfers(sortedLogs);
-    } catch (error) {
-      console.error('Failed to load transfer history:', error);
+      setTransfers(logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+    } catch (e) {
+      console.error('Failed to load transfer history:', e);
     } finally {
       setLoading(false);
     }
   };
 
-  // Extract client names from building destinations (format: "Client - Building")
+  // ── derived ───────────────────────────────────────────────────────────────
+
   const uniqueClients = useMemo(() => {
-    const clients = new Set<string>();
+    const s = new Set<string>();
     transfers.forEach(t => {
-      const parts = t.destination.split(' - ');
-      if (parts.length > 1) {
-        clients.add(parts[0]);
-      }
+      const p = t.destination.split(' - ');
+      if (p.length > 1) s.add(p[0]);
     });
-    return Array.from(clients).sort();
+    return Array.from(s).sort();
   }, [transfers]);
 
-  // Get unique buildings (filtered by selected client if any)
-  const uniqueBuildings = useMemo(() => {
-    let filteredTransfers = transfers;
-    if (selectedClient) {
-      filteredTransfers = transfers.filter(t => t.destination.startsWith(selectedClient + ' - '));
-    }
-    const buildings = new Set(filteredTransfers.map(t => t.destination));
-    return Array.from(buildings).sort();
-  }, [transfers, selectedClient]);
-
   const filteredTransfers = useMemo(() => {
-    return transfers.filter(transfer => {
-      // Filter by client
-      if (selectedClient) {
-        if (!transfer.destination.toLowerCase().includes(selectedClient.toLowerCase())) {
-          return false;
-        }
+    const dateFrom = parseLocalDate(filterDateFrom);
+    const dateTo = parseLocalDate(filterDateTo);
+
+    return transfers.filter(t => {
+      if (filterType !== 'all' && t.type !== filterType) return false;
+
+      if (filterClient && !t.destination.toLowerCase().includes(filterClient.toLowerCase())) return false;
+
+      if (dateFrom) {
+        const d = new Date(t.timestamp);
+        if (d < dateFrom) return false;
+      }
+      if (dateTo) {
+        const d = new Date(t.timestamp);
+        const toEnd = new Date(dateTo);
+        toEnd.setHours(23, 59, 59, 999);
+        if (d > toEnd) return false;
       }
 
-      // Filter by building
-      if (selectedBuilding) {
-        if (!transfer.destination.toLowerCase().includes(selectedBuilding.toLowerCase())) {
-          return false;
-        }
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        const match =
+          t.destination.toLowerCase().includes(q) ||
+          (t.source || '').toLowerCase().includes(q) ||
+          (t.sentFrom || '').toLowerCase().includes(q) ||
+          t.items.some(i => i.name.toLowerCase().includes(q)) ||
+          t.transferredBy.toLowerCase().includes(q);
+        if (!match) return false;
       }
 
-      // Filter by search query
-      if (searchQuery !== '') {
-        const matchesSearch = 
-          transfer.destination.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          transfer.items.some(item => item.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
-          transfer.transferredBy.toLowerCase().includes(searchQuery.toLowerCase());
-        
-        if (!matchesSearch) {
-          return false;
-        }
-      }
-      
       return true;
     });
-  }, [transfers, selectedClient, selectedBuilding, searchQuery]);
+  }, [transfers, filterType, filterClient, filterDateFrom, filterDateTo, searchQuery]);
+
+  const hasActiveFilters = filterType !== 'all' || filterClient !== '' || filterDateFrom !== '' || filterDateTo !== '' || searchQuery !== '';
+
+  const clearFilters = () => {
+    setFilterType('all');
+    setFilterClient('');
+    setFilterDateFrom('');
+    setFilterDateTo('');
+    setSearchQuery('');
+  };
+
+  const stats = useMemo(() => {
+    const today = new Date().toDateString();
+    return {
+      total: transfers.length,
+      todayCount: transfers.filter(t => new Date(t.timestamp).toDateString() === today).length,
+      totalValue: transfers.reduce((s, t) => s + (t.totalValue || 0), 0),
+      outgoing: transfers.filter(t => t.type === 'outgoing').length,
+      incoming: transfers.filter(t => t.type === 'incoming').length,
+    };
+  }, [transfers]);
+
+  // Group by date
+  const groupedTransfers = useMemo(() => {
+    const groups: Record<string, InventoryTransfer[]> = {};
+    filteredTransfers.forEach(t => {
+      const key = new Date(t.timestamp).toDateString();
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(t);
+    });
+    return groups;
+  }, [filteredTransfers]);
+
+  // ── delete ────────────────────────────────────────────────────────────────
 
   const handleDeleteTransfer = (transfer: InventoryTransfer) => {
-    console.log('Delete transfer requested:', transfer.id);
-    
     if (Platform.OS === 'web') {
       setTransferToDelete(transfer);
-      setShowDeleteConfirmModal(true);
+      setShowDeleteModal(true);
     } else {
-      Alert.alert(
-        'Delete Transfer Record',
-        'Are you sure you want to delete this transfer record?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Delete',
-            style: 'destructive',
-            onPress: () => confirmDeleteTransfer(transfer.id)
-          }
-        ]
-      );
+      Alert.alert('Delete Transfer Record', 'Are you sure you want to delete this transfer record?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: () => confirmDelete(transfer.id) },
+      ]);
     }
   };
 
-  const confirmDeleteTransfer = async (transferId: string) => {
+  const confirmDelete = async (id: string) => {
     try {
-      console.log('Confirming delete for transfer:', transferId);
-      await deleteInventoryTransferLog(transferId);
+      await deleteInventoryTransferLog(id);
       await loadTransfers();
       onRefresh?.();
-      console.log('Transfer deleted successfully');
-    } catch (error) {
-      console.error('Failed to delete transfer:', error);
+    } catch (e) {
+      console.error('Failed to delete transfer:', e);
     } finally {
-      setShowDeleteConfirmModal(false);
+      setShowDeleteModal(false);
       setTransferToDelete(null);
     }
   };
 
-  const handleEditTransfer = (transfer: InventoryTransfer) => {
-    setEditingTransfer(transfer);
-    setEditDestination(transfer.destination);
-    setEditSource(transfer.source || '');
-    setEditOrderNumber(transfer.orderNumber || '');
-    setEditNotes(transfer.notes || '');
-    setEditSentFrom(transfer.sentFrom || '');
-    setEditItems(transfer.items.map(item => ({ ...item })));
+  // ── edit ──────────────────────────────────────────────────────────────────
+
+  const openEdit = (t: InventoryTransfer) => {
+    setEditingTransfer(t);
+    setEditDestination(t.destination);
+    setEditSource(t.source || '');
+    setEditOrderNumber(t.orderNumber || '');
+    setEditNotes(t.notes || '');
+    setEditSentFrom(t.sentFrom || '');
+    setEditItems(t.items.map(i => ({ ...i })));
     setShowEditModal(true);
   };
 
   const updateEditItem = (index: number, field: keyof InventoryTransferItem, value: any) => {
-    const newItems = [...editItems];
-    newItems[index] = { ...newItems[index], [field]: value };
+    const arr = [...editItems];
+    arr[index] = { ...arr[index], [field]: value };
     if (field === 'quantity' || field === 'unitCost') {
-      newItems[index].totalCost = (newItems[index].quantity || 0) * (newItems[index].unitCost || 0);
+      arr[index].totalCost = (arr[index].quantity || 0) * (arr[index].unitCost || 0);
     }
-    setEditItems(newItems);
+    setEditItems(arr);
   };
 
   const handleSaveEdit = async () => {
     if (!editingTransfer) return;
-
     try {
       const updates: Partial<Omit<InventoryTransfer, 'id'>> = {
         items: editItems,
@@ -175,66 +207,25 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
         sentFrom: editSentFrom || undefined,
         orderNumber: editOrderNumber || undefined,
       };
-
-      if (editingTransfer.type === 'incoming') {
-        updates.source = editSource;
-      }
-
+      if (editingTransfer.type === 'incoming') updates.source = editSource;
       await updateInventoryTransferLog(editingTransfer.id, updates);
       await loadTransfers();
       onRefresh?.();
       setShowEditModal(false);
       setEditingTransfer(null);
-    } catch (error) {
-      console.error('Failed to update transfer:', error);
+    } catch (e) {
+      console.error('Failed to update transfer:', e);
     }
   };
 
-  const clearFilters = () => {
-    setSelectedClient('');
-    setSelectedBuilding('');
-    setSearchQuery('');
-  };
+  // ── render ────────────────────────────────────────────────────────────────
 
-  const hasActiveFilters = selectedClient !== '' || selectedBuilding !== '' || searchQuery !== '';
-
-  const activeFilterCount = useMemo(() => {
-    let count = 0;
-    if (selectedClient !== '') count++;
-    if (selectedBuilding !== '') count++;
-    return count;
-  }, [selectedClient, selectedBuilding]);
-
-  const getClientCount = (clientName: string) => {
-    if (!clientName) return transfers.length;
-    return transfers.filter(t => t.destination.startsWith(clientName + ' - ')).length;
-  };
-
-  const getBuildingCount = (buildingName: string) => {
-    if (!buildingName) return uniqueBuildings.length;
-    return transfers.filter(t => t.destination === buildingName).length;
-  };
-
-  const groupTransfersByDate = (transfers: InventoryTransfer[]) => {
-    const groups: { [key: string]: InventoryTransfer[] } = {};
-    
-    transfers.forEach(transfer => {
-      const date = new Date(transfer.timestamp).toDateString();
-      if (!groups[date]) {
-        groups[date] = [];
-      }
-      groups[date].push(transfer);
-    });
-    
-    return groups;
-  };
-
-  const groupedTransfers = groupTransfersByDate(filteredTransfers);
-
-  // Calculate total value of all transfers
-  const totalTransferValue = useMemo(() => {
-    return transfers.reduce((sum, transfer) => sum + (transfer.totalValue || 0), 0);
-  }, [transfers]);
+  const activeFilterCount = [
+    filterType !== 'all',
+    filterClient !== '',
+    filterDateFrom !== '',
+    filterDateTo !== '',
+  ].filter(Boolean).length;
 
   return (
     <>
@@ -245,515 +236,342 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
         transparent={Platform.OS !== 'ios'}
         onRequestClose={onClose}
       >
-        <View style={{
-          flex: 1,
-          backgroundColor: Platform.OS === 'ios' ? colors.background : 'rgba(0,0,0,0.5)',
-          justifyContent: Platform.OS === 'ios' ? 'flex-start' : 'center',
-          alignItems: Platform.OS === 'ios' ? 'stretch' : 'center',
-          ...(Platform.OS === 'web' && {
-            position: 'fixed' as any,
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            zIndex: 9999,
-          }),
-        }}>
+        <View style={[
+          styles.backdrop,
+          Platform.OS === 'ios' && { backgroundColor: colors.background },
+          Platform.OS === 'web' && styles.webBackdrop,
+        ]}>
           {Platform.OS !== 'ios' && (
-            <TouchableOpacity 
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-              }} 
-              activeOpacity={1} 
-              onPress={onClose}
-            />
+            <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
           )}
-          <View style={{
-            width: Platform.OS === 'ios' ? '100%' : '90%',
-            maxWidth: Platform.OS === 'ios' ? undefined : 700,
-            maxHeight: Platform.OS === 'ios' ? '100%' : '85%',
-            backgroundColor: colors.background,
-            borderRadius: Platform.OS === 'ios' ? 0 : 16,
-            ...(Platform.OS === 'web' && {
-              zIndex: 10000,
-              position: 'relative' as any,
-              overflow: 'visible' as any,
-            }),
-          }}>
-            <View style={commonStyles.header}>
-              <IconButton 
-                icon="close" 
-                onPress={onClose} 
-                variant="white"
-              />
-              <Text style={commonStyles.headerTitle}>Transfer History</Text>
-              <IconButton 
-                icon="refresh" 
-                onPress={loadTransfers} 
-                variant="white"
-              />
+
+          <View style={[styles.sheet, Platform.OS === 'ios' && styles.sheetIos]}>
+            {/* ── Header ── */}
+            <View style={styles.header}>
+              <IconButton icon="close" onPress={onClose} variant="white" />
+              <View style={styles.headerCenter}>
+                <Icon name="swap-horizontal" size={18} style={{ color: '#fff', marginRight: 6 }} />
+                <Text style={styles.headerTitle}>Transfer History</Text>
+              </View>
+              <IconButton icon="refresh" onPress={loadTransfers} variant="white" />
             </View>
 
-            <View style={commonStyles.content}>
-              {/* Stats Summary Card */}
-              <View style={[styles.statsCard, { marginBottom: spacing.lg }]}>
-                <View style={styles.statItem}>
-                  <View style={[styles.statIconContainer, { backgroundColor: colors.primary + '20' }]}>
-                    <Icon name="swap-horizontal" size={24} color={colors.primary} />
-                  </View>
-                  <View style={styles.statContent}>
-                    <Text style={styles.statValue}>{transfers.length}</Text>
-                    <Text style={styles.statLabel}>Total Transfers</Text>
-                  </View>
-                </View>
-                
-                <View style={styles.statDivider} />
-                
-                <View style={styles.statItem}>
-                  <View style={[styles.statIconContainer, { backgroundColor: colors.success + '20' }]}>
-                    <Icon name="today" size={24} color={colors.success} />
-                  </View>
-                  <View style={styles.statContent}>
-                    <Text style={styles.statValue}>
-                      {transfers.filter(t => new Date(t.timestamp).toDateString() === new Date().toDateString()).length}
-                    </Text>
-                    <Text style={styles.statLabel}>Today</Text>
-                  </View>
-                </View>
-                
-                <View style={styles.statDivider} />
-                
-                <View style={styles.statItem}>
-                  <View style={[styles.statIconContainer, { backgroundColor: colors.info + '20' }]}>
-                    <Icon name="cash" size={24} color={colors.info} />
-                  </View>
-                  <View style={styles.statContent}>
-                    <Text style={styles.statValue}>{formatCurrency(totalTransferValue)}</Text>
-                    <Text style={styles.statLabel}>Total Value</Text>
-                  </View>
-                </View>
+            {/* ── Stats row ── */}
+            <View style={styles.statsRow}>
+              <View style={styles.statBox}>
+                <Text style={[styles.statNum, { color: colors.primary }]}>{stats.total}</Text>
+                <Text style={styles.statLbl}>Total</Text>
               </View>
+              <View style={styles.statDivider} />
+              <View style={styles.statBox}>
+                <Text style={[styles.statNum, { color: colors.success }]}>{stats.todayCount}</Text>
+                <Text style={styles.statLbl}>Today</Text>
+              </View>
+              <View style={styles.statDivider} />
+              <View style={styles.statBox}>
+                <Text style={[styles.statNum, { color: '#E67E22' }]}>{stats.outgoing}</Text>
+                <Text style={styles.statLbl}>Outgoing</Text>
+              </View>
+              <View style={styles.statDivider} />
+              <View style={styles.statBox}>
+                <Text style={[styles.statNum, { color: colors.info }]}>{stats.incoming}</Text>
+                <Text style={styles.statLbl}>Incoming</Text>
+              </View>
+              <View style={styles.statDivider} />
+              <View style={styles.statBox}>
+                <Text style={[styles.statNum, { color: colors.success, fontSize: 13 }]}>{formatCurrency(stats.totalValue)}</Text>
+                <Text style={styles.statLbl}>Value</Text>
+              </View>
+            </View>
 
-              {/* Filter Section */}
-              <View style={styles.filterSection}>
-                <View style={styles.filterHeader}>
-                  <View style={styles.filterHeaderLeft}>
-                    <Icon name="filter" size={20} color={colors.primary} />
-                    <Text style={styles.filterHeaderText}>Filters</Text>
-                    {activeFilterCount > 0 && (
-                      <View style={[styles.filterBadge, { backgroundColor: colors.primary }]}>
-                        <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
-                      </View>
-                    )}
-                  </View>
-                  {hasActiveFilters && (
-                    <TouchableOpacity onPress={clearFilters} style={styles.clearButton}>
-                      <Icon name="close-circle" size={16} color={colors.danger} />
-                      <Text style={styles.clearButtonText}>Clear All</Text>
+            <View style={styles.body}>
+              {/* ── Search bar ── */}
+              <View style={styles.searchRow}>
+                <View style={styles.searchBox}>
+                  <Icon name="search" size={18} style={{ color: colors.textSecondary, marginRight: 6 }} />
+                  <TextInput
+                    style={styles.searchInput}
+                    placeholder="Search transfers, items, destinations…"
+                    placeholderTextColor={colors.textSecondary}
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                  />
+                  {searchQuery !== '' && (
+                    <TouchableOpacity onPress={() => setSearchQuery('')}>
+                      <Icon name="close-circle" size={18} style={{ color: colors.textSecondary }} />
                     </TouchableOpacity>
                   )}
                 </View>
 
-                {/* Enhanced Filter Dropdowns */}
-                <View style={styles.filterGrid}>
-                  <View style={[styles.dropdownWrapper, { zIndex: 2 }]}>
-                    <FilterDropdown
-                      label="Client"
-                      value={selectedClient}
-                      onValueChange={(value) => {
-                        setSelectedClient(value);
-                        setSelectedBuilding('');
-                      }}
-                      options={uniqueClients}
-                      placeholder="All Clients or type..."
-                      themeColor={colors.primary}
-                      allowManualInput={true}
-                      showCount={true}
-                      getOptionCount={getClientCount}
-                    />
-                  </View>
+                <TouchableOpacity
+                  style={[styles.filterToggleBtn, showFilters && styles.filterToggleBtnActive]}
+                  onPress={() => setShowFilters(v => !v)}
+                >
+                  <Icon name="options" size={18} style={{ color: showFilters ? '#fff' : colors.primary }} />
+                  {activeFilterCount > 0 && (
+                    <View style={styles.filterBadge}>
+                      <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
 
-                  <View style={[styles.dropdownWrapper, { zIndex: 1 }]}>
-                    <FilterDropdown
-                      label="Building"
-                      value={selectedBuilding}
-                      onValueChange={setSelectedBuilding}
-                      options={uniqueBuildings}
-                      placeholder="All Buildings or type..."
-                      themeColor={colors.primary}
-                      allowManualInput={true}
-                      showCount={true}
-                      getOptionCount={getBuildingCount}
-                    />
-                  </View>
-                </View>
+                {hasActiveFilters && (
+                  <TouchableOpacity style={styles.clearBtn} onPress={clearFilters}>
+                    <Icon name="close" size={16} style={{ color: colors.danger }} />
+                  </TouchableOpacity>
+                )}
               </View>
 
-              {/* Transfer List */}
-              <ScrollView showsVerticalScrollIndicator={false} style={styles.transferList}>
-                {Object.keys(groupedTransfers).length === 0 ? (
-                  <View style={styles.emptyState}>
-                    <View style={[styles.emptyIconContainer, { backgroundColor: colors.primary + '10' }]}>
-                      <Icon name="archive" size={48} color={colors.primary} />
+              {/* ── Filter panel ── */}
+              {showFilters && (
+                <View style={styles.filterPanel}>
+                  {/* Type chips */}
+                  <View style={styles.filterRow}>
+                    <Text style={styles.filterLabel}>Type</Text>
+                    <View style={{ flexDirection: 'row', gap: spacing.sm, flex: 1 }}>
+                      {(['all', 'outgoing', 'incoming'] as const).map(t => (
+                        <TouchableOpacity
+                          key={t}
+                          style={[styles.chip, filterType === t && styles.chipActive]}
+                          onPress={() => setFilterType(t)}
+                        >
+                          <Text style={[styles.chipText, filterType === t && styles.chipTextActive]}>
+                            {t.charAt(0).toUpperCase() + t.slice(1)}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
                     </View>
-                    <Text style={styles.emptyStateTitle}>
+                  </View>
+
+                  {/* Client filter */}
+                  <View style={styles.filterRow}>
+                    <Text style={styles.filterLabel}>Client</Text>
+                    <View style={{ flex: 1 }}>
+                      <TextInput
+                        style={styles.filterInput}
+                        placeholder="Filter by client name…"
+                        placeholderTextColor={colors.textSecondary}
+                        value={filterClient}
+                        onChangeText={setFilterClient}
+                      />
+                      {uniqueClients.length > 0 && !filterClient && (
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 6 }}>
+                          {uniqueClients.map(c => (
+                            <TouchableOpacity key={c} style={[styles.chip, { marginRight: 6 }]} onPress={() => setFilterClient(c)}>
+                              <Text style={styles.chipText}>{c}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </ScrollView>
+                      )}
+                    </View>
+                  </View>
+
+                  {/* Date range */}
+                  <View style={styles.filterRow}>
+                    <Text style={styles.filterLabel}>Date</Text>
+                    <View style={{ flex: 1, flexDirection: 'row', gap: spacing.sm }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.filterSubLabel}>From</Text>
+                        <TextInput
+                          style={styles.filterInput}
+                          placeholder="YYYY-MM-DD"
+                          placeholderTextColor={colors.textSecondary}
+                          value={filterDateFrom}
+                          onChangeText={setFilterDateFrom}
+                          maxLength={10}
+                          keyboardType="numbers-and-punctuation"
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.filterSubLabel}>To</Text>
+                        <TextInput
+                          style={styles.filterInput}
+                          placeholder="YYYY-MM-DD"
+                          placeholderTextColor={colors.textSecondary}
+                          value={filterDateTo}
+                          onChangeText={setFilterDateTo}
+                          maxLength={10}
+                          keyboardType="numbers-and-punctuation"
+                        />
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              )}
+
+              {/* ── Results label ── */}
+              <View style={styles.resultsRow}>
+                <Text style={styles.resultsText}>
+                  {filteredTransfers.length} {filteredTransfers.length === 1 ? 'record' : 'records'}
+                  {hasActiveFilters ? ' (filtered)' : ''}
+                </Text>
+                {hasActiveFilters && (
+                  <TouchableOpacity onPress={clearFilters}>
+                    <Text style={[styles.resultsText, { color: colors.danger }]}>Clear filters</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* ── Transfer list ── */}
+              <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
+                {Object.keys(groupedTransfers).length === 0 ? (
+                  <View style={styles.empty}>
+                    <Icon name="archive-outline" size={52} style={{ color: colors.border }} />
+                    <Text style={styles.emptyTitle}>
                       {hasActiveFilters ? 'No Matching Transfers' : 'No Transfer History'}
                     </Text>
-                    <Text style={styles.emptyStateText}>
-                      {hasActiveFilters
-                        ? 'Try adjusting your filters to see more results'
-                        : 'Transfer records will appear here once items are sent'
-                      }
+                    <Text style={styles.emptyText}>
+                      {hasActiveFilters ? 'Try adjusting your filters.' : 'Transfer records will appear here.'}
                     </Text>
-                    {hasActiveFilters && (
-                      <TouchableOpacity onPress={clearFilters} style={styles.emptyStateButton}>
-                        <Text style={styles.emptyStateButtonText}>Clear Filters</Text>
-                      </TouchableOpacity>
-                    )}
                   </View>
                 ) : (
-                  Object.keys(groupedTransfers).map(dateString => (
-                    <View key={dateString} style={styles.dateGroup}>
+                  Object.entries(groupedTransfers).map(([dateStr, group]) => (
+                    <View key={dateStr} style={styles.dateGroup}>
                       <View style={styles.dateHeader}>
-                        <Icon name="calendar" size={16} color={colors.primary} />
-                        <Text style={styles.dateHeaderText}>
-                          {new Date(dateString).toLocaleDateString([], { 
-                            weekday: 'long', 
-                            year: 'numeric', 
-                            month: 'long', 
-                            day: 'numeric' 
-                          })}
-                        </Text>
-                        <View style={[styles.dateBadge, { backgroundColor: colors.primary + '20' }]}>
-                          <Text style={[styles.dateBadgeText, { color: colors.primary }]}>
-                            {groupedTransfers[dateString].length}
-                          </Text>
+                        <Icon name="calendar-outline" size={14} style={{ color: colors.primary }} />
+                        <Text style={styles.dateHeaderText}>{toDateString(group[0].timestamp)}</Text>
+                        <View style={styles.dateBadge}>
+                          <Text style={styles.dateBadgeText}>{group.length}</Text>
                         </View>
                       </View>
-                      
-                      {groupedTransfers[dateString].map((transfer) => (
-                        <View key={transfer.id} style={styles.transferCard}>
-                          <View style={styles.transferHeader}>
-                            <View style={styles.transferHeaderLeft}>
-                              <View style={[styles.transferIcon, { backgroundColor: colors.primary + '15' }]}>
-                                <Icon name="send" size={20} color={colors.primary} />
-                              </View>
-                              <View style={styles.transferInfo}>
-                                <Text style={styles.transferDestination}>{transfer.destination}</Text>
-                                <View style={styles.transferMeta}>
-                                  <Icon name="time" size={14} color={colors.textSecondary} />
-                                  <Text style={styles.transferMetaText}>
-                                    {new Date(transfer.timestamp).toLocaleTimeString([], { 
-                                      hour: '2-digit', 
-                                      minute: '2-digit' 
-                                    })}
-                                  </Text>
-                                  <View style={styles.metaDivider} />
-                                  <Icon name="person" size={14} color={colors.textSecondary} />
-                                  <Text style={styles.transferMetaText}>{transfer.transferredBy}</Text>
-                                </View>
-                                {transfer.sentFrom && (
-                                  <View style={[styles.transferMeta, { marginTop: spacing.xs }]}>
-                                    <Icon name="location" size={14} color={colors.primary} />
-                                    <Text style={[styles.transferMetaText, { color: colors.primary, fontWeight: '600' }]}>
-                                      From: {transfer.sentFrom}
-                                    </Text>
-                                  </View>
-                                )}
-                                {transfer.orderNumber && (
-                                  <View style={[styles.transferMeta, { marginTop: spacing.xs }]}>
-                                    <Icon name="document-text" size={14} color={colors.info} />
-                                    <Text style={[styles.transferMetaText, { color: colors.info, fontWeight: '600' }]}>
-                                      Order #: {transfer.orderNumber}
-                                    </Text>
-                                  </View>
-                                )}
-                              </View>
-                            </View>
-                            <View style={{ flexDirection: 'row', gap: spacing.xs }}>
-                              <IconButton
-                                icon="create"
-                                onPress={() => handleEditTransfer(transfer)}
-                                variant="secondary"
-                                size="small"
-                                style={{ backgroundColor: colors.primary + '15' }}
-                              />
-                              <IconButton
-                                icon="trash"
-                                onPress={() => handleDeleteTransfer(transfer)}
-                                variant="secondary"
-                                size="small"
-                                style={{ backgroundColor: colors.danger + '15' }}
-                              />
-                            </View>
-                          </View>
 
-                          <View style={styles.transferItems}>
-                            <Text style={styles.transferItemsLabel}>Items Transferred:</Text>
-                            {transfer.items.map((item, itemIndex) => (
-                              <View key={itemIndex} style={styles.transferItem}>
-                                <View style={[styles.itemBullet, { backgroundColor: colors.primary }]} />
-                                <View style={{ flex: 1 }}>
-                                  <View style={[commonStyles.row, commonStyles.spaceBetween]}>
-                                    <Text style={styles.transferItemText}>
-                                      <Text style={styles.transferItemQuantity}>{item.quantity} {item.unit}</Text>
-                                      {' of '}
-                                      <Text style={styles.transferItemName}>{item.name}</Text>
-                                    </Text>
-                                    {item.totalCost !== undefined && (
-                                      <Text style={[styles.transferItemCost, { color: colors.primary }]}>
-                                        {formatCurrency(item.totalCost)}
-                                      </Text>
-                                    )}
-                                  </View>
-                                  {item.unitCost !== undefined && (
-                                    <Text style={[styles.transferItemUnitCost, { color: colors.textSecondary }]}>
-                                      {formatCurrency(item.unitCost)} per {item.unit}
-                                    </Text>
-                                  )}
-                                </View>
-                              </View>
-                            ))}
-                          </View>
-
-                          {transfer.totalValue !== undefined && transfer.totalValue > 0 && (
-                            <View style={[styles.transferTotalValue, { backgroundColor: colors.success + '10', borderLeftColor: colors.success }]}>
-                              <Icon name="cash" size={16} color={colors.success} />
-                              <Text style={[styles.transferTotalValueText, { color: colors.success }]}>
-                                Total Value: {formatCurrency(transfer.totalValue)}
-                              </Text>
-                            </View>
-                          )}
-
-                          {transfer.notes && (
-                            <View style={styles.transferNotes}>
-                              <Icon name="document-text" size={14} color={colors.textSecondary} />
-                              <Text style={styles.transferNotesText}>{transfer.notes}</Text>
-                            </View>
-                          )}
-
-                          <View style={[styles.transferSummary, { borderLeftColor: colors.primary }]}>
-                            <Icon name="information-circle" size={16} color={colors.primary} />
-                            <Text style={[styles.transferSummaryText, { color: colors.primary }]}>
-                              {formatTransferSummary(transfer)}
-                            </Text>
-                          </View>
-                        </View>
+                      {group.map(transfer => (
+                        <TransferCard
+                          key={transfer.id}
+                          transfer={transfer}
+                          onEdit={() => openEdit(transfer)}
+                          onDelete={() => handleDeleteTransfer(transfer)}
+                        />
                       ))}
                     </View>
                   ))
                 )}
+                <View style={{ height: spacing.xl }} />
               </ScrollView>
             </View>
           </View>
         </View>
       </Modal>
 
-      {/* Delete Confirmation Modal */}
-      <Modal
-        visible={showDeleteConfirmModal}
-        animationType="fade"
-        transparent={true}
-        onRequestClose={() => setShowDeleteConfirmModal(false)}
-      >
-        <View style={styles.deleteModalOverlay}>
-          <View style={styles.deleteModalContent}>
-            <View style={styles.deleteModalHeader}>
-              <View style={[styles.deleteModalIcon, { backgroundColor: colors.danger + '20' }]}>
-                <Icon name="trash" size={32} color={colors.danger} />
-              </View>
-              <Text style={styles.deleteModalTitle}>Delete Transfer Record</Text>
-              <Text style={styles.deleteModalText}>
-                Are you sure you want to delete this transfer record to &quot;{transferToDelete?.destination}&quot;? This action cannot be undone.
-              </Text>
+      {/* ── Delete confirm modal ── */}
+      <Modal visible={showDeleteModal} animationType="fade" transparent onRequestClose={() => setShowDeleteModal(false)}>
+        <View style={styles.overlayCenter}>
+          <View style={styles.confirmCard}>
+            <View style={[styles.confirmIcon, { backgroundColor: colors.danger + '20' }]}>
+              <Icon name="trash" size={28} style={{ color: colors.danger }} />
             </View>
-            
-            <View style={styles.deleteModalActions}>
-              <Button
-                text="Cancel"
-                onPress={() => {
-                  setShowDeleteConfirmModal(false);
-                  setTransferToDelete(null);
-                }}
-                style={{ flex: 1 }}
-                variant="secondary"
-              />
-              <Button
-                text="Delete"
-                onPress={() => transferToDelete && confirmDeleteTransfer(transferToDelete.id)}
-                style={{ flex: 1 }}
-                variant="danger"
-              />
+            <Text style={styles.confirmTitle}>Delete Transfer?</Text>
+            <Text style={styles.confirmText}>
+              This will permanently remove the transfer record to "{transferToDelete?.destination}".
+            </Text>
+            <View style={styles.confirmActions}>
+              <Button text="Cancel" onPress={() => { setShowDeleteModal(false); setTransferToDelete(null); }} style={{ flex: 1 }} variant="secondary" />
+              <Button text="Delete" onPress={() => transferToDelete && confirmDelete(transferToDelete.id)} style={{ flex: 1 }} variant="danger" />
             </View>
           </View>
         </View>
       </Modal>
 
-      {/* Edit Transfer Modal */}
-      <Modal
-        visible={showEditModal}
-        animationType="fade"
-        transparent={true}
-        onRequestClose={() => setShowEditModal(false)}
-      >
-        <View style={styles.editModalOverlay}>
-          <View style={styles.editModalContent}>
-            <View style={styles.editModalHeaderRow}>
-              <Icon name="create" size={24} color={colors.primary} />
-              <Text style={styles.editModalTitle}>
+      {/* ── Edit modal ── */}
+      <Modal visible={showEditModal} animationType="fade" transparent onRequestClose={() => setShowEditModal(false)}>
+        <View style={styles.overlayCenter}>
+          <View style={styles.editCard}>
+            <View style={styles.editHeader}>
+              <Icon name="create-outline" size={22} style={{ color: colors.primary }} />
+              <Text style={styles.editTitle}>
                 Edit {editingTransfer?.type === 'incoming' ? 'Supply Received' : 'Transfer'}
               </Text>
               <TouchableOpacity onPress={() => { setShowEditModal(false); setEditingTransfer(null); }}>
-                <Icon name="close" size={24} color={colors.textSecondary} />
+                <Icon name="close" size={22} style={{ color: colors.textSecondary }} />
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.editModalScroll} showsVerticalScrollIndicator={false}>
-              {/* Sent From */}
-              <View style={styles.editFormGroup}>
-                <Text style={styles.editLabel}>Sent From</Text>
-                <TextInput
-                  style={styles.editInput}
-                  value={editSentFrom}
-                  onChangeText={setEditSentFrom}
-                  placeholder="e.g. Company Warehouse, Client C - Building D"
-                  placeholderTextColor={colors.textSecondary}
-                />
-              </View>
-
-              {/* Destination */}
-              <View style={styles.editFormGroup}>
-                <Text style={styles.editLabel}>Destination</Text>
-                <TextInput
-                  style={styles.editInput}
-                  value={editDestination}
-                  onChangeText={setEditDestination}
-                  placeholder="Enter destination"
-                  placeholderTextColor={colors.textSecondary}
-                />
-              </View>
-
-              {editingTransfer?.type === 'incoming' && (
-                <View style={styles.editFormGroup}>
-                  <Text style={styles.editLabel}>Supplier / Source</Text>
-                  <TextInput
-                    style={styles.editInput}
-                    value={editSource}
-                    onChangeText={setEditSource}
-                    placeholder="Enter supplier name"
-                    placeholderTextColor={colors.textSecondary}
-                  />
+            <ScrollView style={styles.editScroll} showsVerticalScrollIndicator={false}>
+              <View style={styles.editSection}>
+                <Text style={styles.editSectionTitle}>Details</Text>
+                <View style={styles.editField}>
+                  <Text style={styles.editFieldLabel}>Sent From</Text>
+                  <TextInput style={styles.editInput} value={editSentFrom} onChangeText={setEditSentFrom} placeholder="Warehouse or location" placeholderTextColor={colors.textSecondary} />
                 </View>
-              )}
-
-              <View style={styles.editFormGroup}>
-                <Text style={styles.editLabel}>Order / Invoice Number</Text>
-                <TextInput
-                  style={styles.editInput}
-                  value={editOrderNumber}
-                  onChangeText={setEditOrderNumber}
-                  placeholder="Enter order number"
-                  placeholderTextColor={colors.textSecondary}
-                />
+                <View style={styles.editField}>
+                  <Text style={styles.editFieldLabel}>Destination</Text>
+                  <TextInput style={styles.editInput} value={editDestination} onChangeText={setEditDestination} placeholder="Destination" placeholderTextColor={colors.textSecondary} />
+                </View>
+                {editingTransfer?.type === 'incoming' && (
+                  <View style={styles.editField}>
+                    <Text style={styles.editFieldLabel}>Supplier / Source</Text>
+                    <TextInput style={styles.editInput} value={editSource} onChangeText={setEditSource} placeholder="Supplier name" placeholderTextColor={colors.textSecondary} />
+                  </View>
+                )}
+                <View style={styles.editField}>
+                  <Text style={styles.editFieldLabel}>Order / Invoice #</Text>
+                  <TextInput style={styles.editInput} value={editOrderNumber} onChangeText={setEditOrderNumber} placeholder="Order number" placeholderTextColor={colors.textSecondary} />
+                </View>
+                <View style={styles.editField}>
+                  <Text style={styles.editFieldLabel}>Notes</Text>
+                  <TextInput style={[styles.editInput, { minHeight: 70, textAlignVertical: 'top' }]} value={editNotes} onChangeText={setEditNotes} placeholder="Optional notes" placeholderTextColor={colors.textSecondary} multiline />
+                </View>
               </View>
 
-              {/* Items */}
-              <Text style={styles.editSectionTitle}>Items</Text>
-              {editItems.map((item, index) => (
-                <View key={index} style={styles.editItemCard}>
-                  <View style={styles.editFormGroup}>
-                    <Text style={styles.editLabel}>Item Name</Text>
+              <View style={styles.editSection}>
+                <Text style={styles.editSectionTitle}>Items</Text>
+                {editItems.map((item, idx) => (
+                  <View key={idx} style={styles.editItemCard}>
                     <TextInput
-                      style={styles.editInput}
+                      style={[styles.editInput, { marginBottom: spacing.sm }]}
                       value={item.name}
-                      onChangeText={(text) => updateEditItem(index, 'name', text)}
+                      onChangeText={v => updateEditItem(idx, 'name', v)}
                       placeholder="Item name"
                       placeholderTextColor={colors.textSecondary}
                     />
-                  </View>
-
-                  <View style={styles.editItemRow}>
-                    <View style={[styles.editFormGroup, { flex: 1 }]}>
-                      <Text style={styles.editLabel}>Quantity</Text>
-                      <TextInput
-                        style={styles.editInput}
-                        value={item.quantity.toString()}
-                        onChangeText={(text) => {
-                          const num = parseInt(text) || 0;
-                          updateEditItem(index, 'quantity', num);
-                        }}
-                        keyboardType="numeric"
-                        placeholder="0"
-                        placeholderTextColor={colors.textSecondary}
-                      />
+                    <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.editFieldLabel}>Qty</Text>
+                        <TextInput
+                          style={styles.editInput}
+                          value={item.quantity.toString()}
+                          onChangeText={v => updateEditItem(idx, 'quantity', parseInt(v) || 0)}
+                          keyboardType="numeric"
+                          placeholder="0"
+                          placeholderTextColor={colors.textSecondary}
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.editFieldLabel}>Unit</Text>
+                        <TextInput
+                          style={styles.editInput}
+                          value={item.unit}
+                          onChangeText={v => updateEditItem(idx, 'unit', v)}
+                          placeholder="units"
+                          placeholderTextColor={colors.textSecondary}
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.editFieldLabel}>Unit Cost $</Text>
+                        <TextInput
+                          style={styles.editInput}
+                          value={(item.unitCost || 0).toString()}
+                          onChangeText={v => updateEditItem(idx, 'unitCost', parseFloat(v) || 0)}
+                          keyboardType="decimal-pad"
+                          placeholder="0.00"
+                          placeholderTextColor={colors.textSecondary}
+                        />
+                      </View>
                     </View>
-
-                    <View style={[styles.editFormGroup, { flex: 1 }]}>
-                      <Text style={styles.editLabel}>Unit</Text>
-                      <TextInput
-                        style={styles.editInput}
-                        value={item.unit}
-                        onChangeText={(text) => updateEditItem(index, 'unit', text)}
-                        placeholder="units"
-                        placeholderTextColor={colors.textSecondary}
-                      />
-                    </View>
-
-                    <View style={[styles.editFormGroup, { flex: 1 }]}>
-                      <Text style={styles.editLabel}>Unit Cost ($)</Text>
-                      <TextInput
-                        style={styles.editInput}
-                        value={(item.unitCost || 0).toString()}
-                        onChangeText={(text) => {
-                          const num = parseFloat(text) || 0;
-                          updateEditItem(index, 'unitCost', num);
-                        }}
-                        keyboardType="decimal-pad"
-                        placeholder="0.00"
-                        placeholderTextColor={colors.textSecondary}
-                      />
+                    <View style={styles.editItemTotal}>
+                      <Text style={styles.editFieldLabel}>Total:</Text>
+                      <Text style={{ color: colors.primary, fontWeight: '700' }}>
+                        {formatCurrency((item.quantity || 0) * (item.unitCost || 0))}
+                      </Text>
                     </View>
                   </View>
-
-                  <View style={styles.editItemTotal}>
-                    <Text style={styles.editItemTotalLabel}>Total:</Text>
-                    <Text style={styles.editItemTotalValue}>
-                      {formatCurrency((item.quantity || 0) * (item.unitCost || 0))}
-                    </Text>
-                  </View>
-                </View>
-              ))}
-
-              {/* Notes */}
-              <View style={styles.editFormGroup}>
-                <Text style={styles.editLabel}>Notes</Text>
-                <TextInput
-                  style={[styles.editInput, { minHeight: 80, textAlignVertical: 'top' }]}
-                  value={editNotes}
-                  onChangeText={setEditNotes}
-                  placeholder="Add notes (optional)"
-                  placeholderTextColor={colors.textSecondary}
-                  multiline
-                />
+                ))}
               </View>
             </ScrollView>
 
-            <View style={styles.editModalActions}>
-              <Button
-                text="Cancel"
-                onPress={() => { setShowEditModal(false); setEditingTransfer(null); }}
-                style={{ flex: 1 }}
-                variant="secondary"
-              />
-              <Button
-                text="Save Changes"
-                onPress={handleSaveEdit}
-                style={{ flex: 1 }}
-              />
+            <View style={styles.editActions}>
+              <Button text="Cancel" onPress={() => { setShowEditModal(false); setEditingTransfer(null); }} style={{ flex: 1 }} variant="secondary" />
+              <Button text="Save Changes" onPress={handleSaveEdit} style={{ flex: 1 }} />
             </View>
           </View>
         </View>
@@ -762,477 +580,581 @@ const TransferHistoryModal = memo<TransferHistoryModalProps>(({ visible, onClose
   );
 });
 
+// ─── TransferCard sub-component ─────────────────────────────────────────────
+
+interface TransferCardProps {
+  transfer: InventoryTransfer;
+  onEdit: () => void;
+  onDelete: () => void;
+}
+
+const TransferCard = memo<TransferCardProps>(({ transfer, onEdit, onDelete }) => {
+  const [expanded, setExpanded] = useState(false);
+  const isIncoming = transfer.type === 'incoming';
+  const accentColor = isIncoming ? colors.success : colors.primary;
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.85}
+      onPress={() => setExpanded(v => !v)}
+      style={[styles.card, { borderLeftColor: accentColor }]}
+    >
+      {/* Top row */}
+      <View style={styles.cardTop}>
+        <View style={[styles.cardTypeDot, { backgroundColor: accentColor + '20' }]}>
+          <Icon name={isIncoming ? 'download' : 'send'} size={16} style={{ color: accentColor }} />
+        </View>
+
+        <View style={{ flex: 1, marginLeft: spacing.sm }}>
+          <Text style={styles.cardDest} numberOfLines={1}>{transfer.destination}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: 2 }}>
+            <Icon name="time-outline" size={12} style={{ color: colors.textSecondary }} />
+            <Text style={styles.cardMeta}>{toTimeString(transfer.timestamp)}</Text>
+            {transfer.sentFrom && (
+              <>
+                <Text style={styles.cardMetaDot}>·</Text>
+                <Icon name="location-outline" size={12} style={{ color: colors.textSecondary }} />
+                <Text style={styles.cardMeta} numberOfLines={1}>{transfer.sentFrom}</Text>
+              </>
+            )}
+          </View>
+          {transfer.orderNumber && (
+            <Text style={[styles.cardMeta, { color: colors.info, marginTop: 2 }]}>#{transfer.orderNumber}</Text>
+          )}
+        </View>
+
+        <View style={styles.cardRight}>
+          {transfer.totalValue !== undefined && transfer.totalValue > 0 && (
+            <Text style={[styles.cardValue, { color: accentColor }]}>{formatCurrency(transfer.totalValue)}</Text>
+          )}
+          <View style={{ flexDirection: 'row', gap: spacing.xs, marginTop: spacing.xs }}>
+            <TouchableOpacity
+              style={[styles.iconBtn, { backgroundColor: colors.primary + '15' }]}
+              onPress={e => { e.stopPropagation?.(); onEdit(); }}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            >
+              <Icon name="create-outline" size={15} style={{ color: colors.primary }} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.iconBtn, { backgroundColor: colors.danger + '15' }]}
+              onPress={e => { e.stopPropagation?.(); onDelete(); }}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            >
+              <Icon name="trash-outline" size={15} style={{ color: colors.danger }} />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+
+      {/* Item summary (always visible) */}
+      <View style={styles.cardItems}>
+        {transfer.items.slice(0, expanded ? undefined : 2).map((item, i) => (
+          <View key={i} style={styles.cardItem}>
+            <View style={[styles.cardItemDot, { backgroundColor: accentColor }]} />
+            <Text style={styles.cardItemText}>
+              <Text style={{ fontWeight: '700', color: accentColor }}>{item.quantity} {item.unit}</Text>
+              {' '}{item.name}
+            </Text>
+            {item.totalCost !== undefined && (
+              <Text style={styles.cardItemCost}>{formatCurrency(item.totalCost)}</Text>
+            )}
+          </View>
+        ))}
+        {!expanded && transfer.items.length > 2 && (
+          <Text style={[styles.cardMeta, { color: colors.primary, marginTop: 2 }]}>
+            +{transfer.items.length - 2} more — tap to expand
+          </Text>
+        )}
+      </View>
+
+      {/* Expanded: notes */}
+      {expanded && transfer.notes && (
+        <View style={styles.cardNotes}>
+          <Icon name="document-text-outline" size={13} style={{ color: colors.textSecondary, marginRight: 4 }} />
+          <Text style={styles.cardNotesText}>{transfer.notes}</Text>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+});
+
+TransferCard.displayName = 'TransferCard';
+
+// ─── styles ──────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  statsCard: {
-    backgroundColor: colors.card,
-    borderRadius: 16,
-    padding: spacing.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    shadowColor: colors.text,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  statItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  statIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    alignItems: 'center',
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
+    alignItems: 'center',
   },
-  statContent: {
-    alignItems: 'flex-start',
+  webBackdrop: {
+    position: 'fixed' as any,
+    top: 0, left: 0, right: 0, bottom: 0,
+    zIndex: 9999,
   },
-  statValue: {
-    ...typography.h2,
-    color: colors.text,
-    fontWeight: '700',
-    lineHeight: 28,
+  sheet: {
+    width: Platform.OS === 'ios' ? '100%' : '92%',
+    maxWidth: 700,
+    maxHeight: '88%',
+    backgroundColor: colors.background,
+    borderRadius: 20,
+    overflow: 'hidden',
+    ...(Platform.OS === 'web' && { zIndex: 10000, position: 'relative' as any }),
   },
-  statLabel: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+  sheetIos: {
+    width: '100%',
+    maxWidth: undefined,
+    maxHeight: '100%',
+    borderRadius: 0,
   },
-  statDivider: {
-    width: 1,
-    height: 40,
-    backgroundColor: colors.border,
-  },
-  filterSection: {
-    backgroundColor: colors.backgroundAlt,
-    borderRadius: 16,
-    padding: spacing.lg,
-    marginBottom: spacing.lg,
-    overflow: 'visible' as any,
-    zIndex: 10,
-  },
-  filterHeader: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: spacing.md,
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
   },
-  filterHeaderLeft: {
+  headerCenter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#fff',
+    letterSpacing: 0.3,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    backgroundColor: colors.card,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'space-around',
+  },
+  statBox: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  statNum: {
+    fontSize: 18,
+    fontWeight: '800',
+    lineHeight: 22,
+  },
+  statLbl: {
+    fontSize: 10,
+    color: colors.textSecondary,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginTop: 2,
+  },
+  statDivider: {
+    width: 1,
+    height: 32,
+    backgroundColor: colors.border,
+  },
+  body: {
+    flex: 1,
+    padding: spacing.md,
+  },
+  searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    marginBottom: spacing.sm,
   },
-  filterHeaderText: {
-    ...typography.h3,
+  searchBox: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 12,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
     color: colors.text,
-    fontWeight: '700',
+  },
+  filterToggleBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterToggleBtnActive: {
+    backgroundColor: colors.primary,
   },
   filterBadge: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: 12,
-    minWidth: 24,
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: colors.danger,
+    borderRadius: 8,
+    width: 16,
+    height: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
   filterBadgeText: {
-    ...typography.small,
-    fontSize: 11,
-    color: colors.textInverse,
+    color: '#fff',
+    fontSize: 9,
     fontWeight: '700',
   },
-  clearButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-  },
-  clearButtonText: {
-    ...typography.small,
-    color: colors.danger,
-    fontWeight: '700',
-  },
-  filterGrid: {
-    gap: spacing.lg,
-    overflow: 'visible' as any,
-    zIndex: 10,
-  },
-  dropdownWrapper: {
-    zIndex: 1,
-    overflow: 'visible' as any,
-  },
-  transferList: {
-    flex: 1,
-  },
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: spacing.xxl * 2,
-    paddingHorizontal: spacing.xl,
-  },
-  emptyIconContainer: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.lg,
-  },
-  emptyStateTitle: {
-    ...typography.h2,
-    color: colors.text,
-    fontWeight: '700',
-    textAlign: 'center',
-    marginBottom: spacing.sm,
-  },
-  emptyStateText: {
-    ...typography.body,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  emptyStateButton: {
-    marginTop: spacing.lg,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-  },
-  emptyStateButtonText: {
-    ...typography.bodyMedium,
-    color: colors.textInverse,
-    fontWeight: '700',
-  },
-  dateGroup: {
-    marginBottom: spacing.lg,
-  },
-  dateHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  dateHeaderText: {
-    ...typography.bodyMedium,
-    color: colors.text,
-    fontWeight: '700',
-    flex: 1,
-  },
-  dateBadge: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: 12,
-    minWidth: 28,
+  clearBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: colors.danger + '15',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  dateBadgeText: {
-    ...typography.small,
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  transferCard: {
-    backgroundColor: colors.card,
-    borderRadius: 16,
+  filterPanel: {
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 14,
     padding: spacing.md,
     marginBottom: spacing.sm,
-    shadowColor: colors.text,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 1,
-  },
-  transferHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: spacing.md,
-  },
-  transferHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    flex: 1,
-    gap: spacing.sm,
-  },
-  transferIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  transferInfo: {
-    flex: 1,
-  },
-  transferDestination: {
-    ...typography.bodyMedium,
-    color: colors.text,
-    fontWeight: '700',
-    marginBottom: spacing.xs,
-  },
-  transferMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  transferMetaText: {
-    ...typography.caption,
-    color: colors.textSecondary,
-  },
-  metaDivider: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.textSecondary,
-    marginHorizontal: spacing.xs,
-  },
-  transferItems: {
-    marginBottom: spacing.md,
-  },
-  transferItemsLabel: {
-    ...typography.small,
-    color: colors.textSecondary,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: spacing.sm,
-  },
-  transferItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: spacing.xs,
-    gap: spacing.sm,
-  },
-  itemBullet: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginTop: 7,
-  },
-  transferItemText: {
-    ...typography.body,
-    color: colors.text,
-    flex: 1,
-  },
-  transferItemQuantity: {
-    fontWeight: '700',
-    color: colors.primary,
-  },
-  transferItemName: {
-    fontWeight: '600',
-  },
-  transferItemCost: {
-    ...typography.body,
-    fontWeight: '700',
-    marginLeft: spacing.sm,
-  },
-  transferItemUnitCost: {
-    ...typography.caption,
-    marginTop: spacing.xs,
-  },
-  transferTotalValue: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    padding: spacing.sm,
-    borderRadius: 8,
-    borderLeftWidth: 3,
-    marginBottom: spacing.sm,
-  },
-  transferTotalValueText: {
-    ...typography.bodyMedium,
-    flex: 1,
-    fontWeight: '700',
-  },
-  transferNotes: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-    backgroundColor: colors.backgroundAlt,
-    padding: spacing.sm,
-    borderRadius: 8,
-    marginBottom: spacing.sm,
-  },
-  transferNotesText: {
-    ...typography.body,
-    color: colors.textSecondary,
-    flex: 1,
-    fontStyle: 'italic',
-  },
-  transferSummary: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    backgroundColor: colors.primary + '08',
-    padding: spacing.sm,
-    borderRadius: 8,
-    borderLeftWidth: 3,
-  },
-  transferSummaryText: {
-    ...typography.small,
-    flex: 1,
-    fontWeight: '600',
-    fontStyle: 'italic',
-  },
-  deleteModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing.lg,
-  },
-  deleteModalContent: {
-    backgroundColor: colors.background,
-    borderRadius: 20,
-    padding: spacing.xl,
-    width: '100%',
-    maxWidth: 400,
-    shadowColor: colors.text,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 12,
-  },
-  deleteModalHeader: {
-    alignItems: 'center',
-    marginBottom: spacing.xl,
-  },
-  deleteModalIcon: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.md,
-  },
-  deleteModalTitle: {
-    ...typography.h2,
-    color: colors.text,
-    fontWeight: '700',
-    textAlign: 'center',
-    marginBottom: spacing.sm,
-  },
-  deleteModalText: {
-    ...typography.body,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  deleteModalActions: {
-    flexDirection: 'row',
+    borderWidth: 1,
+    borderColor: colors.border,
     gap: spacing.md,
   },
-  editModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing.lg,
-  },
-  editModalContent: {
-    backgroundColor: colors.background,
-    borderRadius: 20,
-    padding: spacing.xl,
-    width: '100%',
-    maxWidth: 550,
-    maxHeight: '85%',
-    shadowColor: colors.text,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 12,
-  },
-  editModalHeaderRow: {
+  filterRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.lg,
-    paddingBottom: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    alignItems: 'flex-start',
+    gap: spacing.md,
   },
-  editModalTitle: {
-    ...typography.h2,
-    color: colors.text,
+  filterLabel: {
+    fontSize: 12,
     fontWeight: '700',
-    flex: 1,
-    marginLeft: spacing.sm,
-  },
-  editModalScroll: {
-    flex: 1,
-  },
-  editFormGroup: {
-    marginBottom: spacing.md,
-  },
-  editLabel: {
-    ...typography.small,
     color: colors.textSecondary,
-    fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginBottom: spacing.xs,
+    width: 46,
+    marginTop: 8,
   },
-  editInput: {
-    backgroundColor: colors.backgroundAlt,
-    borderRadius: 10,
-    padding: spacing.md,
-    fontSize: 15,
+  filterSubLabel: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    fontWeight: '600',
+    marginBottom: 3,
+  },
+  filterInput: {
+    backgroundColor: colors.background,
+    borderRadius: 8,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    fontSize: 14,
     color: colors.text,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  editSectionTitle: {
-    ...typography.h3,
+  chip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: 20,
+    backgroundColor: colors.background,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+  },
+  chipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  chipText: {
+    fontSize: 12,
+    fontWeight: '600',
     color: colors.text,
+  },
+  chipTextActive: {
+    color: '#fff',
+  },
+  resultsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+    paddingHorizontal: 2,
+  },
+  resultsText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontWeight: '600',
+  },
+  empty: {
+    alignItems: 'center',
+    paddingVertical: spacing.xxl * 2,
+  },
+  emptyTitle: {
+    fontSize: 16,
     fontWeight: '700',
+    color: colors.text,
+    marginTop: spacing.md,
+  },
+  emptyText: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  dateGroup: {
     marginBottom: spacing.md,
+  },
+  dateHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
+    paddingHorizontal: 2,
+  },
+  dateHeaderText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
+    flex: 1,
+  },
+  dateBadge: {
+    backgroundColor: colors.primary + '20',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 1,
+    borderRadius: 10,
+    minWidth: 24,
+    alignItems: 'center',
+  },
+  dateBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  // Transfer card
+  card: {
+    backgroundColor: colors.card,
+    borderRadius: 14,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    borderLeftWidth: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  cardTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: spacing.sm,
+  },
+  cardTypeDot: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardDest: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  cardMeta: {
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
+  cardMetaDot: {
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
+  cardRight: {
+    alignItems: 'flex-end',
+    marginLeft: spacing.sm,
+  },
+  cardValue: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  iconBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardItems: {
+    gap: spacing.xs,
+  },
+  cardItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  cardItemDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+  },
+  cardItemText: {
+    fontSize: 13,
+    color: colors.text,
+    flex: 1,
+  },
+  cardItemCost: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontWeight: '600',
+  },
+  cardNotes: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
     marginTop: spacing.sm,
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 8,
+    padding: spacing.sm,
+  },
+  cardNotesText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
+    flex: 1,
+  },
+  // Overlay modals
+  overlayCenter: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  confirmCard: {
+    backgroundColor: colors.background,
+    borderRadius: 20,
+    padding: spacing.xl,
+    width: '100%',
+    maxWidth: 380,
+    alignItems: 'center',
+  },
+  confirmIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+  },
+  confirmTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: spacing.sm,
+  },
+  confirmText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: spacing.xl,
+  },
+  confirmActions: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    width: '100%',
+  },
+  editCard: {
+    backgroundColor: colors.background,
+    borderRadius: 20,
+    width: '100%',
+    maxWidth: 560,
+    maxHeight: '88%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 12,
+    overflow: 'hidden',
+  },
+  editHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    gap: spacing.sm,
+  },
+  editTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+    flex: 1,
+  },
+  editScroll: {
+    flex: 1,
+    padding: spacing.lg,
+  },
+  editSection: {
+    marginBottom: spacing.lg,
+  },
+  editSectionTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: spacing.md,
+  },
+  editField: {
+    marginBottom: spacing.md,
+  },
+  editFieldLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginBottom: 4,
+  },
+  editInput: {
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 10,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    fontSize: 14,
+    color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   editItemCard: {
     backgroundColor: colors.card,
     borderRadius: 12,
     padding: spacing.md,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  editItemRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
   editItemTotal: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: spacing.xs,
     marginTop: spacing.sm,
     paddingTop: spacing.sm,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    gap: spacing.xs,
   },
-  editItemTotalLabel: {
-    ...typography.bodyMedium,
-    color: colors.textSecondary,
-    fontWeight: '600',
-  },
-  editItemTotalValue: {
-    ...typography.bodyMedium,
-    color: colors.primary,
-    fontWeight: '700',
-  },
-  editModalActions: {
+  editActions: {
     flexDirection: 'row',
     gap: spacing.md,
-    marginTop: spacing.lg,
-    paddingTop: spacing.md,
+    padding: spacing.lg,
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },

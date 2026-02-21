@@ -628,9 +628,19 @@ export default function SupervisorInventoryScreen() {
         updated_at: new Date().toISOString(),
       };
 
-      const { error } = await supabase
+      let { error } = await supabase
         .from('inventory_items')
         .insert(newItem);
+
+      // If the item_number column doesn't exist yet (migration pending), retry without it
+      if (error && (error.code === '42703' || error.message?.includes('item_number'))) {
+        console.warn('⚠️ item_number column not found — retrying without it (apply migration to enable)');
+        const { item_number: _itemNum, ...newItemFallback } = newItem;
+        const { error: fallbackError } = await supabase
+          .from('inventory_items')
+          .insert(newItemFallback);
+        error = fallbackError;
+      }
 
       if (error) {
         console.error('❌ Error adding inventory item:', error);
@@ -639,10 +649,10 @@ export default function SupervisorInventoryScreen() {
 
       console.log('✅ Inventory item added successfully');
       showToast('Item added successfully', 'success');
-      
+
       // Refresh data to show the new item
       await loadInventoryData();
-      
+
       setShowAddModal(false);
       setNewItemForm({
         name: '',
@@ -707,10 +717,21 @@ export default function SupervisorInventoryScreen() {
         updated_at: new Date().toISOString(),
       };
 
-      const { error } = await supabase
+      let { error } = await supabase
         .from('inventory_items')
         .update(updates)
         .eq('id', selectedItem.id);
+
+      // If the item_number column doesn't exist yet (migration pending), retry without it
+      if (error && (error.code === '42703' || error.message?.includes('item_number'))) {
+        console.warn('⚠️ item_number column not found — retrying without it (apply migration to enable)');
+        const { item_number: _itemNum, ...updatesFallback } = updates;
+        const { error: fallbackError } = await supabase
+          .from('inventory_items')
+          .update(updatesFallback)
+          .eq('id', selectedItem.id);
+        error = fallbackError;
+      }
 
       if (error) {
         console.error('❌ Error updating inventory item:', error);
