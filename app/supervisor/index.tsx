@@ -337,45 +337,47 @@ const SupervisorDashboard = () => {
     <View style={styles.container}>
       {/* Header */}
       <View style={[styles.header, { backgroundColor: themeColor }]}>
-        <View style={styles.headerRow}>
+        {/* Top bar: logo + settings (left-anchored) + alerts (right) */}
+        <View style={styles.headerTopBar}>
           <CompanyLogo size="small" showText={false} variant="light" />
-          <View style={styles.headerActions}>
-            {/* Settings button */}
-            <TouchableOpacity
-              onPress={() => router.push('/supervisor/settings')}
-              style={styles.settingsButton}
-            >
-              <Icon name="settings" size={22} style={{ color: colors.background }} />
-            </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => router.push('/supervisor/settings')}
+            style={styles.settingsButton}
+          >
+            <Icon name="settings" size={22} style={{ color: colors.background }} />
+          </TouchableOpacity>
+          <View style={{ flex: 1 }} />
+          <InventoryAlertBadge
+            lowStockCount={lowStockCount}
+            criticalStockCount={criticalStockCount}
+            onPress={() => router.push('/supervisor/inventory')}
+          />
+        </View>
 
-            <InventoryAlertBadge
-              lowStockCount={lowStockCount}
-              criticalStockCount={criticalStockCount}
-              onPress={() => router.push('/supervisor/inventory')}
-            />
+        {/* Title row: user info left | title + subtitle right */}
+        <View style={styles.headerTitleRow}>
+          {userSession && (
+            <View style={styles.userInfoCompact}>
+              <View style={styles.userAvatar}>
+                <Text style={styles.userAvatarText}>
+                  {userSession.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+                </Text>
+              </View>
+              <View>
+                <Text style={styles.userName}>{userSession.name}</Text>
+                {userSession.employeeId ? (
+                  <Text style={styles.userEmployeeId}>ID: {userSession.employeeId}</Text>
+                ) : null}
+              </View>
+            </View>
+          )}
+          <View style={styles.titleBlock}>
+            <Text style={styles.title}>Management Dashboard</Text>
+            <Text style={styles.subtitle}>
+              {teamMembers.length} team members • {taskSummary.completed} tasks completed today
+            </Text>
           </View>
         </View>
-        {/* User info row */}
-        {userSession && (
-          <View style={styles.userInfoRow}>
-            <View style={styles.userAvatar}>
-              <Text style={styles.userAvatarText}>
-                {userSession.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
-              </Text>
-            </View>
-            <View>
-              <Text style={styles.userName}>{userSession.name}</Text>
-              {userSession.employeeId ? (
-                <Text style={styles.userEmployeeId}>ID: {userSession.employeeId}</Text>
-              ) : null}
-            </View>
-          </View>
-        )}
-
-        <Text style={styles.title}>Management Dashboard</Text>
-        <Text style={styles.subtitle}>
-          {teamMembers.length} team members • {taskSummary.completed} tasks completed today
-        </Text>
       </View>
 
       <ScrollView
@@ -685,7 +687,7 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.xl,
-    paddingBottom: spacing.xxl,
+    paddingBottom: spacing.lg,
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
     shadowColor: '#000',
@@ -693,31 +695,39 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 12,
     elevation: 8,
-    overflow: 'hidden',
   },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.md,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: 0.5,
-    marginTop: spacing.sm,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.9)',
-    marginTop: spacing.xs,
-  },
-  headerActions: {
+  headerTopBar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    flexShrink: 0,
+    marginBottom: spacing.md,
+  },
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  userInfoCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingRight: spacing.md,
+    borderRightWidth: 1,
+    borderRightColor: 'rgba(255,255,255,0.3)',
+  },
+  titleBlock: {
+    flex: 1,
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
+  },
+  subtitle: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.85)',
+    marginTop: 2,
   },
   settingsButton: {
     width: 40,
@@ -726,13 +736,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  userInfoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
-    marginTop: spacing.xs,
   },
   userAvatar: {
     width: 36,
