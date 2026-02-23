@@ -1,7 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Text, View, ScrollView, TouchableOpacity, Dimensions, RefreshControl, Modal, StyleSheet } from 'react-native';
-import { Platform } from 'react-native';
+import { Text, View, ScrollView, TouchableOpacity, Dimensions, RefreshControl, Modal, StyleSheet, Platform } from 'react-native';
 import { router } from 'expo-router';
 import Icon from '../../components/Icon';
 import InventoryAlertBadge from '../../components/InventoryAlertBadge';
@@ -58,6 +57,29 @@ const SupervisorDashboard = () => {
   const [showLiveMap, setShowLiveMap] = useState(false);
   const [activeClockedIn, setActiveClockedIn] = useState(0);
   const [mapCleaners, setMapCleaners] = useState<ActiveCleaner[]>([]);
+  const [userSession, setUserSession] = useState<{ name: string; employeeId: string } | null>(null);
+
+  // Load current user's name and employee ID
+  useEffect(() => {
+    (async () => {
+      try {
+        const { getSession } = await import('../utils/auth');
+        const session = await getSession();
+        if (!session) return;
+        const { data } = await supabase
+          .from('cleaners')
+          .select('employee_id')
+          .eq('id', session.id)
+          .maybeSingle();
+        setUserSession({
+          name: session.name,
+          employeeId: data?.employee_id || '',
+        });
+      } catch (e) {
+        console.error('Failed to load user session:', e);
+      }
+    })();
+  }, []);
 
   // Get current week schedule and stats
   const currentWeekId = getCurrentWeekId();
@@ -333,6 +355,23 @@ const SupervisorDashboard = () => {
             />
           </View>
         </View>
+        {/* User info row */}
+        {userSession && (
+          <View style={styles.userInfoRow}>
+            <View style={styles.userAvatar}>
+              <Text style={styles.userAvatarText}>
+                {userSession.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+              </Text>
+            </View>
+            <View>
+              <Text style={styles.userName}>{userSession.name}</Text>
+              {userSession.employeeId ? (
+                <Text style={styles.userEmployeeId}>ID: {userSession.employeeId}</Text>
+              ) : null}
+            </View>
+          </View>
+        )}
+
         <Text style={styles.title}>Management Dashboard</Text>
         <Text style={styles.subtitle}>
           {teamMembers.length} team members • {taskSummary.completed} tasks completed today
@@ -640,6 +679,8 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F5F7FA',
+    // Prevent horizontal overflow on web
+    ...(Platform.OS === 'web' ? { overflow: 'hidden' as any, maxWidth: '100%' } : {}),
   },
   header: {
     paddingHorizontal: spacing.lg,
@@ -652,6 +693,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 12,
     elevation: 8,
+    overflow: 'hidden',
   },
   headerRow: {
     flexDirection: 'row',
@@ -675,6 +717,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    flexShrink: 0,
   },
   settingsButton: {
     width: 40,
@@ -683,6 +726,38 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  userInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  userAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  userAvatarText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  userName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.2,
+  },
+  userEmployeeId: {
+    fontSize: 11,
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontWeight: '600',
+    marginTop: 1,
   },
   content: {
     flex: 1,
