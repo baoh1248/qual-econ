@@ -200,12 +200,33 @@ export const useChatData = () => {
     try {
       console.log('🔄 Loading chat rooms from Supabase...');
       setIsLoading(true);
-      
+
+      // Step 1: find which rooms the current user belongs to
+      const { data: membershipData, error: membershipError } = await supabase
+        .from('chat_room_members')
+        .select('room_id')
+        .eq('user_id', currentUserId);
+
+      if (membershipError) {
+        console.error('❌ Error loading memberships:', membershipError);
+        throw membershipError;
+      }
+
+      const roomIds = (membershipData || []).map(m => m.room_id);
+
+      if (roomIds.length === 0) {
+        console.log('⚠️ No chat rooms found');
+        setChatRooms([]);
+        setIsLoading(false);
+        return [];
+      }
+
+      // Step 2: load those rooms with ALL their members (not filtered to current user)
       const { data: roomsData, error: roomsError } = await supabase
         .from('chat_rooms')
         .select(`
           *,
-          chat_room_members!inner(
+          chat_room_members(
             id,
             user_id,
             role,
@@ -214,7 +235,7 @@ export const useChatData = () => {
             is_muted
           )
         `)
-        .eq('chat_room_members.user_id', currentUserId)
+        .in('id', roomIds)
         .eq('is_active', true)
         .order('updated_at', { ascending: false });
 
