@@ -426,7 +426,8 @@ export const useChatData = () => {
       if (error instanceof Error) {
         throw error;
       }
-      throw new Error('Failed to create chat room. Please try again.');
+      const msg = (error as any)?.message || 'Failed to create chat room. Please try again.';
+      throw new Error(msg);
     }
   }, [currentUserId, isAuthenticated, loadChatRooms]);
 
