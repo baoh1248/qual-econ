@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Text, View, ScrollView, TouchableOpacity, TextInput, StyleSheet, Alert, Platform } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import { Text, View, ScrollView, TouchableOpacity, TextInput, StyleSheet, Alert, Platform, Modal } from 'react-native';
+import { Calendar } from 'react-native-calendars';
 import { router } from 'expo-router';
 import { commonStyles, colors, spacing, typography } from '../../styles/commonStyles';
 import CompanyLogo from '../../components/CompanyLogo';
@@ -69,6 +69,42 @@ interface PayrollRecord {
 }
 
 const styles = StyleSheet.create({
+  datePickerOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    ...(Platform.OS === 'web' && {
+      position: 'fixed' as any,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      zIndex: 9999,
+    }),
+  },
+  datePickerContainer: {
+    width: '90%',
+    maxWidth: 400,
+    backgroundColor: colors.background,
+    borderRadius: 16,
+    padding: spacing.lg,
+    ...(Platform.OS === 'web' && {
+      zIndex: 10000,
+      position: 'relative' as any,
+    }),
+  },
+  datePickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  datePickerTitle: {
+    ...typography.h3,
+    color: colors.text,
+    fontWeight: '600',
+  },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -809,11 +845,10 @@ export default function PayrollScreen() {
     }
   };
 
-  const onDateChange = (event: any, selectedDate?: Date) => {
-    setShowDatePicker(Platform.OS === 'ios');
-    if (selectedDate) {
-      setSelectedWeekStart(selectedDate);
-    }
+  const handleCalendarDayPress = (day: any) => {
+    const [year, month, dayNum] = day.dateString.split('-').map(Number);
+    setSelectedWeekStart(new Date(year, month - 1, dayNum));
+    setShowDatePicker(false);
   };
 
   const formatDateRange = () => {
@@ -878,15 +913,52 @@ export default function PayrollScreen() {
             </TouchableOpacity>
           </View>
 
-          {showDatePicker && (
-            <DateTimePicker
-              value={selectedWeekStart}
-              mode="date"
-              display="default"
-              onChange={onDateChange}
-            />
-          )}
         </AnimatedCard>
+
+        <Modal
+          visible={showDatePicker}
+          animationType="fade"
+          transparent={true}
+          onRequestClose={() => setShowDatePicker(false)}
+        >
+          <View style={styles.datePickerOverlay}>
+            <TouchableOpacity
+              style={StyleSheet.absoluteFillObject}
+              activeOpacity={1}
+              onPress={() => setShowDatePicker(false)}
+            />
+            <View style={styles.datePickerContainer}>
+              <View style={styles.datePickerHeader}>
+                <Text style={styles.datePickerTitle}>Select Start Date</Text>
+                <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                  <Icon name="close" size={24} style={{ color: colors.text }} />
+                </TouchableOpacity>
+              </View>
+              <Calendar
+                current={formatDateString(selectedWeekStart)}
+                onDayPress={handleCalendarDayPress}
+                markedDates={{
+                  [formatDateString(selectedWeekStart)]: {
+                    selected: true,
+                    selectedColor: colors.primary,
+                  },
+                }}
+                theme={{
+                  backgroundColor: colors.background,
+                  calendarBackground: colors.background,
+                  textSectionTitleColor: colors.text,
+                  selectedDayBackgroundColor: colors.primary,
+                  selectedDayTextColor: colors.background,
+                  todayTextColor: colors.primary,
+                  dayTextColor: colors.text,
+                  textDisabledColor: colors.textSecondary,
+                  monthTextColor: colors.text,
+                  arrowColor: colors.primary,
+                }}
+              />
+            </View>
+          </View>
+        </Modal>
 
         {/* Generate Payroll Button */}
         <AnimatedCard index={1}>
