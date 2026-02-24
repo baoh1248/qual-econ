@@ -42,7 +42,7 @@ const ProjectsScreen = () => {
   const { themeColor } = useTheme();
   const { toast, showToast, hideToast } = useToast();
   const { executeQuery } = useDatabase();
-  const { clients } = useClientData();
+  const { clients, clientBuildings } = useClientData();
 
   const [projects, setProjects] = useState<ClientProject[]>([]);
   const [filteredProjects, setFilteredProjects] = useState<ClientProject[]>([]);
@@ -899,7 +899,12 @@ const ProjectsScreen = () => {
         }}
         onSave={handleSaveProject}
         project={selectedProject}
-        clients={clients}
+        clients={clients.map(c => ({
+          clientName: c.name,
+          buildings: clientBuildings
+            .filter(b => b.clientName === c.name)
+            .map(b => ({ buildingName: b.buildingName })),
+        }))}
         themeColor={themeColor}
       />
 

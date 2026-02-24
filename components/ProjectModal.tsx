@@ -94,7 +94,7 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
   };
 
   const handleSave = async () => {
-    if (!formData.client_name.trim() || !formData.project_name.trim()) {
+    if (!(formData.client_name || '').trim() || !(formData.project_name || '').trim()) {
       return;
     }
 
@@ -134,13 +134,16 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
       onRequestClose={handleClose}
       presentationStyle={Platform.OS === 'ios' ? 'overFullScreen' : undefined}
     >
-      <View style={styles.modalOverlay}>
+      <TouchableOpacity
+        style={styles.modalOverlay}
+        activeOpacity={1}
+        onPress={handleClose}
+      >
         <TouchableOpacity
-          style={styles.modalBackdrop}
           activeOpacity={1}
-          onPress={handleClose}
-        />
-        <View style={styles.modalContainer}>
+          onPress={() => {}}
+          style={styles.modalContainer}
+        >
           <ScrollView showsVerticalScrollIndicator={false}>
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
@@ -427,15 +430,15 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
                   style={styles.actionButton}
                   disabled={
                     isSaving ||
-                    !formData.client_name.trim() ||
-                    !formData.project_name.trim()
+                    !(formData.client_name || '').trim() ||
+                    !(formData.project_name || '').trim()
                   }
                 />
               </View>
             </View>
           </ScrollView>
-        </View>
-      </View>
+        </TouchableOpacity>
+      </TouchableOpacity>
     </Modal>
   );
 };
@@ -454,13 +457,6 @@ const styles = StyleSheet.create({
       bottom: 0,
       zIndex: 9999,
     }),
-  },
-  modalBackdrop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
   },
   modalContainer: {
     width: '95%',
