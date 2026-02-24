@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../app/integrations/supabase/client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import uuid from 'react-native-uuid';
+import { getSession as getCustomSession } from '../app/utils/auth';
 
 export interface ChatRoom {
   id: string;
@@ -112,18 +113,26 @@ export const useChatData = () => {
         }
 
         if (!session) {
-          console.log('⚠️ No active session found');
-          setIsAuthenticated(false);
+          console.log('⚠️ No Supabase session — falling back to custom auth');
+          const customSession = await getCustomSession();
+          if (customSession?.id) {
+            console.log('✅ Custom auth session found:', customSession.id);
+            setCurrentUserId(customSession.id);
+            setIsAuthenticated(true);
+          } else {
+            console.log('⚠️ No custom auth session either');
+            setIsAuthenticated(false);
+          }
           setIsLoading(false);
           return;
         }
 
-        console.log('✅ Session found:', session.user.id);
+        console.log('✅ Supabase session found:', session.user.id);
         setCurrentUserId(session.user.id);
         setIsAuthenticated(true);
 
         const { data: { user }, error: userError } = await supabase.auth.getUser();
-        
+
         if (userError) {
           console.error('❌ User error:', userError);
           setIsAuthenticated(false);
@@ -338,15 +347,17 @@ export const useChatData = () => {
       console.log('Test mode:', TEST_MODE);
       
       if (!TEST_MODE) {
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        
-        if (sessionError || !session) {
-          const errorMsg = 'Authentication session expired. Please log in again.';
-          console.error('❌', errorMsg, sessionError);
-          throw new Error(errorMsg);
+        const { data: { session } } = await supabase.auth.getSession();
+        // If no Supabase session, verify the custom auth session is still valid
+        if (!session) {
+          const customSession = await getCustomSession();
+          if (!customSession?.id) {
+            throw new Error('Authentication session expired. Please log in again.');
+          }
+          console.log('✅ Custom auth session verified, creating room...');
+        } else {
+          console.log('✅ Supabase session verified, creating room...');
         }
-
-        console.log('✅ Session verified, creating room...');
       }
       
       const roomId = uuid.v4() as string;
