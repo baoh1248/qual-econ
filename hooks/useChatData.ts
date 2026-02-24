@@ -159,14 +159,21 @@ export const useChatData = () => {
     getCurrentUser();
 
     if (!TEST_MODE) {
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
         console.log('🔄 Auth state changed:', _event, session?.user?.id);
         if (session?.user) {
           setCurrentUserId(session.user.id);
           setIsAuthenticated(true);
         } else {
-          setCurrentUserId(null);
-          setIsAuthenticated(false);
+          // No Supabase session — preserve custom auth if it exists
+          const customSession = await getCustomSession();
+          if (customSession?.id) {
+            setCurrentUserId(customSession.id);
+            setIsAuthenticated(true);
+          } else {
+            setCurrentUserId(null);
+            setIsAuthenticated(false);
+          }
         }
       });
 
