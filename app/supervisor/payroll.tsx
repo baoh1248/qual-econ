@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Text, View, ScrollView, TouchableOpacity, TextInput, StyleSheet, Alert } from 'react-native';
+import { Text, View, ScrollView, TouchableOpacity, TextInput, StyleSheet, Alert, Platform } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { router } from 'expo-router';
 import { commonStyles, colors, spacing, typography } from '../../styles/commonStyles';
 import CompanyLogo from '../../components/CompanyLogo';
@@ -336,6 +337,7 @@ export default function PayrollScreen() {
   });
   
   const [selectedWeekStart, setSelectedWeekStart] = useState<Date>(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [showDailyBreakdown, setShowDailyBreakdown] = useState<Set<string>>(new Set());
   const [payrollRecords, setPayrollRecords] = useState<PayrollRecord[]>([]);
   const [isGeneratingPayroll, setIsGeneratingPayroll] = useState(false);
@@ -385,18 +387,28 @@ export default function PayrollScreen() {
     console.log('Selected week start:', selectedWeekStart);
     console.log('Date range:', filters.dateRange);
     
-    const currentWeekId = getWeekIdFromDate(selectedWeekStart);
-    const weekIds = [currentWeekId];
-    
-    // Add second week for biweekly view
-    if (filters.dateRange === 'biweekly') {
-      const nextWeek = new Date(selectedWeekStart);
-      nextWeek.setDate(nextWeek.getDate() + 7);
-      weekIds.push(getWeekIdFromDate(nextWeek));
+    // Determine the exact date range from the custom start date
+    const startDate = selectedWeekStart;
+    const daysInPeriod = filters.dateRange === 'week' ? 6 : 13;
+    const endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + daysInPeriod);
+
+    const startDateStr = formatDateString(startDate);
+    const endDateStr = formatDateString(endDate);
+
+    // Collect all week IDs that overlap with the selected date range
+    const weekIds: string[] = [];
+    const checkDate = new Date(startDate);
+    while (checkDate <= endDate) {
+      const weekId = getWeekIdFromDate(checkDate);
+      if (!weekIds.includes(weekId)) {
+        weekIds.push(weekId);
+      }
+      checkDate.setDate(checkDate.getDate() + 7);
     }
-    
+
     console.log('Processing weeks:', weekIds);
-    
+
     const cleanerHoursMap = new Map<string, CleanerHours>();
     
     // Initialize cleaner data
@@ -421,15 +433,20 @@ export default function PayrollScreen() {
       });
     });
     
-    // Collect all entries for the period
-    const allEntries: ScheduleEntry[] = [];
+    // Collect all entries for the overlapping weeks, then filter to exact date range
+    const rawEntries: ScheduleEntry[] = [];
     weekIds.forEach(weekId => {
       const weekSchedule = getWeekSchedule(weekId);
-      allEntries.push(...weekSchedule);
+      rawEntries.push(...weekSchedule);
     });
-    
+
+    const allEntries = rawEntries.filter(entry => {
+      if (!entry.date) return false;
+      return entry.date >= startDateStr && entry.date <= endDateStr;
+    });
+
     console.log('Total entries for period:', allEntries.length);
-    
+
     // Group entries by week for proper overtime calculation
     const entriesByWeek = new Map<string, ScheduleEntry[]>();
     allEntries.forEach(entry => {
@@ -690,7 +707,7 @@ export default function PayrollScreen() {
       setIsGeneratingPayroll(true);
       console.log('Generating payroll records...');
       
-      const currentWeekId = getWeekIdFromDate(selectedWeekStart);
+      const currentWeekId = formatDateString(selectedWeekStart);
       const records: Omit<PayrollRecord, 'id'>[] = [];
       
       for (const cleanerData of cleanerHoursData) {
@@ -738,7 +755,7 @@ export default function PayrollScreen() {
     } finally {
       setIsGeneratingPayroll(false);
     }
-  }, [cleanerHoursData, selectedWeekStart, getWeekIdFromDate, executeQuery, showToast]);
+  }, [cleanerHoursData, selectedWeekStart, formatDateString, executeQuery, showToast]);
 
   const updateFilter = useCallback((key: keyof PayrollFilters, value: any) => {
     setFilters(prev => ({ ...prev, [key]: value }));
@@ -792,41 +809,31 @@ export default function PayrollScreen() {
     }
   };
 
-  const formatDateRange = () => {
-    const startDate = getStartOfWeek(selectedWeekStart);
-    const startDateString = formatDateString(startDate);
-    
-    if (filters.dateRange === 'week') {
-      const endDate = new Date(startDate);
-      endDate.setDate(endDate.getDate() + 6);
-      const endDateString = formatDateString(endDate);
-      
-      const startFormatted = createDateFromString(startDateString).toLocaleDateString('en-US', { 
-        month: 'short', 
-        day: 'numeric' 
-      });
-      const endFormatted = createDateFromString(endDateString).toLocaleDateString('en-US', { 
-        month: 'short', 
-        day: 'numeric' 
-      });
-      
-      return `${startFormatted} - ${endFormatted}`;
-    } else {
-      const endDate = new Date(startDate);
-      endDate.setDate(endDate.getDate() + 13);
-      const endDateString = formatDateString(endDate);
-      
-      const startFormatted = createDateFromString(startDateString).toLocaleDateString('en-US', { 
-        month: 'short', 
-        day: 'numeric' 
-      });
-      const endFormatted = createDateFromString(endDateString).toLocaleDateString('en-US', { 
-        month: 'short', 
-        day: 'numeric' 
-      });
-      
-      return `${startFormatted} - ${endFormatted}`;
+  const onDateChange = (event: any, selectedDate?: Date) => {
+    setShowDatePicker(Platform.OS === 'ios');
+    if (selectedDate) {
+      setSelectedWeekStart(selectedDate);
     }
+  };
+
+  const formatDateRange = () => {
+    const startDate = selectedWeekStart;
+    const startDateString = formatDateString(startDate);
+    const daysInPeriod = filters.dateRange === 'week' ? 6 : 13;
+    const endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + daysInPeriod);
+    const endDateString = formatDateString(endDate);
+
+    const startFormatted = createDateFromString(startDateString).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+    });
+    const endFormatted = createDateFromString(endDateString).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+    });
+
+    return `${startFormatted} - ${endFormatted}`;
   };
 
   return (
@@ -853,20 +860,32 @@ export default function PayrollScreen() {
             <TouchableOpacity onPress={() => changeWeek('prev')}>
               <Icon name="chevron-back" size={24} style={{ color: colors.primary }} />
             </TouchableOpacity>
-            
-            <View style={{ alignItems: 'center' }}>
-              <Text style={[typography.h3, { color: colors.text }]}>
-                {formatDateRange()}
-              </Text>
+
+            <TouchableOpacity style={{ alignItems: 'center' }} onPress={() => setShowDatePicker(true)}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
+                <Icon name="calendar" size={16} style={{ color: colors.primary }} />
+                <Text style={[typography.h3, { color: colors.text }]}>
+                  {formatDateRange()}
+                </Text>
+              </View>
               <Text style={[typography.caption, { color: colors.textSecondary }]}>
-                {filters.dateRange === 'week' ? 'Weekly' : 'Bi-weekly'} Payroll
+                {filters.dateRange === 'week' ? 'Weekly' : 'Bi-weekly'} Payroll · Tap to change start date
               </Text>
-            </View>
-            
+            </TouchableOpacity>
+
             <TouchableOpacity onPress={() => changeWeek('next')}>
               <Icon name="chevron-forward" size={24} style={{ color: colors.primary }} />
             </TouchableOpacity>
           </View>
+
+          {showDatePicker && (
+            <DateTimePicker
+              value={selectedWeekStart}
+              mode="date"
+              display="default"
+              onChange={onDateChange}
+            />
+          )}
         </AnimatedCard>
 
         {/* Generate Payroll Button */}
