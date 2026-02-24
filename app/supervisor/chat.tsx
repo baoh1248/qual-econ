@@ -40,6 +40,7 @@ export default function SupervisorChatScreen() {
   const [isCreating, setIsCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
+  const messageInputRef = useRef<TextInput>(null);
 
   console.log('SupervisorChatScreen rendered');
   console.log('Is authenticated:', isAuthenticated);
@@ -88,17 +89,28 @@ export default function SupervisorChatScreen() {
   }, [selectedRoom, loadMessagesCallback, subscribeToRoomCallback, markAsReadCallback, unsubscribeFromRoomCallback]);
 
   const handleSendMessage = async () => {
-    if (messageText.trim() && selectedRoom) {
+    const text = messageText.trim();
+    if (text && selectedRoom) {
+      setMessageText('');
+      messageInputRef.current?.clear();
       try {
-        await sendMessage(selectedRoom, messageText.trim());
-        setMessageText('');
+        await sendMessage(selectedRoom, text);
         setTimeout(() => {
           scrollViewRef.current?.scrollToEnd({ animated: true });
         }, 100);
       } catch (error) {
+        setMessageText(text);
         console.error('Failed to send message:', error);
         Alert.alert('Error', 'Failed to send message. Please try again.');
       }
+    }
+  };
+
+  const handleKeyPress = (e: any) => {
+    if (Platform.OS !== 'web') return;
+    if (e.nativeEvent.key === 'Enter' && !e.nativeEvent.shiftKey && !e.nativeEvent.ctrlKey) {
+      e.nativeEvent.preventDefault?.();
+      handleSendMessage();
     }
   };
 
@@ -566,10 +578,11 @@ export default function SupervisorChatScreen() {
         }
       ]}>
         <TextInput
+          ref={messageInputRef}
           style={[
             commonStyles.textInput,
-            { 
-              flex: 1, 
+            {
+              flex: 1,
               marginRight: spacing.sm,
               maxHeight: 100,
             }
@@ -579,7 +592,8 @@ export default function SupervisorChatScreen() {
           value={messageText}
           onChangeText={setMessageText}
           multiline
-          onSubmitEditing={handleSendMessage}
+          blurOnSubmit={false}
+          onKeyPress={handleKeyPress}
         />
         <TouchableOpacity
           style={[
