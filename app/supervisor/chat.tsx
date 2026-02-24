@@ -123,17 +123,17 @@ export default function SupervisorChatScreen() {
       return;
     }
 
-    // Get user_ids for selected members
-    const memberUserIds = selectedMembers
+    // Build member objects with userId and userName
+    const memberObjects = selectedMembers
       .map(cleanerId => {
         const cleaner = cleaners.find(c => c.id === cleanerId);
-        return cleaner?.user_id;
+        return cleaner?.user_id ? { userId: cleaner.user_id, userName: cleaner.name || 'Unknown' } : null;
       })
-      .filter((userId): userId is string => !!userId);
+      .filter((m): m is { userId: string; userName: string } => m !== null);
 
     try {
       setIsCreating(true);
-      await createChatRoom(newChatName, newChatType, memberUserIds);
+      await createChatRoom(newChatName, newChatType, memberObjects);
       setShowNewChatModal(false);
       setNewChatName('');
       setSelectedMembers([]);

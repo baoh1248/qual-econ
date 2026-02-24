@@ -333,7 +333,7 @@ export const useChatData = () => {
   const createChatRoom = useCallback(async (
     name: string,
     type: 'direct' | 'group' | 'emergency',
-    memberIds: string[],
+    members: { userId: string; userName: string }[],
     description?: string
   ) => {
     if (!currentUserId) {
@@ -390,26 +390,30 @@ export const useChatData = () => {
 
       console.log('✅ Chat room created:', roomData.id);
 
-      const members = [
-        { 
+      const ownerName = (await getCustomSession())?.name || 'Unknown';
+
+      const memberRows = [
+        {
           id: uuid.v4() as string,
-          room_id: roomData.id, 
-          user_id: currentUserId, 
+          room_id: roomData.id,
+          user_id: currentUserId,
+          user_name: ownerName,
           role: 'owner' as const
         },
-        ...memberIds.map(userId => ({
+        ...members.map(({ userId, userName }) => ({
           id: uuid.v4() as string,
           room_id: roomData.id,
           user_id: userId,
+          user_name: userName,
           role: 'member' as const,
         })),
       ];
 
-      console.log('🔄 Adding members:', members.length);
+      console.log('🔄 Adding members:', memberRows.length);
 
       const { error: membersError } = await supabase
         .from('chat_room_members')
-        .insert(members);
+        .insert(memberRows);
 
       if (membersError) {
         console.error('❌ Error adding members:', membersError);

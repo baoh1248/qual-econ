@@ -117,9 +117,15 @@ export default function ChatScreen() {
       return;
     }
 
+    const memberObjects = selectedMembers
+      .map(userId => {
+        const cleaner = cleaners.find(c => c.user_id === userId);
+        return { userId, userName: cleaner?.name || 'Unknown' };
+      });
+
     try {
       setIsCreating(true);
-      await createChatRoom(newChatName, newChatType, selectedMembers);
+      await createChatRoom(newChatName, newChatType, memberObjects);
       setShowNewChatModal(false);
       setNewChatName('');
       setSelectedMembers([]);
