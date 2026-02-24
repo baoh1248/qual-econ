@@ -337,7 +337,7 @@ const SupervisorDashboard = () => {
     <View style={styles.container}>
       {/* Header */}
       <View style={[styles.header, { backgroundColor: themeColor }]}>
-        {/* Top bar: logo + settings (left-anchored) + alerts (right) */}
+        {/* Top bar: logo + settings + alerts all grouped left — no flex spacer to avoid overflow */}
         <View style={styles.headerTopBar}>
           <CompanyLogo size="small" showText={false} variant="light" />
           <TouchableOpacity
@@ -346,7 +346,6 @@ const SupervisorDashboard = () => {
           >
             <Icon name="settings" size={22} style={{ color: colors.background }} />
           </TouchableOpacity>
-          <View style={{ flex: 1 }} />
           <InventoryAlertBadge
             lowStockCount={lowStockCount}
             criticalStockCount={criticalStockCount}
@@ -354,8 +353,14 @@ const SupervisorDashboard = () => {
           />
         </View>
 
-        {/* Title row: user info left | title + subtitle right */}
+        {/* Title row: title left | user info right */}
         <View style={styles.headerTitleRow}>
+          <View style={styles.titleBlock}>
+            <Text style={styles.title}>Management Dashboard</Text>
+            <Text style={styles.subtitle}>
+              {teamMembers.length} team members • {taskSummary.completed} tasks completed today
+            </Text>
+          </View>
           {userSession && (
             <View style={styles.userInfoCompact}>
               <View style={styles.userAvatar}>
@@ -371,12 +376,6 @@ const SupervisorDashboard = () => {
               </View>
             </View>
           )}
-          <View style={styles.titleBlock}>
-            <Text style={styles.title}>Management Dashboard</Text>
-            <Text style={styles.subtitle}>
-              {teamMembers.length} team members • {taskSummary.completed} tasks completed today
-            </Text>
-          </View>
         </View>
       </View>
 
@@ -711,9 +710,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    paddingRight: spacing.md,
-    borderRightWidth: 1,
-    borderRightColor: 'rgba(255,255,255,0.3)',
+    paddingLeft: spacing.md,
+    borderLeftWidth: 1,
+    borderLeftColor: 'rgba(255,255,255,0.3)',
   },
   titleBlock: {
     flex: 1,
