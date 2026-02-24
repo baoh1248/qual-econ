@@ -520,14 +520,16 @@ export default function SupervisorChatScreen() {
                 </Text>
               </View>
               <Text style={[
-                typography.small, 
-                { 
-                  color: colors.textSecondary, 
+                typography.small,
+                {
+                  color: message.delivery_status === 'failed' ? colors.danger : colors.textSecondary,
                   marginTop: spacing.xs,
                   textAlign: isOwnMessage ? 'right' : 'left'
                 }
               ]}>
-                {formatTime(message.created_at)}
+                {message.delivery_status === 'failed'
+                  ? 'Failed to send'
+                  : formatTime(message.created_at)}
               </Text>
             </View>
           );

@@ -320,7 +320,18 @@ export const useChatData = () => {
       );
 
       console.log(`✅ Loaded ${messagesWithNames.length} messages`);
-      setMessages(prev => ({ ...prev, [roomId]: messagesWithNames }));
+      setMessages(prev => {
+        const cached = prev[roomId] || [];
+        // Preserve any locally-cached failed/pending messages not yet in DB
+        const dbIds = new Set(messagesWithNames.map(m => m.id));
+        const localOnly = cached.filter(
+          m => !dbIds.has(m.id) && (m.delivery_status === 'failed' || m.id.startsWith('temp-'))
+        );
+        const merged = [...messagesWithNames, ...localOnly].sort(
+          (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        );
+        return { ...prev, [roomId]: merged };
+      });
       
       return messagesWithNames;
     } catch (error) {
@@ -644,10 +655,12 @@ export const useChatData = () => {
             delivery_status: 'delivered' as const,
           } as Message;
 
-          setMessages(prev => ({
-            ...prev,
-            [roomId]: [...(prev[roomId] || []), newMessage],
-          }));
+          setMessages(prev => {
+            const existing = prev[roomId] || [];
+            // Skip if this message is already in cache (deduplication for own sends)
+            if (existing.some(m => m.id === newMessage.id)) return prev;
+            return { ...prev, [roomId]: [...existing, newMessage] };
+          });
 
           await loadChatRooms();
         }
