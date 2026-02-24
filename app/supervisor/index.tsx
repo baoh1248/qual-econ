@@ -337,15 +337,9 @@ const SupervisorDashboard = () => {
     <View style={styles.container}>
       {/* Header */}
       <View style={[styles.header, { backgroundColor: themeColor }]}>
-        {/* Top bar: logo + settings + alerts all grouped left — no flex spacer to avoid overflow */}
+        {/* Top bar: logo + alerts */}
         <View style={styles.headerTopBar}>
           <CompanyLogo size="small" showText={false} variant="light" />
-          <TouchableOpacity
-            onPress={() => router.push('/supervisor/settings')}
-            style={styles.settingsButton}
-          >
-            <Icon name="settings" size={22} style={{ color: colors.background }} />
-          </TouchableOpacity>
           <InventoryAlertBadge
             lowStockCount={lowStockCount}
             criticalStockCount={criticalStockCount}
@@ -353,7 +347,7 @@ const SupervisorDashboard = () => {
           />
         </View>
 
-        {/* Title row: title left | user info right */}
+        {/* Title row: title left | user info (tappable → settings) right */}
         <View style={styles.headerTitleRow}>
           <View style={styles.titleBlock}>
             <Text style={styles.title}>Management Dashboard</Text>
@@ -362,7 +356,10 @@ const SupervisorDashboard = () => {
             </Text>
           </View>
           {userSession && (
-            <View style={styles.userInfoCompact}>
+            <TouchableOpacity
+              onPress={() => router.push('/supervisor/settings')}
+              style={styles.userInfoCompact}
+            >
               <View style={styles.userAvatar}>
                 <Text style={styles.userAvatarText}>
                   {userSession.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
@@ -374,7 +371,8 @@ const SupervisorDashboard = () => {
                   <Text style={styles.userEmployeeId}>ID: {userSession.employeeId}</Text>
                 ) : null}
               </View>
-            </View>
+              <Icon name="settings" size={16} style={{ color: 'rgba(255,255,255,0.7)' }} />
+            </TouchableOpacity>
           )}
         </View>
       </View>
@@ -727,14 +725,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: 'rgba(255,255,255,0.85)',
     marginTop: 2,
-  },
-  settingsButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
   },
   userAvatar: {
     width: 36,
