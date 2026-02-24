@@ -114,11 +114,6 @@ export default function ChatScreen() {
       return;
     }
 
-    if (selectedMembers.length === 0) {
-      Alert.alert('Error', 'Please select at least one member');
-      return;
-    }
-
     try {
       setIsCreating(true);
       console.log('Creating chat room with:', {
@@ -276,7 +271,7 @@ export default function ChatScreen() {
 
         <Modal
           visible={showNewChatModal}
-          animationType="slide"
+          animationType={Platform.OS === 'web' ? 'none' : 'slide'}
           transparent={true}
           onRequestClose={() => setShowNewChatModal(false)}
         >
@@ -532,6 +527,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: spacing.lg,
+    ...(Platform.OS === 'web' && {
+      position: 'fixed' as any,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      zIndex: 9999,
+    }),
   },
   modalContent: {
     backgroundColor: colors.background,
@@ -539,7 +542,11 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     width: '100%',
     maxWidth: 500,
-    maxHeight: '80%',
+    maxHeight: '85%',
+    ...(Platform.OS === 'web' && {
+      zIndex: 10000,
+      position: 'relative' as any,
+    }),
   },
   typeButton: {
     flex: 1,
