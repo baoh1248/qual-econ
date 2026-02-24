@@ -35,6 +35,7 @@ export default function ChatScreen() {
   const [newChatType, setNewChatType] = useState<'direct' | 'group' | 'emergency'>('group');
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [isCreating, setIsCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
 
   console.log('ChatScreen rendered');
@@ -109,29 +110,23 @@ export default function ChatScreen() {
   };
 
   const handleCreateChatRoom = async () => {
+    setCreateError(null);
+
     if (!newChatName.trim()) {
-      Alert.alert('Error', 'Please enter a chat room name');
+      setCreateError('Please enter a chat room name.');
       return;
     }
 
     try {
       setIsCreating(true);
-      console.log('Creating chat room with:', {
-        name: newChatName,
-        type: newChatType,
-        members: selectedMembers,
-      });
-      
       await createChatRoom(newChatName, newChatType, selectedMembers);
-      
       setShowNewChatModal(false);
       setNewChatName('');
       setSelectedMembers([]);
-      Alert.alert('Success', 'Chat room created successfully!');
+      setCreateError(null);
     } catch (error) {
       console.error('Failed to create chat room:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to create chat room. Please try again.';
-      Alert.alert('Error', errorMessage);
+      setCreateError(error instanceof Error ? error.message : 'Failed to create chat room. Please try again.');
     } finally {
       setIsCreating(false);
     }
@@ -273,13 +268,13 @@ export default function ChatScreen() {
           visible={showNewChatModal}
           animationType={Platform.OS === 'web' ? 'none' : 'slide'}
           transparent={true}
-          onRequestClose={() => setShowNewChatModal(false)}
+          onRequestClose={() => { setShowNewChatModal(false); setCreateError(null); }}
         >
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <View style={[commonStyles.row, commonStyles.spaceBetween, { marginBottom: spacing.lg }]}>
                 <Text style={[typography.h2, { color: colors.text }]}>New Chat Room</Text>
-                <TouchableOpacity onPress={() => setShowNewChatModal(false)}>
+                <TouchableOpacity onPress={() => { setShowNewChatModal(false); setCreateError(null); }}>
                   <Icon name="close" size={24} style={{ color: colors.text }} />
                 </TouchableOpacity>
               </View>
@@ -342,6 +337,19 @@ export default function ChatScreen() {
                     </TouchableOpacity>
                   ))}
               </ScrollView>
+
+              {createError && (
+                <View style={{
+                  backgroundColor: colors.danger + '15',
+                  borderWidth: 1,
+                  borderColor: colors.danger,
+                  borderRadius: 8,
+                  padding: spacing.sm,
+                  marginBottom: spacing.md,
+                }}>
+                  <Text style={[typography.caption, { color: colors.danger }]}>{createError}</Text>
+                </View>
+              )}
 
               <Button
                 title={isCreating ? "Creating..." : "Create Chat Room"}

@@ -38,6 +38,7 @@ export default function SupervisorChatScreen() {
   const [newChatType, setNewChatType] = useState<'direct' | 'group' | 'emergency'>('group');
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [isCreating, setIsCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
 
   console.log('SupervisorChatScreen rendered');
@@ -115,59 +116,31 @@ export default function SupervisorChatScreen() {
   };
 
   const handleCreateChatRoom = async () => {
+    setCreateError(null);
+
     if (!newChatName.trim()) {
-      Alert.alert('Error', 'Please enter a chat room name');
+      setCreateError('Please enter a chat room name.');
       return;
     }
 
-    // Check if any selected members don't have user_id
-    const membersWithoutUserId = selectedMembers.filter(memberId => {
-      const cleaner = cleaners.find(c => c.id === memberId);
-      return cleaner && !cleaner.user_id;
-    });
-
-    if (membersWithoutUserId.length > 0) {
-      const cleanerNames = membersWithoutUserId
-        .map(id => cleaners.find(c => c.id === id)?.name)
-        .filter(Boolean)
-        .join(', ');
-      
-      Alert.alert(
-        'Missing User Accounts',
-        `The following cleaners don't have user accounts yet and cannot be added to chat rooms: ${cleanerNames}\n\nPlease create user accounts for them first in the Cleaners screen.`,
-        [{ text: 'OK' }]
-      );
-      return;
-    }
+    // Get user_ids for selected members
+    const memberUserIds = selectedMembers
+      .map(cleanerId => {
+        const cleaner = cleaners.find(c => c.id === cleanerId);
+        return cleaner?.user_id;
+      })
+      .filter((userId): userId is string => !!userId);
 
     try {
       setIsCreating(true);
-      console.log('Creating chat room with:', {
-        name: newChatName,
-        type: newChatType,
-        members: selectedMembers,
-      });
-      
-      // Get user_ids for selected members
-      const memberUserIds = selectedMembers
-        .map(cleanerId => {
-          const cleaner = cleaners.find(c => c.id === cleanerId);
-          return cleaner?.user_id;
-        })
-        .filter((userId): userId is string => !!userId);
-      
-      console.log('Member user IDs:', memberUserIds);
-      
       await createChatRoom(newChatName, newChatType, memberUserIds);
-      
       setShowNewChatModal(false);
       setNewChatName('');
       setSelectedMembers([]);
-      Alert.alert('Success', 'Chat room created successfully!');
+      setCreateError(null);
     } catch (error) {
       console.error('Failed to create chat room:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to create chat room. Please try again.';
-      Alert.alert('Error', errorMessage);
+      setCreateError(error instanceof Error ? error.message : 'Failed to create chat room. Please try again.');
     } finally {
       setIsCreating(false);
     }
@@ -340,13 +313,13 @@ export default function SupervisorChatScreen() {
           visible={showNewChatModal}
           animationType={Platform.OS === 'web' ? 'none' : 'slide'}
           transparent={true}
-          onRequestClose={() => setShowNewChatModal(false)}
+          onRequestClose={() => { setShowNewChatModal(false); setCreateError(null); }}
         >
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <View style={[commonStyles.row, commonStyles.spaceBetween, { marginBottom: spacing.lg }]}>
                 <Text style={[typography.h2, { color: colors.text }]}>New Chat Room</Text>
-                <TouchableOpacity onPress={() => setShowNewChatModal(false)}>
+                <TouchableOpacity onPress={() => { setShowNewChatModal(false); setCreateError(null); }}>
                   <Icon name="close" size={24} style={{ color: colors.text }} />
                 </TouchableOpacity>
               </View>
@@ -438,6 +411,19 @@ export default function SupervisorChatScreen() {
                   </View>
                 )}
               </ScrollView>
+
+              {createError && (
+                <View style={{
+                  backgroundColor: colors.danger + '15',
+                  borderWidth: 1,
+                  borderColor: colors.danger,
+                  borderRadius: 8,
+                  padding: spacing.sm,
+                  marginBottom: spacing.md,
+                }}>
+                  <Text style={[typography.caption, { color: colors.danger }]}>{createError}</Text>
+                </View>
+              )}
 
               <Button
                 title={isCreating ? "Creating..." : "Create Chat Room"}
