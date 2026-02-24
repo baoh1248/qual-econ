@@ -99,9 +99,7 @@ export default function SupervisorChatScreen() {
           scrollViewRef.current?.scrollToEnd({ animated: true });
         }, 100);
       } catch (error) {
-        setMessageText(text);
         console.error('Failed to send message:', error);
-        Alert.alert('Error', 'Failed to send message. Please try again.');
       }
     }
   };
