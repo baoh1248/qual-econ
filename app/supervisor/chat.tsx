@@ -140,7 +140,8 @@ export default function SupervisorChatScreen() {
       setCreateError(null);
     } catch (error) {
       console.error('Failed to create chat room:', error);
-      setCreateError(error instanceof Error ? error.message : 'Failed to create chat room. Please try again.');
+      const msg = (error instanceof Error ? error.message : (error as any)?.message) || 'Failed to create chat room. Please try again.';
+      setCreateError(msg);
     } finally {
       setIsCreating(false);
     }
