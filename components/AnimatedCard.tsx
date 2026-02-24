@@ -1,6 +1,6 @@
 
 import React, { memo } from 'react';
-import { ViewStyle, StyleProp } from 'react-native';
+import { ViewStyle, StyleProp, TouchableOpacity } from 'react-native';
 import Animated, {
   FadeInDown,
   FadeInUp,
@@ -13,14 +13,16 @@ interface AnimatedCardProps {
   delay?: number;
   index?: number;
   elevated?: boolean;
+  onPress?: () => void;
 }
 
-const AnimatedCard = memo(({ 
-  children, 
-  style, 
-  delay = 0, 
+const AnimatedCard = memo(({
+  children,
+  style,
+  delay = 0,
   index = 0,
-  elevated = false 
+  elevated = false,
+  onPress,
 }: AnimatedCardProps) => {
   const animationDelay = delay + (index * 30);
 
@@ -29,7 +31,11 @@ const AnimatedCard = memo(({
       entering={FadeInUp.delay(animationDelay).duration(400).springify()}
       style={[elevated ? commonStyles.cardElevated : commonStyles.card, style]}
     >
-      {children}
+      {onPress ? (
+        <TouchableOpacity onPress={onPress} activeOpacity={0.7} style={{ flex: 1 }}>
+          {children}
+        </TouchableOpacity>
+      ) : children}
     </Animated.View>
   );
 });
