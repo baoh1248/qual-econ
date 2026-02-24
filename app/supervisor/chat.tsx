@@ -324,13 +324,13 @@ export default function SupervisorChatScreen() {
           visible={showNewChatModal}
           animationType={Platform.OS === 'web' ? 'none' : 'slide'}
           transparent={true}
-          onRequestClose={() => { setShowNewChatModal(false); setCreateError(null); }}
+          onRequestClose={() => { setShowNewChatModal(false); setCreateError(null); setSelectedMembers([]); setNewChatName(''); }}
         >
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <View style={[commonStyles.row, commonStyles.spaceBetween, { marginBottom: spacing.lg }]}>
                 <Text style={[typography.h2, { color: colors.text }]}>New Chat Room</Text>
-                <TouchableOpacity onPress={() => { setShowNewChatModal(false); setCreateError(null); }}>
+                <TouchableOpacity onPress={() => { setShowNewChatModal(false); setCreateError(null); setSelectedMembers([]); setNewChatName(''); }}>
                   <Icon name="close" size={24} style={{ color: colors.text }} />
                 </TouchableOpacity>
               </View>
