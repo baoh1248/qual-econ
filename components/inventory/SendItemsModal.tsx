@@ -186,7 +186,9 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
   };
 
   const filteredInventory = inventory.filter(item => {
-    const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase());
+    const q = searchQuery.toLowerCase();
+    const matchesSearch = item.name.toLowerCase().includes(q) ||
+      (item.item_number ? item.item_number.toLowerCase().includes(q) : false);
     const hasStock = item.current_stock > 0;
     const notSelected = !selectedItems.some(selected => selected.id === item.id);
     const matchesWarehouse = !sentFrom || !warehouses || !warehouses.length || item.location === sentFrom;
@@ -1058,6 +1060,9 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
                         <View style={{ flex: 1 }}>
                           <Text style={[typography.body, { color: colors.text, fontWeight: '600' }]}>
                             {item.name}
+                            {item.item_number ? (
+                              <Text style={[typography.caption, { color: colors.textSecondary }]}> · {item.item_number}</Text>
+                            ) : null}
                           </Text>
                           <Text style={[typography.caption, { color: colors.textSecondary }]}>
                             Available: {item.current_stock} {item.unit} • ${(item.cost || 0).toFixed(2)} per {item.unit}
