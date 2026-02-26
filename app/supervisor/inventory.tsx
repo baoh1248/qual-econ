@@ -92,7 +92,8 @@ const { width } = Dimensions.get('window');
 const ITEMS_PER_ROW = 8;
 const ITEM_SPACING = spacing.sm;
 const HORIZONTAL_PADDING = spacing.lg * 2;
-const ITEM_WIDTH = (width - HORIZONTAL_PADDING - (ITEM_SPACING * (ITEMS_PER_ROW - 1))) / ITEMS_PER_ROW;
+const SCROLLBAR_RESERVE = Platform.OS === 'web' ? 20 : 0;
+const ITEM_WIDTH = Math.floor((width - SCROLLBAR_RESERVE - HORIZONTAL_PADDING - (ITEM_SPACING * (ITEMS_PER_ROW - 1))) / ITEMS_PER_ROW);
 
 const styles = StyleSheet.create({
   container: {
