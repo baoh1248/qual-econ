@@ -29,6 +29,7 @@ interface ItemTransaction {
   notes?: string;
   unitCost?: number;
   totalCost?: number;
+  taxAmount?: number; // this item's share of the order-level tax
 }
 
 interface ItemLedger {
@@ -51,7 +52,7 @@ interface BuildingTransfer {
   id: string;
   date: string;
   timestamp: string;
-  items: { name: string; quantity: number; unit: string; unitCost?: number; totalCost?: number }[];
+  items: { name: string; quantity: number; unit: string; unitCost?: number; totalCost?: number; taxAmount?: number }[];
   transferredBy: string;
   notes?: string;
   sentFrom?: string;
@@ -856,6 +857,7 @@ export default function InventoryTransferStatementsScreen() {
             notes: transfer.notes,
             unitCost: item.unitCost,
             totalCost: item.totalCost,
+            taxAmount: item.taxAmount,
           };
 
           itemLedgersMap[item.name].transactions.push(transaction);
@@ -1069,7 +1071,7 @@ export default function InventoryTransferStatementsScreen() {
             timestamp: t.timestamp,
             items: t.items.map(item => ({
               name: item.name, quantity: item.quantity, unit: item.unit,
-              unitCost: item.unitCost, totalCost: item.totalCost,
+              unitCost: item.unitCost, totalCost: item.totalCost, taxAmount: item.taxAmount,
             })),
             transferredBy: t.transferredBy,
             notes: t.notes,
@@ -1138,8 +1140,8 @@ export default function InventoryTransferStatementsScreen() {
               <td>${esc(tx.sentFrom || '-')}</td>
               <td>${esc(tx.location)}</td>
               <td class="notes">${esc(tx.notes || '-')}</td>
-              <td class="text-right">${fmtCost(tx.unitCost)}</td>
-              <td class="text-right">${fmtCost(tx.totalCost)}</td>
+              <td class="text-right">${fmtCost(tx.unitCost)}${tx.taxAmount ? `<br/><span style="font-size:10px;color:#888">+${fmtCost(tx.taxAmount / (tx.quantity || 1))} tax/unit</span>` : ''}</td>
+              <td class="text-right">${fmtCost(tx.totalCost)}${tx.taxAmount ? `<br/><span style="font-size:10px;color:#888">${fmtCost((tx.totalCost || 0) - tx.taxAmount)} base + ${fmtCost(tx.taxAmount)} tax</span>` : ''}</td>
             </tr>`;
           });
         });
@@ -1190,8 +1192,8 @@ export default function InventoryTransferStatementsScreen() {
                 <td>${esc(from)}</td>
                 <td>${esc(to)}</td>
                 <td class="notes">${esc(transfer.notes || '-')}</td>
-                <td class="text-right">${fmtCost(item.unitCost)}</td>
-                <td class="text-right">${fmtCost(item.totalCost)}</td>
+                <td class="text-right">${fmtCost(item.unitCost)}${item.taxAmount ? `<br/><span style="font-size:10px;color:#888">+${fmtCost(item.taxAmount / (item.quantity || 1))} tax/unit</span>` : ''}</td>
+                <td class="text-right">${fmtCost(item.totalCost)}${item.taxAmount ? `<br/><span style="font-size:10px;color:#888">${fmtCost((item.totalCost || 0) - item.taxAmount)} base + ${fmtCost(item.taxAmount)} tax</span>` : ''}</td>
               </tr>`;
             });
           });
@@ -1606,7 +1608,7 @@ export default function InventoryTransferStatementsScreen() {
                       <View style={{ marginTop: spacing.md }}>
                         {ledger.months.map((monthData) => {
                           // Aggregate items across all transfers in this month, grouped by name + type
-                          const itemSummary = new Map<string, { name: string; type: 'incoming' | 'outgoing'; totalQty: number; unit: string; totalCost: number }>();
+                          const itemSummary = new Map<string, { name: string; type: 'incoming' | 'outgoing'; totalQty: number; unit: string; totalCost: number; totalTax: number }>();
                           monthData.transfers.forEach(transfer => {
                             transfer.items.forEach(item => {
                               const mapKey = `${item.name}|${transfer.type}`;
@@ -1614,6 +1616,7 @@ export default function InventoryTransferStatementsScreen() {
                               if (existing) {
                                 existing.totalQty += item.quantity;
                                 existing.totalCost += (item.totalCost || 0);
+                                existing.totalTax += (item.taxAmount || 0);
                               } else {
                                 itemSummary.set(mapKey, {
                                   name: item.name,
@@ -1621,6 +1624,7 @@ export default function InventoryTransferStatementsScreen() {
                                   totalQty: item.quantity,
                                   unit: item.unit,
                                   totalCost: item.totalCost || 0,
+                                  totalTax: item.taxAmount || 0,
                                 });
                               }
                             });
@@ -1690,9 +1694,16 @@ export default function InventoryTransferStatementsScreen() {
                                     <Text style={[styles.summaryTableCell, { flex: 1, textAlign: 'center', color: colors.textSecondary }]}>
                                       {item.unit}
                                     </Text>
-                                    <Text style={[styles.summaryTableCell, { flex: 1.5, textAlign: 'right', fontWeight: typography.weights.semibold as any }]}>
-                                      {item.totalCost > 0 ? formatCurrency(item.totalCost) : '-'}
-                                    </Text>
+                                    <View style={{ flex: 1.5, alignItems: 'flex-end' }}>
+                                      <Text style={[styles.summaryTableCell, { textAlign: 'right', fontWeight: typography.weights.semibold as any }]}>
+                                        {item.totalCost > 0 ? formatCurrency(item.totalCost) : '-'}
+                                      </Text>
+                                      {item.totalTax > 0 && (
+                                        <Text style={{ fontSize: 10, color: colors.textSecondary, textAlign: 'right' }}>
+                                          {formatCurrency(item.totalCost - item.totalTax)} + {formatCurrency(item.totalTax)} tax
+                                        </Text>
+                                      )}
+                                    </View>
                                   </View>
                                 ))}
 

@@ -33,6 +33,7 @@ interface InventoryItem {
   unit: string;
   location: string;
   cost: number;
+  tax_per_unit?: number;
   supplier: string;
   auto_reorder_enabled: boolean;
   reorder_quantity: number;
@@ -582,6 +583,12 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginTop: 1,
   },
+  costBreakdownText: {
+    fontSize: 9,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 1,
+  },
   bvItemStock: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
@@ -1081,7 +1088,7 @@ export default function SupervisorInventoryScreen() {
     }
   };
 
-  const handleReceiveSupply = async (itemIds: string[], quantities: number[], costs: number[]) => {
+  const handleReceiveSupply = async (itemIds: string[], quantities: number[], costs: number[], taxPerUnits: number[] = []) => {
     try {
       console.log('🔄 Receiving supply:', itemIds, quantities, costs);
 
@@ -1089,7 +1096,8 @@ export default function SupervisorInventoryScreen() {
       for (let i = 0; i < itemIds.length; i++) {
         const itemId = itemIds[i];
         const quantity = quantities[i];
-        const cost = costs[i];
+        const cost = costs[i]; // already includes tax per unit (landed cost)
+        const taxPerUnit = taxPerUnits[i] || 0;
         const item = items.find(item => item.id === itemId);
 
         if (item) {
@@ -1101,9 +1109,12 @@ export default function SupervisorInventoryScreen() {
             updated_at: new Date().toISOString()
           };
 
-          // Update cost if a new cost was provided
+          // Update cost (landed cost) and tax_per_unit if provided
           if (cost > 0) {
             updateData.cost = cost;
+          }
+          if (taxPerUnit > 0) {
+            updateData.tax_per_unit = taxPerUnit;
           }
 
           const { error } = await supabase
@@ -1515,7 +1526,16 @@ export default function SupervisorInventoryScreen() {
                         </Text>
                       </View>
                       <Text style={styles.infoText} numberOfLines={1}>{item.location}</Text>
-                      <Text style={styles.infoText}>${item.cost.toFixed(2)}</Text>
+                      {item.tax_per_unit && item.tax_per_unit > 0 ? (
+                        <View>
+                          <Text style={styles.infoText}>${item.cost.toFixed(2)}</Text>
+                          <Text style={styles.costBreakdownText}>
+                            ${(item.cost - item.tax_per_unit).toFixed(2)} + ${item.tax_per_unit.toFixed(2)} tax
+                          </Text>
+                        </View>
+                      ) : (
+                        <Text style={styles.infoText}>${item.cost.toFixed(2)}</Text>
+                      )}
                     </View>
 
                     <View style={styles.itemActions}>

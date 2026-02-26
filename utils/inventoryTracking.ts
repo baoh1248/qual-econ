@@ -7,6 +7,7 @@ export interface InventoryTransferItem {
   unit: string;
   unitCost?: number;
   totalCost?: number;
+  taxAmount?: number; // this item's share of the order-level tax (total_tax / number of line items)
 }
 
 export interface InventoryTransfer {
@@ -17,6 +18,7 @@ export interface InventoryTransfer {
   transferredBy: string;
   notes?: string;
   totalValue?: number;
+  totalTax?: number; // order-level tax entered at receipt; divided evenly across line items
   type: 'outgoing' | 'incoming'; // 'outgoing' = to client, 'incoming' = from supplier
   source?: string; // For incoming transfers, name of supplier
   orderNumber?: string; // For incoming transfers, order/invoice number
@@ -43,6 +45,7 @@ export async function logInventoryTransfer(transfer: Omit<InventoryTransfer, 'id
         transferred_by: transfer.transferredBy,
         notes: transfer.notes || null,
         total_value: totalValue,
+        total_tax: transfer.totalTax || 0,
         type: transfer.type || 'outgoing',
         source: transfer.source || null,
         order_number: transfer.orderNumber || null,
@@ -80,6 +83,7 @@ export async function getInventoryTransferLogs(): Promise<InventoryTransfer[]> {
       transferredBy: row.transferred_by || '',
       notes: row.notes || undefined,
       totalValue: parseFloat(row.total_value) || 0,
+      totalTax: parseFloat(row.total_tax) || 0,
       type: row.type || 'outgoing',
       source: row.source || undefined,
       orderNumber: row.order_number || undefined,
@@ -116,6 +120,7 @@ export async function updateInventoryTransferLog(
     if (updates.source !== undefined) dbUpdates.source = updates.source || null;
     if (updates.orderNumber !== undefined) dbUpdates.order_number = updates.orderNumber || null;
     if (updates.sentFrom !== undefined) dbUpdates.sent_from = updates.sentFrom || null;
+    if (updates.totalTax !== undefined) dbUpdates.total_tax = updates.totalTax || 0;
 
     // Recalculate total value if items were updated
     if (updates.items) {

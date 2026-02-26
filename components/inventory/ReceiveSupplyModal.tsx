@@ -22,7 +22,7 @@ interface ReceiveSupplyModalProps {
   visible: boolean;
   onClose: () => void;
   inventory: InventoryItem[];
-  onReceive: (itemIds: string[], quantities: number[], costs: number[]) => void;
+  onReceive: (itemIds: string[], quantities: number[], costs: number[], taxPerUnits: number[]) => void;
   onSuccess?: () => void;
   warehouses?: string[];
 }
@@ -50,6 +50,8 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
   const [searchQuery, setSearchQuery] = useState('');
   const [processing, setProcessing] = useState(false);
   const [showItemSearch, setShowItemSearch] = useState(false);
+  const [totalTax, setTotalTax] = useState('');
+  const [editingTax, setEditingTax] = useState(false);
 
   // Local editing state so numeric fields can be freely typed without reformatting mid-keystroke
   const [editingQuantities, setEditingQuantities] = useState<Record<string, string>>({});
@@ -71,6 +73,8 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
       setNotes('');
       setSearchQuery('');
       setShowItemSearch(false);
+      setTotalTax('');
+      setEditingTax(false);
     }
   }, [visible]);
 
@@ -147,42 +151,56 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
       console.log('Date:', receiveDate);
       console.log('Items:', selectedItems);
 
-      const totalValue = selectedItems.reduce((sum, item) => sum + (item.totalCost || 0), 0);
+      const totalTaxAmount = parseFloat(totalTax) || 0;
+      const taxPerItem = selectedItems.length > 0 ? totalTaxAmount / selectedItems.length : 0;
 
-      // Log the incoming transfer
+      const subtotal = selectedItems.reduce((sum, item) => sum + (item.totalCost || 0), 0);
+      const totalValue = subtotal + totalTaxAmount;
+
+      // Log the incoming transfer with per-item tax amounts
       await logInventoryTransfer({
-        items: selectedItems.map(item => ({
-          name: item.name,
-          quantity: item.quantity,
-          unit: item.unit,
-          unitCost: item.unitCost,
-          totalCost: item.totalCost,
-        })),
-        destination: selectedWarehouse, // Incoming supplies go to selected warehouse
+        items: selectedItems.map(item => {
+          const taxAmount = taxPerItem;
+          const taxPerUnit = item.quantity > 0 ? taxAmount / item.quantity : 0;
+          return {
+            name: item.name,
+            quantity: item.quantity,
+            unit: item.unit,
+            unitCost: item.unitCost,
+            totalCost: (item.totalCost || 0) + taxAmount,
+            taxAmount,
+          };
+        }),
+        destination: selectedWarehouse,
         timestamp: new Date(receiveDate).toISOString(),
         transferredBy: 'Supervisor',
         notes: notes.trim() || undefined,
-        totalValue: totalValue,
+        totalValue,
+        totalTax: totalTaxAmount,
         type: 'incoming',
         source: supplierName,
         orderNumber: orderNumber,
       });
 
-      // Call the onReceive callback to update inventory
+      // Call the onReceive callback with landed costs (base + tax per unit)
       const itemIds = selectedItems.map(item => item.id);
       const quantities = selectedItems.map(item => item.quantity);
-      const costs = selectedItems.map(item => item.unitCost || 0);
+      const taxPerUnits = selectedItems.map(item =>
+        item.quantity > 0 ? taxPerItem / item.quantity : 0
+      );
+      const landedCosts = selectedItems.map((item, i) => (item.unitCost || 0) + taxPerUnits[i]);
 
-      await onReceive(itemIds, quantities, costs);
+      await onReceive(itemIds, quantities, landedCosts, taxPerUnits);
 
       const itemSummary = selectedItems.map(item => `${item.quantity} ${item.unit} ${item.name}`).join(', ');
+      const taxLine = totalTaxAmount > 0 ? `\nTax: ${formatCurrency(totalTaxAmount)}` : '';
 
       onClose();
 
       setTimeout(() => {
         Alert.alert(
           'Supply Received Successfully',
-          `Order ${orderNumber}\n\n${itemSummary}\n\nTotal: ${formatCurrency(totalValue)}`,
+          `Order ${orderNumber}\n\n${itemSummary}\n\nSubtotal: ${formatCurrency(subtotal)}${taxLine}\nTotal: ${formatCurrency(totalValue)}`,
           [{ text: 'OK', onPress: () => onSuccess?.() }]
         );
       }, 300);
@@ -196,7 +214,10 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
   };
 
   const totalItems = selectedItems.reduce((sum, item) => sum + item.quantity, 0);
-  const totalValue = selectedItems.reduce((sum, item) => sum + (item.totalCost || 0), 0);
+  const subtotal = selectedItems.reduce((sum, item) => sum + (item.totalCost || 0), 0);
+  const totalTaxAmount = parseFloat(totalTax) || 0;
+  const taxPerItem = selectedItems.length > 0 ? totalTaxAmount / selectedItems.length : 0;
+  const totalValue = subtotal + totalTaxAmount;
 
   return (
     <Modal
@@ -441,9 +462,33 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
                     <View style={[commonStyles.row, commonStyles.spaceBetween, styles.totalRow]}>
                       <Text style={[typography.body, { color: colors.text, fontWeight: '600' }]}>Item Total:</Text>
                       <Text style={[typography.body, { color: colors.success, fontWeight: '700' }]}>
-                        {formatCurrency(item.totalCost || 0)}
+                        {formatCurrency((item.totalCost || 0) + taxPerItem)}
                       </Text>
                     </View>
+
+                    {/* Tax breakdown (shown when tax is entered) */}
+                    {taxPerItem > 0 && (
+                      <View style={styles.taxBreakdownRow}>
+                        <View style={[commonStyles.row, commonStyles.spaceBetween]}>
+                          <Text style={styles.taxBreakdownLabel}>Base ({item.quantity} × ${(item.unitCost || 0).toFixed(2)}):</Text>
+                          <Text style={styles.taxBreakdownValue}>{formatCurrency(item.totalCost || 0)}</Text>
+                        </View>
+                        <View style={[commonStyles.row, commonStyles.spaceBetween]}>
+                          <Text style={styles.taxBreakdownLabel}>
+                            Tax (÷{selectedItems.length} items = ${taxPerItem.toFixed(2)}):
+                          </Text>
+                          <Text style={[styles.taxBreakdownValue, { color: colors.warning }]}>{formatCurrency(taxPerItem)}</Text>
+                        </View>
+                        <View style={[commonStyles.row, commonStyles.spaceBetween]}>
+                          <Text style={[styles.taxBreakdownLabel, { fontWeight: '600' }]}>
+                            Landed cost/unit:
+                          </Text>
+                          <Text style={[styles.taxBreakdownValue, { fontWeight: '600', color: colors.text }]}>
+                            ${((item.unitCost || 0) + (item.quantity > 0 ? taxPerItem / item.quantity : 0)).toFixed(4)}/{item.unit}
+                          </Text>
+                        </View>
+                      </View>
+                    )}
                   </View>
                 ))}
               </View>
@@ -519,6 +564,33 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
               )}
             </View>
 
+            {/* Total Tax */}
+            <View style={{ marginBottom: spacing.md }}>
+              <Text style={styles.sectionLabel}>Total Tax (Optional)</Text>
+              <View style={[commonStyles.row, { alignItems: 'center' }]}>
+                <Text style={[typography.body, { color: colors.text, marginRight: spacing.xs }]}>$</Text>
+                <TextInput
+                  style={[commonStyles.textInput, { flex: 1 }]}
+                  placeholder="0.00"
+                  placeholderTextColor={colors.textSecondary}
+                  value={editingTax ? totalTax : (totalTax || '')}
+                  onFocus={() => setEditingTax(true)}
+                  onChangeText={(text) => {
+                    const cleaned = text.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1');
+                    setTotalTax(cleaned);
+                  }}
+                  onBlur={() => setEditingTax(false)}
+                  selectTextOnFocus
+                  keyboardType="decimal-pad"
+                />
+              </View>
+              {selectedItems.length > 0 && totalTaxAmount > 0 && (
+                <Text style={[typography.caption, { color: colors.textSecondary, marginTop: spacing.xs }]}>
+                  {formatCurrency(totalTaxAmount)} ÷ {selectedItems.length} items = {formatCurrency(taxPerItem)} per item
+                </Text>
+              )}
+            </View>
+
             {/* Notes */}
             <View style={{ marginBottom: spacing.lg }}>
               <Text style={styles.sectionLabel}>Notes (Optional)</Text>
@@ -539,10 +611,27 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
                   <Text style={[typography.body, { color: colors.text }]}>Total Items:</Text>
                   <Text style={[typography.body, { color: colors.text, fontWeight: '600' }]}>{totalItems}</Text>
                 </View>
-                <View style={[commonStyles.row, commonStyles.spaceBetween]}>
-                  <Text style={[typography.h3, { color: colors.text }]}>Total Value:</Text>
-                  <Text style={[typography.h2, { color: colors.success }]}>{formatCurrency(totalValue)}</Text>
-                </View>
+                {totalTaxAmount > 0 ? (
+                  <>
+                    <View style={[commonStyles.row, commonStyles.spaceBetween, { marginBottom: spacing.xs }]}>
+                      <Text style={[typography.body, { color: colors.text }]}>Subtotal:</Text>
+                      <Text style={[typography.body, { color: colors.text, fontWeight: '600' }]}>{formatCurrency(subtotal)}</Text>
+                    </View>
+                    <View style={[commonStyles.row, commonStyles.spaceBetween, { marginBottom: spacing.sm }]}>
+                      <Text style={[typography.body, { color: colors.warning }]}>Tax:</Text>
+                      <Text style={[typography.body, { color: colors.warning, fontWeight: '600' }]}>+ {formatCurrency(totalTaxAmount)}</Text>
+                    </View>
+                    <View style={[commonStyles.row, commonStyles.spaceBetween, { borderTopWidth: 1, borderTopColor: colors.success, paddingTop: spacing.sm }]}>
+                      <Text style={[typography.h3, { color: colors.text }]}>Total:</Text>
+                      <Text style={[typography.h2, { color: colors.success }]}>{formatCurrency(totalValue)}</Text>
+                    </View>
+                  </>
+                ) : (
+                  <View style={[commonStyles.row, commonStyles.spaceBetween]}>
+                    <Text style={[typography.h3, { color: colors.text }]}>Total Value:</Text>
+                    <Text style={[typography.h2, { color: colors.success }]}>{formatCurrency(totalValue)}</Text>
+                  </View>
+                )}
               </View>
             )}
 
@@ -611,6 +700,23 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+  },
+  taxBreakdownRow: {
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    gap: spacing.xs,
+  },
+  taxBreakdownLabel: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    flex: 1,
+  },
+  taxBreakdownValue: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    fontWeight: '500' as any,
   },
   addItemButton: {
     flexDirection: 'row',
