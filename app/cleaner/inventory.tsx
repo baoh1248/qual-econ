@@ -1,23 +1,28 @@
 
 import { Text, View, ScrollView, TouchableOpacity, TextInput, Alert, Modal, StyleSheet, Platform } from 'react-native';
-import { router } from 'expo-router';
-import { useState, useEffect, useRef } from 'react';
-import { commonStyles, colors, spacing, typography, buttonStyles, getContrastColor } from '../../styles/commonStyles';
+import { router, useFocusEffect } from 'expo-router';
+import { useState, useCallback, useRef } from 'react';
+import { commonStyles, colors, spacing, typography, buttonStyles } from '../../styles/commonStyles';
 import CompanyLogo from '../../components/CompanyLogo';
 import Icon from '../../components/Icon';
 import Button from '../../components/Button';
 import IconButton from '../../components/IconButton';
+import LoadingSpinner from '../../components/LoadingSpinner';
+import Toast from '../../components/Toast';
 import { useTheme } from '../../hooks/useTheme';
+import { useToast } from '../../hooks/useToast';
+import { supabase } from '../integrations/supabase/client';
+import uuid from 'react-native-uuid';
 
 interface InventoryItem {
   id: string;
   name: string;
   category: 'cleaning-supplies' | 'equipment' | 'safety';
-  currentStock: number;
-  minStock: number;
+  current_stock: number;
+  min_stock: number;
   unit: string;
-  lastUpdated: Date;
   location: string;
+  updated_at?: string;
 }
 
 interface InventoryChange {
@@ -115,71 +120,54 @@ const styles = StyleSheet.create({
 
 export default function InventoryScreen() {
   const { themeColor } = useTheme();
-  console.log('InventoryScreen rendered');
+  const { toast, showToast, hideToast } = useToast();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [showExitConfirmation, setShowExitConfirmation] = useState(false);
-  
-  const [inventory, setInventory] = useState<InventoryItem[]>([
-    {
-      id: '1',
-      name: 'All-Purpose Cleaner',
-      category: 'cleaning-supplies',
-      currentStock: 15,
-      minStock: 10,
-      unit: 'bottles',
-      lastUpdated: new Date(),
-      location: 'Storage Room A',
-    },
-    {
-      id: '2',
-      name: 'Vacuum Cleaner',
-      category: 'equipment',
-      currentStock: 3,
-      minStock: 2,
-      unit: 'units',
-      lastUpdated: new Date(),
-      location: 'Equipment Room',
-    },
-    {
-      id: '3',
-      name: 'Disinfectant Spray',
-      category: 'cleaning-supplies',
-      currentStock: 8,
-      minStock: 12,
-      unit: 'bottles',
-      lastUpdated: new Date(),
-      location: 'Storage Room A',
-    },
-    {
-      id: '4',
-      name: 'Safety Gloves',
-      category: 'safety',
-      currentStock: 25,
-      minStock: 20,
-      unit: 'pairs',
-      lastUpdated: new Date(),
-      location: 'Safety Cabinet',
-    },
-    {
-      id: '5',
-      name: 'Microfiber Cloths',
-      category: 'cleaning-supplies',
-      currentStock: 45,
-      minStock: 30,
-      unit: 'pieces',
-      lastUpdated: new Date(),
-      location: 'Storage Room B',
-    },
-  ]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [cleanerName, setCleanerName] = useState('');
 
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  // Snapshot stored once on load — never updated on state changes
   const originalInventory = useRef<InventoryItem[]>([]);
 
-  useEffect(() => {
-    originalInventory.current = inventory.map(item => ({ ...item }));
-    console.log('Original inventory stored:', originalInventory.current);
-  }, [inventory]);
+  const loadInventory = useCallback(async () => {
+    try {
+      setIsLoading(true);
+
+      const { getSession } = await import('../utils/auth');
+      const session = await getSession();
+      if (session) setCleanerName(session.name);
+
+      const { data, error } = await supabase
+        .from('inventory_items')
+        .select('id, name, category, current_stock, min_stock, unit, location, updated_at')
+        .order('name', { ascending: true });
+
+      if (error) {
+        console.error('Error loading inventory:', error);
+        showToast('Failed to load inventory', 'error');
+        return;
+      }
+
+      const items: InventoryItem[] = data || [];
+      setInventory(items);
+      originalInventory.current = items.map(item => ({ ...item }));
+    } catch (err) {
+      console.error('Error in loadInventory:', err);
+      showToast('Failed to load inventory', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadInventory();
+    }, [loadInventory])
+  );
 
   const categories = [
     { id: 'all', name: 'All Items', icon: 'apps' },
@@ -196,32 +184,28 @@ export default function InventoryScreen() {
 
   const getInventoryChanges = (): InventoryChange[] => {
     const changes: InventoryChange[] = [];
-    
+
     inventory.forEach(currentItem => {
       const originalItem = originalInventory.current.find(item => item.id === currentItem.id);
-      if (originalItem && originalItem.currentStock !== currentItem.currentStock) {
-        const difference = currentItem.currentStock - originalItem.currentStock;
+      if (originalItem && originalItem.current_stock !== currentItem.current_stock) {
+        const difference = currentItem.current_stock - originalItem.current_stock;
         changes.push({
           itemId: currentItem.id,
           itemName: currentItem.name,
-          originalStock: originalItem.currentStock,
-          newStock: currentItem.currentStock,
+          originalStock: originalItem.current_stock,
+          newStock: currentItem.current_stock,
           difference,
           unit: currentItem.unit,
         });
       }
     });
 
-    console.log('Inventory changes calculated:', changes);
     return changes;
   };
 
-  const hasChanges = () => {
-    return getInventoryChanges().length > 0;
-  };
+  const hasChanges = () => getInventoryChanges().length > 0;
 
   const handleBackPress = () => {
-    console.log('Back button pressed, checking for changes');
     if (hasChanges()) {
       setShowExitConfirmation(true);
     } else {
@@ -229,21 +213,51 @@ export default function InventoryScreen() {
     }
   };
 
-  const confirmExit = () => {
-    console.log('Exit confirmed, navigating back');
+  const confirmExit = async () => {
+    const changes = getInventoryChanges();
+
+    if (changes.length > 0) {
+      try {
+        setIsSaving(true);
+
+        for (const change of changes) {
+          const { error } = await supabase
+            .from('inventory_items')
+            .update({
+              current_stock: change.newStock,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', change.itemId);
+
+          if (error) {
+            console.error('Error saving stock change:', error);
+            showToast('Failed to save changes', 'error');
+            return;
+          }
+        }
+
+        showToast('Inventory updated', 'success');
+      } catch (err) {
+        console.error('Error saving inventory changes:', err);
+        showToast('Failed to save changes', 'error');
+        return;
+      } finally {
+        setIsSaving(false);
+      }
+    }
+
     setShowExitConfirmation(false);
     router.back();
   };
 
   const cancelExit = () => {
-    console.log('Exit cancelled');
     setShowExitConfirmation(false);
   };
 
   const getStockStatus = (item: InventoryItem) => {
-    if (item.currentStock <= item.minStock) {
+    if (item.current_stock <= item.min_stock) {
       return { status: 'low', color: colors.danger, text: 'Low Stock' };
-    } else if (item.currentStock <= item.minStock * 1.5) {
+    } else if (item.current_stock <= item.min_stock * 1.5) {
       return { status: 'medium', color: colors.warning, text: 'Medium Stock' };
     } else {
       return { status: 'good', color: colors.success, text: 'Good Stock' };
@@ -252,31 +266,48 @@ export default function InventoryScreen() {
 
   const requestRestock = (itemId: string) => {
     const item = inventory.find(i => i.id === itemId);
-    if (item) {
-      Alert.alert(
-        'Request Restock',
-        `Request restock for ${item.name}?`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { 
-            text: 'Request', 
-            onPress: () => {
-              console.log(`Restock requested for ${item.name}`);
-              Alert.alert('Request Sent', 'Restock request has been sent to supervisors');
+    if (!item) return;
+
+    Alert.alert(
+      'Request Restock',
+      `Request restock for ${item.name}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Request',
+          onPress: async () => {
+            try {
+              const restockQty = Math.max(item.min_stock - item.current_stock, 1);
+              const { error } = await supabase.from('restock_requests').insert({
+                id: uuid.v4() as string,
+                item_id: item.id,
+                item_name: item.name,
+                requested_by: cleanerName || 'Cleaner',
+                requested_at: new Date().toISOString(),
+                quantity: restockQty,
+                priority: item.current_stock === 0 ? 'high' : 'medium',
+                status: 'pending',
+                notes: 'Restock requested via cleaner app',
+              });
+
+              if (error) throw error;
+              showToast('Restock request sent to supervisors', 'success');
+            } catch (err) {
+              console.error('Error requesting restock:', err);
+              showToast('Failed to send request', 'error');
             }
           },
-        ]
-      );
-    }
+        },
+      ]
+    );
   };
 
   const updateStock = (itemId: string, newStock: number) => {
-    setInventory(prev => prev.map(item => 
-      item.id === itemId 
-        ? { ...item, currentStock: newStock, lastUpdated: new Date() }
+    setInventory(prev => prev.map(item =>
+      item.id === itemId
+        ? { ...item, current_stock: newStock }
         : item
     ));
-    console.log(`Stock updated for item ${itemId}: ${newStock}`);
   };
 
   const getCategoryIcon = (category: string) => {
@@ -286,7 +317,7 @@ export default function InventoryScreen() {
 
   const formatChangeText = (change: InventoryChange) => {
     const sign = change.difference > 0 ? '+' : '';
-    return `${sign}${change.difference} ${change.itemName}`;
+    return `${sign}${change.difference} ${change.unit}`;
   };
 
   const renderExitConfirmationModal = () => {
@@ -301,9 +332,9 @@ export default function InventoryScreen() {
         presentationStyle={Platform.OS === 'ios' ? 'overFullScreen' : undefined}
       >
         <View style={styles.modalOverlay}>
-          <TouchableOpacity 
-            style={styles.modalBackdrop} 
-            activeOpacity={1} 
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
             onPress={cancelExit}
           />
           <View style={styles.modalContent}>
@@ -320,19 +351,19 @@ export default function InventoryScreen() {
               {changes.length > 0 ? (
                 changes.map((change, index) => (
                   <View key={index} style={styles.changeItem}>
-                    <Icon 
-                      name={change.difference > 0 ? 'add-circle' : 'remove-circle'} 
-                      size={20} 
-                      style={{ 
-                        color: change.difference > 0 ? colors.success : colors.danger 
-                      }} 
+                    <Icon
+                      name={change.difference > 0 ? 'add-circle' : 'remove-circle'}
+                      size={20}
+                      style={{
+                        color: change.difference > 0 ? colors.success : colors.danger,
+                      }}
                     />
                     <Text style={styles.changeText}>
                       {change.itemName}
                     </Text>
                     <Text style={[
                       styles.changeAmount,
-                      change.difference > 0 ? styles.positiveChange : styles.negativeChange
+                      change.difference > 0 ? styles.positiveChange : styles.negativeChange,
                     ]}>
                       {formatChangeText(change)}
                     </Text>
@@ -351,12 +382,14 @@ export default function InventoryScreen() {
                 onPress={cancelExit}
                 variant="secondary"
                 style={{ flex: 1 }}
+                disabled={isSaving}
               />
               <Button
-                title="Confirm & Exit"
+                title={isSaving ? 'Saving...' : 'Confirm & Save'}
                 onPress={confirmExit}
                 variant="primary"
                 style={{ flex: 1 }}
+                disabled={isSaving}
               />
             </View>
           </View>
@@ -365,43 +398,51 @@ export default function InventoryScreen() {
     );
   };
 
+  if (isLoading) {
+    return (
+      <View style={[commonStyles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <LoadingSpinner />
+      </View>
+    );
+  }
+
   return (
     <View style={commonStyles.container}>
       <View style={[commonStyles.header, { backgroundColor: themeColor }]}>
-        <IconButton 
-          icon="arrow-back" 
-          onPress={handleBackPress} 
+        <IconButton
+          icon="arrow-back"
+          onPress={handleBackPress}
           variant="white"
         />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
           <CompanyLogo size="small" showText={false} variant="light" />
-          <Text style={commonStyles.headerTitle}>Inventory Management</Text>
+          <Text style={commonStyles.headerTitle}>Inventory</Text>
         </View>
-        <IconButton 
-          icon="qr-code" 
-          onPress={() => Alert.alert('Scan QR', 'QR code scanner would open here')}
-          variant="primary"
+        <IconButton
+          icon="refresh"
+          onPress={loadInventory}
+          variant="white"
         />
       </View>
 
       <View style={commonStyles.content}>
         <View style={{ marginBottom: spacing.md }}>
           <View style={[commonStyles.row, { position: 'relative' }]}>
-            <Icon 
-              name="search" 
-              size={20} 
-              style={{ 
-                position: 'absolute', 
-                left: spacing.md, 
+            <Icon
+              name="search"
+              size={20}
+              style={{
+                position: 'absolute',
+                left: spacing.md,
                 top: spacing.sm + 2,
                 zIndex: 1,
-                color: colors.textSecondary 
-              }} 
+                color: colors.textSecondary,
+              }}
             />
             <TextInput
               style={[
                 commonStyles.textInput,
-                { paddingLeft: spacing.xl + spacing.md, flex: 1 }
+                { paddingLeft: spacing.xl + spacing.md, flex: 1 },
               ]}
               placeholder="Search inventory..."
               placeholderTextColor={colors.textSecondary}
@@ -411,8 +452,8 @@ export default function InventoryScreen() {
           </View>
         </View>
 
-        <ScrollView 
-          horizontal 
+        <ScrollView
+          horizontal
           showsHorizontalScrollIndicator={false}
           style={{ marginBottom: spacing.md }}
         >
@@ -421,31 +462,31 @@ export default function InventoryScreen() {
               <TouchableOpacity
                 key={category.id}
                 style={[
-                  selectedCategory === category.id 
+                  selectedCategory === category.id
                     ? [buttonStyles.filterButtonActive, { backgroundColor: themeColor }]
-                    : buttonStyles.filterButton
+                    : buttonStyles.filterButton,
                 ]}
                 onPress={() => setSelectedCategory(category.id)}
               >
                 <View style={commonStyles.row}>
-                  <Icon 
-                    name={category.icon as any} 
-                    size={16} 
-                    style={{ 
-                      color: selectedCategory === category.id 
-                        ? colors.background 
+                  <Icon
+                    name={category.icon as any}
+                    size={16}
+                    style={{
+                      color: selectedCategory === category.id
+                        ? colors.background
                         : colors.text,
-                      marginRight: spacing.xs 
-                    }} 
+                      marginRight: spacing.xs,
+                    }}
                   />
                   <Text style={[
                     typography.caption,
-                    { 
-                      color: selectedCategory === category.id 
-                        ? colors.background 
+                    {
+                      color: selectedCategory === category.id
+                        ? colors.background
                         : colors.text,
-                      fontWeight: selectedCategory === category.id ? '700' : '600'
-                    }
+                      fontWeight: selectedCategory === category.id ? '700' : '600',
+                    },
                   ]}>
                     {category.name}
                   </Text>
@@ -458,19 +499,19 @@ export default function InventoryScreen() {
         {hasChanges() && (
           <View style={[
             commonStyles.card,
-            { 
+            {
               backgroundColor: colors.warning + '20',
               borderColor: colors.warning,
               borderWidth: 2,
-              marginBottom: spacing.md 
-            }
+              marginBottom: spacing.md,
+            },
           ]}>
             <View style={[commonStyles.row, { alignItems: 'center' }]}>
               <Icon name="warning" size={20} style={{ color: colors.warning, marginRight: spacing.sm }} />
               <Text style={[typography.caption, { color: colors.warning, flex: 1, fontWeight: '600' }]}>
                 You have unsaved inventory changes
               </Text>
-              <TouchableOpacity 
+              <TouchableOpacity
                 onPress={() => setShowExitConfirmation(true)}
                 style={[buttonStyles.iconButtonWarning]}
               >
@@ -489,10 +530,10 @@ export default function InventoryScreen() {
               <View key={item.id} style={[commonStyles.card, { marginBottom: spacing.sm }]}>
                 <View style={[commonStyles.row, commonStyles.spaceBetween, { marginBottom: spacing.sm }]}>
                   <View style={[commonStyles.row, { flex: 1 }]}>
-                    <Icon 
-                      name={getCategoryIcon(item.category) as any} 
-                      size={24} 
-                      style={{ color: themeColor, marginRight: spacing.md }} 
+                    <Icon
+                      name={getCategoryIcon(item.category) as any}
+                      size={24}
+                      style={{ color: themeColor, marginRight: spacing.md }}
                     />
                     <View style={{ flex: 1 }}>
                       <Text style={[typography.body, { color: colors.text, fontWeight: '600' }]}>
@@ -505,11 +546,11 @@ export default function InventoryScreen() {
                   </View>
                   <View style={[
                     commonStyles.statusBadge,
-                    { backgroundColor: stockStatus.color + '20', borderColor: stockStatus.color }
+                    { backgroundColor: stockStatus.color + '20', borderColor: stockStatus.color },
                   ]}>
                     <Text style={[
                       typography.small,
-                      { color: stockStatus.color, fontWeight: '600' }
+                      { color: stockStatus.color, fontWeight: '600' },
                     ]}>
                       {stockStatus.text}
                     </Text>
@@ -520,13 +561,13 @@ export default function InventoryScreen() {
                   <View>
                     <Text style={[typography.caption, { color: colors.textSecondary }]}>Current Stock</Text>
                     <Text style={[typography.h3, { color: colors.text }]}>
-                      {item.currentStock} {item.unit}
+                      {item.current_stock} {item.unit}
                     </Text>
                   </View>
                   <View>
                     <Text style={[typography.caption, { color: colors.textSecondary }]}>Min Stock</Text>
                     <Text style={[typography.body, { color: colors.textSecondary }]}>
-                      {item.minStock} {item.unit}
+                      {item.min_stock} {item.unit}
                     </Text>
                   </View>
                 </View>
@@ -534,31 +575,29 @@ export default function InventoryScreen() {
                 <View style={[commonStyles.row, { gap: spacing.sm }]}>
                   <IconButton
                     icon="remove"
-                    onPress={() => updateStock(item.id, Math.max(0, item.currentStock - 1))}
+                    onPress={() => updateStock(item.id, Math.max(0, item.current_stock - 1))}
                     variant="primary"
                     size="small"
                     style={{ flex: 1 }}
                   />
 
-                  <View style={[
-                    {
-                      flex: 2,
-                      paddingVertical: spacing.sm,
-                      backgroundColor: colors.backgroundAlt,
-                      borderRadius: 8,
-                      alignItems: 'center',
-                      borderWidth: 2,
-                      borderColor: colors.border,
-                    }
-                  ]}>
+                  <View style={{
+                    flex: 2,
+                    paddingVertical: spacing.sm,
+                    backgroundColor: colors.backgroundAlt,
+                    borderRadius: 8,
+                    alignItems: 'center',
+                    borderWidth: 2,
+                    borderColor: colors.border,
+                  }}>
                     <Text style={[typography.body, { color: colors.text, fontWeight: '600' }]}>
-                      {item.currentStock}
+                      {item.current_stock}
                     </Text>
                   </View>
 
                   <IconButton
                     icon="add"
-                    onPress={() => updateStock(item.id, item.currentStock + 1)}
+                    onPress={() => updateStock(item.id, item.current_stock + 1)}
                     variant="primary"
                     size="small"
                     style={{ flex: 1 }}
@@ -576,9 +615,11 @@ export default function InventoryScreen() {
                   )}
                 </View>
 
-                <Text style={[typography.small, { color: colors.textSecondary, marginTop: spacing.sm }]}>
-                  Last updated: {item.lastUpdated.toLocaleString()}
-                </Text>
+                {item.updated_at && (
+                  <Text style={[typography.small, { color: colors.textSecondary, marginTop: spacing.sm }]}>
+                    Last updated: {new Date(item.updated_at).toLocaleString()}
+                  </Text>
+                )}
               </View>
             );
           })}
@@ -598,6 +639,13 @@ export default function InventoryScreen() {
       </View>
 
       {renderExitConfirmationModal()}
+
+      <Toast
+        visible={toast.visible}
+        message={toast.message}
+        type={toast.type}
+        onHide={hideToast}
+      />
     </View>
   );
 }
