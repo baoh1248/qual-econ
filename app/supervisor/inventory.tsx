@@ -567,16 +567,20 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border + '30',
   },
   bvItemName: {
-    flex: 1,
     fontSize: typography.sizes.sm,
     fontWeight: '600',
     color: colors.text,
-    marginLeft: spacing.sm,
   },
   bvItemNumber: {
     fontSize: 10,
     color: colors.textSecondary,
-    marginTop: 2,
+    marginTop: 1,
+  },
+  itemProductNumber: {
+    fontSize: 10,
+    color: colors.textSecondary,
+    fontWeight: '500',
+    marginTop: 1,
   },
   bvItemStock: {
     paddingHorizontal: spacing.sm,
@@ -1500,9 +1504,7 @@ export default function SupervisorInventoryScreen() {
                       <Icon name={getCategoryIcon(item.category)} size={32} color={themeColor} />
                       <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
                       {item.item_number && (
-                        <Text style={[styles.infoText, { color: themeColor, fontWeight: '600', fontSize: 10 }]}>
-                          {item.item_number}
-                        </Text>
+                        <Text style={styles.itemProductNumber}>{item.item_number}</Text>
                       )}
                     </View>
 
@@ -1613,9 +1615,10 @@ export default function SupervisorInventoryScreen() {
                                 <Icon name={getCategoryIcon(item.category)} size={20} style={{ color: themeColor }} />
                                 <View style={{ flex: 1, marginLeft: spacing.sm }}>
                                   <Text style={styles.bvItemName}>{item.name}</Text>
-                                  <Text style={styles.bvItemNumber}>
-                                    {item.item_number ? item.item_number + ' · ' : ''}{item.location}
-                                  </Text>
+                                  {item.item_number && (
+                                    <Text style={styles.itemProductNumber}>{item.item_number}</Text>
+                                  )}
+                                  <Text style={styles.bvItemNumber}>{item.location}</Text>
                                 </View>
                                 <View style={[styles.bvItemStock, { backgroundColor: stockStatus.color + '20' }]}>
                                   <Text style={[styles.bvItemStockText, { color: stockStatus.color }]}>
@@ -1672,9 +1675,10 @@ export default function SupervisorInventoryScreen() {
                           <Icon name={getCategoryIcon(item.category)} size={20} style={{ color: colors.textSecondary }} />
                           <View style={{ flex: 1, marginLeft: spacing.sm }}>
                             <Text style={styles.bvItemName}>{item.name}</Text>
-                            <Text style={styles.bvItemNumber}>
-                              {item.item_number ? item.item_number + ' · ' : ''}{item.location}
-                            </Text>
+                            {item.item_number && (
+                              <Text style={styles.itemProductNumber}>{item.item_number}</Text>
+                            )}
+                            <Text style={styles.bvItemNumber}>{item.location}</Text>
                           </View>
                           <View style={[styles.bvItemStock, { backgroundColor: stockStatus.color + '20' }]}>
                             <Text style={[styles.bvItemStockText, { color: stockStatus.color }]}>
