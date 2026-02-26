@@ -101,11 +101,11 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.xxl,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
     backgroundColor: colors.primary,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
@@ -116,27 +116,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: spacing.md,
+    marginBottom: spacing.xs,
   },
   headerTitle: {
-    fontSize: 28,
+    fontSize: 20,
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: 0.5,
-    marginTop: spacing.sm,
+    marginTop: 2,
   },
   headerSubtitle: {
-    fontSize: 14,
+    fontSize: 12,
     color: 'rgba(255,255,255,0.9)',
-    marginTop: spacing.xs,
+    marginTop: 2,
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.95)',
-    borderRadius: 16,
+    borderRadius: 12,
     paddingHorizontal: spacing.md,
-    marginTop: spacing.md,
+    marginTop: spacing.xs,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -148,14 +148,14 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    paddingVertical: spacing.md,
-    fontSize: 16,
+    paddingVertical: spacing.sm,
+    fontSize: 14,
     color: colors.text,
   },
   actionButtonsContainer: {
-    marginTop: -spacing.xl,
+    marginTop: -spacing.md,
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.sm,
     gap: spacing.sm,
     flexDirection: 'row',
   },
@@ -165,31 +165,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#FFFFFF',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.sm,
-    borderRadius: 16,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    borderRadius: 12,
     gap: spacing.xs,
     elevation: 3,
   },
   actionButtonText: {
     color: colors.primary,
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
   },
   filterContainer: {
     flexDirection: 'row',
     paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.md,
-    gap: spacing.sm,
+    paddingBottom: spacing.xs,
+    gap: spacing.xs,
   },
   filterChip: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderRadius: 20,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: 16,
     backgroundColor: '#FFFFFF',
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: '#E0E6ED',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -203,7 +203,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   filterChipText: {
-    fontSize: 14,
+    fontSize: 12,
     color: colors.text,
     fontWeight: '600',
   },
@@ -214,42 +214,42 @@ const styles = StyleSheet.create({
   statsContainer: {
     flexDirection: 'row',
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.xs,
     gap: spacing.sm,
   },
   statCard: {
     flex: 1,
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: spacing.md,
+    borderRadius: 12,
+    padding: spacing.sm,
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
-    borderLeftWidth: 4,
+    borderLeftWidth: 3,
   },
   statIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.sm,
+    marginBottom: 2,
   },
   statValue: {
-    fontSize: 24,
+    fontSize: 16,
     fontWeight: '800',
     color: colors.text,
-    marginBottom: 4,
+    marginBottom: 2,
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: 10,
     color: colors.textSecondary,
     fontWeight: '600',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.4,
   },
   listContainer: {
     paddingHorizontal: spacing.lg,
@@ -461,7 +461,7 @@ const styles = StyleSheet.create({
   viewToggleContainer: {
     flexDirection: 'row',
     paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
+    paddingBottom: spacing.xs,
     gap: spacing.sm,
   },
   viewToggleBtn: {
@@ -470,9 +470,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.xs,
-    paddingVertical: spacing.sm,
-    borderRadius: 12,
-    borderWidth: 2,
+    paddingVertical: 5,
+    borderRadius: 10,
+    borderWidth: 1.5,
     borderColor: '#E0E6ED',
     backgroundColor: '#FFFFFF',
   },
@@ -481,11 +481,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   viewToggleBtnText: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '700',
     color: colors.text,
     textTransform: 'uppercase',
-    letterSpacing: 0.4,
+    letterSpacing: 0.3,
   },
   viewToggleBtnTextActive: {
     color: '#FFFFFF',
@@ -1309,7 +1309,7 @@ export default function SupervisorInventoryScreen() {
             variant="white"
           />
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-            <Icon name="cube" size={32} style={{ color: '#FFFFFF' }} />
+            <Icon name="cube" size={22} style={{ color: '#FFFFFF' }} />
           </View>
           <View style={{ width: 40 }} />
         </View>
@@ -1323,7 +1323,7 @@ export default function SupervisorInventoryScreen() {
 
         {/* Search Bar in Header */}
         <View style={styles.searchContainer}>
-          <Icon name="search" size={22} style={[styles.searchIcon, { color: themeColor }]} />
+          <Icon name="search" size={18} style={[styles.searchIcon, { color: themeColor }]} />
           <TextInput
             style={styles.searchInput}
             placeholder="Search inventory..."
@@ -1340,7 +1340,7 @@ export default function SupervisorInventoryScreen() {
           style={styles.actionButton}
           onPress={() => setShowAddModal(true)}
         >
-          <Icon name="add" size={20} color={themeColor} />
+          <Icon name="add" size={16} color={themeColor} />
           <Text style={[styles.actionButtonText, { color: themeColor }]}>Add Item</Text>
         </TouchableOpacity>
 
@@ -1348,7 +1348,7 @@ export default function SupervisorInventoryScreen() {
           style={styles.actionButton}
           onPress={() => setShowSendItemsModal(true)}
         >
-          <Icon name="send" size={20} color={themeColor} />
+          <Icon name="send" size={16} color={themeColor} />
           <Text style={[styles.actionButtonText, { color: themeColor }]}>Send Items</Text>
         </TouchableOpacity>
 
@@ -1356,7 +1356,7 @@ export default function SupervisorInventoryScreen() {
           style={styles.actionButton}
           onPress={() => setShowTransferHistoryModal(true)}
         >
-          <Icon name="create" size={20} color={themeColor} />
+          <Icon name="create" size={16} color={themeColor} />
           <Text style={[styles.actionButtonText, { color: themeColor }]}>Edit Transfer</Text>
         </TouchableOpacity>
 
@@ -1364,7 +1364,7 @@ export default function SupervisorInventoryScreen() {
           style={[styles.actionButton, { borderColor: colors.success }]}
           onPress={() => setShowReceiveSupplyModal(true)}
         >
-          <Icon name="download" size={20} color={colors.success} />
+          <Icon name="download" size={16} color={colors.success} />
           <Text style={[styles.actionButtonText, { color: colors.success }]}>Supply Received</Text>
         </TouchableOpacity>
 
@@ -1372,7 +1372,7 @@ export default function SupervisorInventoryScreen() {
           style={styles.actionButton}
           onPress={() => router.push('/supervisor/inventory-transfer-statements')}
         >
-          <Icon name="stats-chart" size={20} color={themeColor} />
+          <Icon name="stats-chart" size={16} color={themeColor} />
           <Text style={[styles.actionButtonText, { color: themeColor }]}>Statements</Text>
         </TouchableOpacity>
       </View>
@@ -1442,14 +1442,14 @@ export default function SupervisorInventoryScreen() {
           style={[styles.viewToggleBtn, viewMode === 'items' && [styles.viewToggleBtnActive, { borderColor: themeColor, backgroundColor: themeColor }]]}
           onPress={() => setViewMode('items')}
         >
-          <Icon name="grid" size={16} color={viewMode === 'items' ? '#FFFFFF' : colors.text} />
+          <Icon name="grid" size={14} color={viewMode === 'items' ? '#FFFFFF' : colors.text} />
           <Text style={[styles.viewToggleBtnText, viewMode === 'items' && styles.viewToggleBtnTextActive]}>Items</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.viewToggleBtn, viewMode === 'by-building' && [styles.viewToggleBtnActive, { borderColor: themeColor, backgroundColor: themeColor }]]}
           onPress={() => setViewMode('by-building')}
         >
-          <Icon name="business" size={16} color={viewMode === 'by-building' ? '#FFFFFF' : colors.text} />
+          <Icon name="business" size={14} color={viewMode === 'by-building' ? '#FFFFFF' : colors.text} />
           <Text style={[styles.viewToggleBtnText, viewMode === 'by-building' && styles.viewToggleBtnTextActive]}>By Building</Text>
         </TouchableOpacity>
       </View>
@@ -1458,21 +1458,21 @@ export default function SupervisorInventoryScreen() {
       <View style={styles.statsContainer}>
         <View style={[styles.statCard, { borderLeftColor: themeColor }]}>
           <View style={[styles.statIconContainer, { backgroundColor: themeColor + '15' }]}>
-            <Icon name="cube" size={24} style={{ color: themeColor }} />
+            <Icon name="cube" size={18} style={{ color: themeColor }} />
           </View>
           <Text style={styles.statValue}>{stats.totalItems}</Text>
           <Text style={styles.statLabel}>Total Items</Text>
         </View>
         <View style={[styles.statCard, { borderLeftColor: colors.danger }]}>
           <View style={[styles.statIconContainer, { backgroundColor: colors.danger + '15' }]}>
-            <Icon name="alert-circle" size={24} style={{ color: colors.danger }} />
+            <Icon name="alert-circle" size={18} style={{ color: colors.danger }} />
           </View>
           <Text style={[styles.statValue, { color: colors.danger }]}>{stats.lowStock}</Text>
           <Text style={styles.statLabel}>Low Stock</Text>
         </View>
         <View style={[styles.statCard, { borderLeftColor: colors.success }]}>
           <View style={[styles.statIconContainer, { backgroundColor: colors.success + '15' }]}>
-            <Icon name="cash" size={24} style={{ color: colors.success }} />
+            <Icon name="cash" size={18} style={{ color: colors.success }} />
           </View>
           <Text style={[styles.statValue, { color: colors.success }]}>${stats.totalValue.toFixed(0)}</Text>
           <Text style={styles.statLabel}>Value</Text>
