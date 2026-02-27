@@ -12,6 +12,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Icon from '../../components/Icon';
 import Button from '../../components/Button';
 import { supabase } from '../integrations/supabase/client';
+import uuid from 'react-native-uuid';
 import { useTheme } from '../../hooks/useTheme';
 import { useGeofenceClockInOut } from '../../hooks/useGeofenceClockInOut';
 import { GeofenceShiftInfo } from '../../types/clockRecord';
@@ -712,12 +713,27 @@ export default function CleanerDashboard() {
       'This will send an emergency notification to all supervisors. Continue?',
       [
         { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Send Alert', 
+        {
+          text: 'Send Alert',
           style: 'destructive',
-          onPress: () => {
-            showToast('Emergency alert sent!', 'success');
-          }
+          onPress: async () => {
+            try {
+              const { error } = await supabase.from('shift_notifications').insert({
+                id: uuid.v4() as string,
+                notification_type: 'emergency_alert',
+                message: `🚨 EMERGENCY ALERT from ${profile.name || 'a cleaner'}. Immediate assistance required.`,
+                is_read: false,
+                is_dismissed: false,
+                created_at: new Date().toISOString(),
+              });
+
+              if (error) throw error;
+              showToast('Emergency alert sent to supervisors', 'success');
+            } catch (err) {
+              console.error('Error sending emergency alert:', err);
+              showToast('Failed to send alert. Please call your supervisor directly.', 'error');
+            }
+          },
         },
       ]
     );
@@ -1140,20 +1156,29 @@ export default function CleanerDashboard() {
                   </View>
                 ) : null}
 
-                <View style={[styles.logoutModalButtons, { marginTop: spacing.lg }]}>
+                <View style={[styles.logoutModalButtons, { marginTop: spacing.lg, flexWrap: 'wrap' }]}>
+                  <Button
+                    title="Open Task"
+                    onPress={() => {
+                      handleCloseShiftModal();
+                      router.push(`/cleaner/task/${selectedShift.id}` as any);
+                    }}
+                    variant="primary"
+                    style={{ flex: 1, minWidth: 120 }}
+                  />
                   {selectedShift.address && (
                     <Button
-                      title="Get Directions"
+                      title="Directions"
                       onPress={() => handleOpenMaps(selectedShift.address)}
-                      variant="primary"
-                      style={{ flex: 1 }}
+                      variant="secondary"
+                      style={{ flex: 1, minWidth: 120 }}
                     />
                   )}
                   <Button
                     title="Close"
                     onPress={handleCloseShiftModal}
                     variant="secondary"
-                    style={{ flex: 1 }}
+                    style={{ flex: 1, minWidth: 120 }}
                   />
                 </View>
               </>

@@ -1,13 +1,17 @@
 
 import { Text, View, ScrollView, TouchableOpacity, Alert, TextInput, Image, Modal, StyleSheet, Platform, Linking } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { commonStyles, colors, spacing, typography, statusColors } from '../../../styles/commonStyles';
 import CompanyLogo from '../../../components/CompanyLogo';
 import Icon from '../../../components/Icon';
 import Button from '../../../components/Button';
+import LoadingSpinner from '../../../components/LoadingSpinner';
+import Toast from '../../../components/Toast';
+import { useToast } from '../../../hooks/useToast';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
+import { supabase } from '../../integrations/supabase/client';
 
 interface PhotoDoc {
   id: string;
@@ -35,35 +39,35 @@ interface TaskInfo {
   gpsLocation?: { latitude: number; longitude: number };
 }
 
+const DEFAULT_CHECKLIST = [
+  'Vacuum all carpeted areas',
+  'Empty all trash bins and replace liners',
+  'Clean and sanitize restrooms',
+  'Wipe down all surfaces and desks',
+  'Clean windows and glass surfaces',
+  'Mop hard floor areas',
+];
+
 const photoCategories = [
   { key: 'before', label: 'Before', icon: 'time', color: colors.warning },
   { key: 'after', label: 'After', icon: 'checkmark-circle', color: colors.success },
 ];
 
+const mapDbStatus = (dbStatus: string): TaskInfo['status'] => {
+  switch (dbStatus) {
+    case 'in-progress': return 'in-progress';
+    case 'completed': return 'completed';
+    case 'cancelled': return 'overdue';
+    default: return 'pending';
+  }
+};
+
 export default function TaskDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  console.log('TaskDetail rendered for task:', id);
+  const { toast, showToast, hideToast } = useToast();
 
-  const [task, setTask] = useState<TaskInfo>({
-    id: id || '1',
-    title: 'Office Building A - Floor 3',
-    location: '123 Business St, Suite 300',
-    address: '123 Business St, Suite 300, New York, NY 10001',
-    status: 'pending',
-    priority: 'high',
-    estimatedTime: 120,
-    description: 'Complete cleaning of office spaces, conference rooms, and restrooms. Pay special attention to high-touch surfaces and ensure all areas meet our quality standards.',
-    checklistItems: [
-      { id: '1', text: 'Vacuum all carpeted areas', completed: false },
-      { id: '2', text: 'Empty all trash bins and replace liners', completed: false },
-      { id: '3', text: 'Clean and sanitize restrooms', completed: false },
-      { id: '4', text: 'Wipe down all surfaces and desks', completed: false },
-      { id: '5', text: 'Clean windows and glass surfaces', completed: false },
-      { id: '6', text: 'Mop hard floor areas', completed: false },
-    ],
-    photos: [],
-    notes: '',
-  });
+  const [isLoading, setIsLoading] = useState(true);
+  const [task, setTask] = useState<TaskInfo | null>(null);
 
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
@@ -72,6 +76,57 @@ export default function TaskDetail() {
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [photoDescription, setPhotoDescription] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<PhotoDoc['category']>('before');
+
+  const loadTask = useCallback(async () => {
+    if (!id) return;
+
+    try {
+      setIsLoading(true);
+
+      const { data, error } = await supabase
+        .from('schedule_entries')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (error || !data) {
+        console.error('Error loading task:', error);
+        showToast('Failed to load task details', 'error');
+        return;
+      }
+
+      setTask({
+        id: data.id,
+        title: data.client_name || data.clientName || 'Cleaning Task',
+        location: data.building_name || data.buildingName || '',
+        address: data.address || '',
+        status: mapDbStatus(data.status),
+        priority: data.priority || 'medium',
+        estimatedTime: data.estimated_duration || data.hours * 60 || 60,
+        description: data.notes || 'Complete all cleaning tasks as scheduled.',
+        checklistItems: DEFAULT_CHECKLIST.map((text, i) => ({
+          id: String(i + 1),
+          text,
+          completed: false,
+        })),
+        photos: [],
+        notes: '',
+      });
+
+      if (data.status === 'in-progress') {
+        setIsTimerRunning(true);
+      }
+    } catch (err) {
+      console.error('Error in loadTask:', err);
+      showToast('Failed to load task details', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    loadTask();
+  }, [loadTask]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -91,75 +146,45 @@ export default function TaskDetail() {
   };
 
   const handleAddressClick = (address: string) => {
-    console.log('Address clicked:', address);
-    
     Alert.alert(
       'Get Directions',
       `Do you want to open maps and get directions to:\n\n${address}`,
       [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-          onPress: () => console.log('Navigation cancelled')
-        },
+        { text: 'Cancel', style: 'cancel' },
         {
           text: 'Open Maps',
           onPress: async () => {
             try {
-              console.log('Opening maps for address:', address);
-              
-              // Encode the address for URL
               const encodedAddress = encodeURIComponent(address);
-              
-              // Try different map URLs based on platform
               let mapUrl = '';
-              
+
               if (Platform.OS === 'ios') {
-                // iOS: Try Apple Maps first, fallback to Google Maps
                 mapUrl = `maps://maps.apple.com/?q=${encodedAddress}`;
                 const canOpen = await Linking.canOpenURL(mapUrl);
-                
                 if (!canOpen) {
-                  // Fallback to Google Maps on iOS
                   mapUrl = `comgooglemaps://?q=${encodedAddress}`;
                   const canOpenGoogle = await Linking.canOpenURL(mapUrl);
-                  
                   if (!canOpenGoogle) {
-                    // Final fallback to web Google Maps
                     mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`;
                   }
                 }
               } else if (Platform.OS === 'android') {
-                // Android: Use geo: URI which opens default maps app
                 mapUrl = `geo:0,0?q=${encodedAddress}`;
               } else {
-                // Web: Use Google Maps web URL
                 mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`;
               }
-              
-              console.log('Opening URL:', mapUrl);
-              
+
               const supported = await Linking.canOpenURL(mapUrl);
-              
               if (supported) {
                 await Linking.openURL(mapUrl);
-                console.log('Maps opened successfully');
               } else {
-                // Final fallback to web Google Maps
-                const webMapUrl = `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`;
-                await Linking.openURL(webMapUrl);
-                console.log('Opened web maps as fallback');
+                await Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodedAddress}`);
               }
             } catch (error) {
-              console.error('Error opening maps:', error);
-              Alert.alert(
-                'Error',
-                'Unable to open maps. Please check if you have a maps application installed.',
-                [{ text: 'OK' }]
-              );
+              Alert.alert('Error', 'Unable to open maps. Please check if you have a maps application installed.');
             }
-          }
-        }
+          },
+        },
       ]
     );
   };
@@ -173,7 +198,22 @@ export default function TaskDetail() {
       }
 
       const location = await Location.getCurrentPositionAsync({});
-      setTask(prev => ({
+
+      const { error } = await supabase
+        .from('schedule_entries')
+        .update({
+          status: 'in-progress',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id);
+
+      if (error) {
+        console.error('Error updating task status:', error);
+        showToast('Failed to start task', 'error');
+        return;
+      }
+
+      setTask(prev => prev ? ({
         ...prev,
         status: 'in-progress',
         startTime: new Date(),
@@ -181,9 +221,9 @@ export default function TaskDetail() {
           latitude: location.coords.latitude,
           longitude: location.coords.longitude,
         },
-      }));
+      }) : null);
       setIsTimerRunning(true);
-      console.log('Task started with GPS location:', location.coords);
+      showToast('Task started', 'success');
     } catch (error) {
       console.error('Error starting task:', error);
       Alert.alert('Error', 'Failed to get location. Please try again.');
@@ -191,10 +231,12 @@ export default function TaskDetail() {
   };
 
   const completeTask = () => {
+    if (!task) return;
+
     const completedItems = task.checklistItems.filter(item => item.completed).length;
     const totalItems = task.checklistItems.length;
     const hasAfterPhotos = task.photos.some(photo => photo.category === 'after');
-    
+
     if (completedItems < totalItems) {
       Alert.alert(
         'Incomplete Checklist',
@@ -218,26 +260,36 @@ export default function TaskDetail() {
     }
   };
 
-  const finishTask = () => {
-    setTask(prev => ({
-      ...prev,
-      status: 'completed',
-      endTime: new Date(),
-    }));
+  const finishTask = async () => {
+    const { error } = await supabase
+      .from('schedule_entries')
+      .update({
+        status: 'completed',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error completing task:', error);
+      showToast('Failed to save completion', 'error');
+      return;
+    }
+
+    setTask(prev => prev ? ({ ...prev, status: 'completed', endTime: new Date() }) : null);
     setIsTimerRunning(false);
-    console.log('Task completed');
+
     Alert.alert('Task Completed', 'Great job! Task has been marked as completed.', [
-      { text: 'OK', onPress: () => router.back() }
+      { text: 'OK', onPress: () => router.back() },
     ]);
   };
 
   const toggleChecklistItem = (itemId: string) => {
-    setTask(prev => ({
+    setTask(prev => prev ? ({
       ...prev,
       checklistItems: prev.checklistItems.map(item =>
         item.id === itemId ? { ...item, completed: !item.completed } : item
       ),
-    }));
+    }) : null);
   };
 
   const takePhoto = async (category: PhotoDoc['category'] = 'before') => {
@@ -257,7 +309,7 @@ export default function TaskDetail() {
 
       if (!result.canceled && result.assets[0]) {
         const location = await Location.getCurrentPositionAsync({}).catch(() => null);
-        
+
         const newPhoto: PhotoDoc = {
           id: Date.now().toString(),
           uri: result.assets[0].uri,
@@ -270,14 +322,13 @@ export default function TaskDetail() {
           } : undefined,
         };
 
-        setTask(prev => ({
+        setTask(prev => prev ? ({
           ...prev,
           photos: [...prev.photos, newPhoto],
-        }));
-        
+        }) : null);
+
         setPhotoDescription('');
         setShowCategoryModal(false);
-        console.log('Photo added:', newPhoto);
       }
     } catch (error) {
       console.error('Error taking photo:', error);
@@ -291,16 +342,16 @@ export default function TaskDetail() {
       'Are you sure you want to delete this photo?',
       [
         { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Delete', 
+        {
+          text: 'Delete',
           style: 'destructive',
           onPress: () => {
-            setTask(prev => ({
+            setTask(prev => prev ? ({
               ...prev,
               photos: prev.photos.filter(photo => photo.id !== photoId),
-            }));
+            }) : null);
             setShowPhotoModal(false);
-          }
+          },
         },
       ]
     );
@@ -327,9 +378,29 @@ export default function TaskDetail() {
     }
   };
 
+  if (isLoading) {
+    return (
+      <View style={[commonStyles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <LoadingSpinner />
+      </View>
+    );
+  }
+
+  if (!task) {
+    return (
+      <View style={[commonStyles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <Icon name="alert-circle" size={48} style={{ color: colors.danger, marginBottom: spacing.md }} />
+        <Text style={[typography.body, { color: colors.textSecondary, textAlign: 'center' }]}>
+          Task not found
+        </Text>
+        <Button title="Go Back" onPress={() => router.back()} variant="primary" style={{ marginTop: spacing.lg }} />
+      </View>
+    );
+  }
+
   const completedItems = task.checklistItems.filter(item => item.completed).length;
   const totalItems = task.checklistItems.length;
-  const progressPercentage = (completedItems / totalItems) * 100;
+  const progressPercentage = totalItems > 0 ? (completedItems / totalItems) * 100 : 0;
 
   const photosByCategory = photoCategories.map(category => ({
     ...category,
@@ -361,20 +432,26 @@ export default function TaskDetail() {
             </View>
           </View>
 
-          {/* Clickable Address */}
-          <TouchableOpacity 
-            style={styles.addressContainer}
-            onPress={() => handleAddressClick(task.address)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.addressContent}>
-              <Icon name="location" size={20} style={{ color: colors.primary, marginRight: spacing.sm }} />
-              <Text style={styles.addressText}>{task.address}</Text>
+          {task.address ? (
+            <TouchableOpacity
+              style={styles.addressContainer}
+              onPress={() => handleAddressClick(task.address)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.addressContent}>
+                <Icon name="location" size={20} style={{ color: colors.primary, marginRight: spacing.sm }} />
+                <Text style={styles.addressText}>{task.address}</Text>
+              </View>
+              <View style={styles.navigationButton}>
+                <Icon name="navigate" size={18} style={{ color: colors.primary }} />
+              </View>
+            </TouchableOpacity>
+          ) : task.location ? (
+            <View style={[commonStyles.row, { marginBottom: spacing.sm }]}>
+              <Icon name="location" size={16} style={{ color: colors.textSecondary, marginRight: spacing.sm }} />
+              <Text style={[typography.body, { color: colors.textSecondary }]}>{task.location}</Text>
             </View>
-            <View style={styles.navigationButton}>
-              <Icon name="navigate" size={18} style={{ color: colors.primary }} />
-            </View>
-          </TouchableOpacity>
+          ) : null}
 
           <View style={[commonStyles.row, commonStyles.spaceBetween, { marginTop: spacing.md, marginBottom: spacing.md }]}>
             <View style={commonStyles.row}>
@@ -396,7 +473,7 @@ export default function TaskDetail() {
 
           {/* Timer */}
           {task.status === 'in-progress' && (
-            <View style={[{ backgroundColor: colors.backgroundAlt, padding: spacing.md, borderRadius: 8, marginBottom: spacing.md }]}>
+            <View style={{ backgroundColor: colors.backgroundAlt, padding: spacing.md, borderRadius: 8, marginBottom: spacing.md }}>
               <View style={[commonStyles.row, commonStyles.spaceBetween]}>
                 <Text style={[typography.body, { color: colors.text }]}>Time Elapsed</Text>
                 <Text style={[typography.h3, { color: colors.primary }]}>{formatTime(elapsedTime)}</Text>
@@ -406,11 +483,11 @@ export default function TaskDetail() {
 
           {/* Action Buttons */}
           {task.status === 'pending' && (
-            <Button text="Start Task" onPress={startTask} style={{ backgroundColor: colors.success }} />
+            <Button title="Start Task" onPress={startTask} style={{ backgroundColor: colors.success }} />
           )}
-          
+
           {task.status === 'in-progress' && (
-            <Button text="Complete Task" onPress={completeTask} style={{ backgroundColor: colors.primary }} />
+            <Button title="Complete Task" onPress={completeTask} style={{ backgroundColor: colors.primary }} />
           )}
         </View>
 
@@ -422,15 +499,15 @@ export default function TaskDetail() {
               {completedItems}/{totalItems} completed
             </Text>
           </View>
-          
+
           <View style={{ backgroundColor: colors.backgroundAlt, height: 8, borderRadius: 4, marginBottom: spacing.md }}>
-            <View 
-              style={{ 
-                backgroundColor: colors.success, 
-                height: 8, 
-                borderRadius: 4, 
-                width: `${progressPercentage}%` 
-              }} 
+            <View
+              style={{
+                backgroundColor: colors.success,
+                height: 8,
+                borderRadius: 4,
+                width: `${progressPercentage}%`,
+              }}
             />
           </View>
 
@@ -442,45 +519,43 @@ export default function TaskDetail() {
         {/* Checklist */}
         <View style={[commonStyles.card, { marginBottom: spacing.md }]}>
           <Text style={[typography.h3, { color: colors.text, marginBottom: spacing.md }]}>Checklist</Text>
-          
+
           {task.checklistItems.map(item => (
             <TouchableOpacity
               key={item.id}
               style={[
                 commonStyles.row,
-                { 
+                {
                   paddingVertical: spacing.sm,
                   borderBottomWidth: 1,
                   borderBottomColor: colors.border,
-                }
+                },
               ]}
               onPress={() => toggleChecklistItem(item.id)}
               disabled={task.status === 'completed'}
             >
-              <View style={[
-                {
-                  width: 24,
-                  height: 24,
-                  borderRadius: 12,
-                  borderWidth: 2,
-                  borderColor: item.completed ? colors.success : colors.border,
-                  backgroundColor: item.completed ? colors.success : 'transparent',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginRight: spacing.md,
-                }
-              ]}>
+              <View style={{
+                width: 24,
+                height: 24,
+                borderRadius: 12,
+                borderWidth: 2,
+                borderColor: item.completed ? colors.success : colors.border,
+                backgroundColor: item.completed ? colors.success : 'transparent',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginRight: spacing.md,
+              }}>
                 {item.completed && (
                   <Icon name="checkmark" size={16} style={{ color: colors.background }} />
                 )}
               </View>
               <Text style={[
                 typography.body,
-                { 
+                {
                   color: item.completed ? colors.textSecondary : colors.text,
                   textDecorationLine: item.completed ? 'line-through' : 'none',
                   flex: 1,
-                }
+                },
               ]}>
                 {item.text}
               </Text>
@@ -538,19 +613,17 @@ export default function TaskDetail() {
                                 style={{ width: 100, height: 100, borderRadius: 8 }}
                                 resizeMode="cover"
                               />
-                              <View style={[
-                                {
-                                  position: 'absolute',
-                                  top: 4,
-                                  right: 4,
-                                  backgroundColor: category.color,
-                                  borderRadius: 12,
-                                  width: 24,
-                                  height: 24,
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                }
-                              ]}>
+                              <View style={{
+                                position: 'absolute',
+                                top: 4,
+                                right: 4,
+                                backgroundColor: category.color,
+                                borderRadius: 12,
+                                width: 24,
+                                height: 24,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}>
                                 <Icon name={category.icon} size={12} style={{ color: colors.background }} />
                               </View>
                             </View>
@@ -571,16 +644,16 @@ export default function TaskDetail() {
           <TextInput
             style={[
               commonStyles.textInput,
-              { 
+              {
                 height: 100,
                 textAlignVertical: 'top',
                 backgroundColor: task.status === 'completed' ? colors.backgroundAlt : colors.background,
-              }
+              },
             ]}
             placeholder="Add notes about this task..."
             placeholderTextColor={colors.textSecondary}
             value={task.notes}
-            onChangeText={(text) => setTask(prev => ({ ...prev, notes: text }))}
+            onChangeText={(text) => setTask(prev => prev ? ({ ...prev, notes: text }) : null)}
             multiline
             editable={task.status !== 'completed'}
           />
@@ -596,9 +669,9 @@ export default function TaskDetail() {
         presentationStyle={Platform.OS === 'ios' ? 'overFullScreen' : undefined}
       >
         <View style={styles.modalOverlay}>
-          <TouchableOpacity 
-            style={styles.modalBackdrop} 
-            activeOpacity={1} 
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
             onPress={() => setShowCategoryModal(false)}
           />
           <View style={styles.modalContent}>
@@ -623,7 +696,7 @@ export default function TaskDetail() {
                     borderRadius: 8,
                     backgroundColor: selectedCategory === category.key ? category.color + '20' : colors.backgroundAlt,
                     marginBottom: spacing.sm,
-                  }
+                  },
                 ]}
                 onPress={() => setSelectedCategory(category.key as PhotoDoc['category'])}
               >
@@ -644,7 +717,7 @@ export default function TaskDetail() {
             />
 
             <Button
-              text="Take Photo"
+              title="Take Photo"
               onPress={() => takePhoto(selectedCategory)}
               style={{ backgroundColor: colors.primary }}
             />
@@ -661,9 +734,9 @@ export default function TaskDetail() {
         presentationStyle={Platform.OS === 'ios' ? 'overFullScreen' : undefined}
       >
         <View style={styles.photoModalOverlay}>
-          <TouchableOpacity 
-            style={styles.modalBackdrop} 
-            activeOpacity={1} 
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
             onPress={() => setShowPhotoModal(false)}
           />
           <View style={styles.photoModalContent}>
@@ -685,23 +758,23 @@ export default function TaskDetail() {
                   style={styles.fullPhoto}
                   resizeMode="contain"
                 />
-                
+
                 <View style={styles.photoInfo}>
                   <View style={[commonStyles.row, { marginBottom: spacing.sm }]}>
-                    <Icon 
-                      name={getCategoryInfo(selectedPhoto.category).icon} 
-                      size={16} 
-                      style={{ color: getCategoryInfo(selectedPhoto.category).color, marginRight: spacing.sm }} 
+                    <Icon
+                      name={getCategoryInfo(selectedPhoto.category).icon}
+                      size={16}
+                      style={{ color: getCategoryInfo(selectedPhoto.category).color, marginRight: spacing.sm }}
                     />
                     <Text style={[typography.body, { color: colors.background, fontWeight: '600' }]}>
                       {getCategoryInfo(selectedPhoto.category).label}
                     </Text>
                   </View>
-                  
+
                   <Text style={[typography.body, { color: colors.background, marginBottom: spacing.sm }]}>
                     {selectedPhoto.description}
                   </Text>
-                  
+
                   <Text style={[typography.caption, { color: colors.background + '80' }]}>
                     {selectedPhoto.timestamp.toLocaleString()}
                   </Text>
@@ -711,6 +784,13 @@ export default function TaskDetail() {
           </View>
         </View>
       </Modal>
+
+      <Toast
+        visible={toast.visible}
+        message={toast.message}
+        type={toast.type}
+        onHide={hideToast}
+      />
     </View>
   );
 }

@@ -130,7 +130,10 @@ export default function SettingsScreen() {
               <Text style={styles.sectionTitle}>Account</Text>
             </View>
 
-            <TouchableOpacity style={styles.settingItem}>
+            <TouchableOpacity
+              style={styles.settingItem}
+              onPress={() => Alert.alert('Profile', 'To update your profile details, please contact your supervisor.')}
+            >
               <View style={styles.settingItemLeft}>
                 <Icon name="user" size={20} color={colors.textSecondary} />
                 <Text style={styles.settingItemText}>Profile</Text>
@@ -138,7 +141,10 @@ export default function SettingsScreen() {
               <Icon name="chevron-right" size={20} color={colors.textSecondary} />
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.settingItem}>
+            <TouchableOpacity
+              style={styles.settingItem}
+              onPress={() => router.push('/auth/forgot-password' as any)}
+            >
               <View style={styles.settingItemLeft}>
                 <Icon name="lock" size={20} color={colors.textSecondary} />
                 <Text style={styles.settingItemText}>Change Password</Text>
@@ -156,7 +162,10 @@ export default function SettingsScreen() {
               <Text style={styles.sectionTitle}>App Settings</Text>
             </View>
 
-            <TouchableOpacity style={styles.settingItem}>
+            <TouchableOpacity
+              style={styles.settingItem}
+              onPress={() => Alert.alert('Notifications', 'Push notifications will alert you to new shift assignments and messages from your supervisor.')}
+            >
               <View style={styles.settingItemLeft}>
                 <Icon name="bell" size={20} color={colors.textSecondary} />
                 <Text style={styles.settingItemText}>Notifications</Text>
@@ -164,7 +173,10 @@ export default function SettingsScreen() {
               <Icon name="chevron-right" size={20} color={colors.textSecondary} />
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.settingItem}>
+            <TouchableOpacity
+              style={styles.settingItem}
+              onPress={() => Alert.alert('Language', 'English is the only supported language at this time.')}
+            >
               <View style={styles.settingItemLeft}>
                 <Icon name="globe" size={20} color={colors.textSecondary} />
                 <Text style={styles.settingItemText}>Language</Text>
