@@ -1266,8 +1266,10 @@ export default function SupervisorInventoryScreen() {
   };
 
   const filteredItems = items.filter(item => {
-    const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         item.supplier.toLowerCase().includes(searchQuery.toLowerCase());
+    const q = searchQuery.toLowerCase();
+    const matchesSearch = item.name.toLowerCase().includes(q) ||
+                         item.supplier.toLowerCase().includes(q) ||
+                         (item.item_number ? item.item_number.toLowerCase().includes(q) : false);
     const matchesCategory = filterCategory === 'all' || item.category === filterCategory;
     const matchesWarehouse = selectedWarehouse === 'all' || item.location === selectedWarehouse;
     return matchesSearch && matchesCategory && matchesWarehouse;
@@ -1281,7 +1283,7 @@ export default function SupervisorInventoryScreen() {
         if (!item.associated_buildings?.includes(b.destination)) return false;
         if (filterCategory !== 'all' && item.category !== filterCategory) return false;
         if (selectedWarehouse !== 'all' && item.location !== selectedWarehouse) return false;
-        if (searchQuery && !item.name.toLowerCase().includes(searchQuery.toLowerCase()) && !item.supplier?.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+        if (searchQuery) { const q = searchQuery.toLowerCase(); if (!item.name.toLowerCase().includes(q) && !item.supplier?.toLowerCase().includes(q) && !(item.item_number ? item.item_number.toLowerCase().includes(q) : false)) return false; }
         return true;
       });
       if (!grouped[b.clientName]) grouped[b.clientName] = [];
@@ -1296,7 +1298,7 @@ export default function SupervisorInventoryScreen() {
       if (!item.associated_buildings || item.associated_buildings.length === 0) {
         if (filterCategory !== 'all' && item.category !== filterCategory) return false;
         if (selectedWarehouse !== 'all' && item.location !== selectedWarehouse) return false;
-        if (searchQuery && !item.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+        if (searchQuery) { const q = searchQuery.toLowerCase(); if (!item.name.toLowerCase().includes(q) && !(item.item_number ? item.item_number.toLowerCase().includes(q) : false)) return false; }
         return true;
       }
       return false;

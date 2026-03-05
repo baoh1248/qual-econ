@@ -11,6 +11,7 @@ import { logInventoryTransfer, type InventoryTransferItem, formatCurrency } from
 interface InventoryItem {
   id: string;
   name: string;
+  item_number?: string;
   current_stock: number;
   unit: string;
   category: string;
@@ -79,7 +80,9 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
   }, [visible]);
 
   const filteredInventory = inventory.filter(item => {
-    const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase());
+    const q = searchQuery.toLowerCase();
+    const matchesSearch = item.name.toLowerCase().includes(q) ||
+      (item.item_number ? item.item_number.toLowerCase().includes(q) : false);
     const notSelected = !selectedItems.some(selected => selected.id === item.id);
     const matchesWarehouse = !warehouses || !warehouses.length || item.location === selectedWarehouse;
     return matchesSearch && notSelected && matchesWarehouse;
@@ -541,9 +544,14 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
                       >
                         <View style={[commonStyles.row, commonStyles.spaceBetween]}>
                           <View style={{ flex: 1 }}>
-                            <Text style={[typography.body, { color: colors.text, fontWeight: '600' }]}>
-                              {item.name}
-                            </Text>
+                            <View style={commonStyles.row}>
+                              <Text style={[typography.body, { color: colors.text, fontWeight: '600' }]}>
+                                {item.name}
+                              </Text>
+                              {item.item_number ? (
+                                <Text style={[typography.caption, { color: colors.textSecondary }]}> · {item.item_number}</Text>
+                              ) : null}
+                            </View>
                             <Text style={[typography.caption, { color: colors.textSecondary }]}>
                               Current stock: {item.current_stock} {item.unit}
                               {item.cost ? ` • Last cost: $${item.cost.toFixed(2)}` : ''}
@@ -636,7 +644,7 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
             )}
 
             <Button
-              text={processing ? 'Processing...' : `Receive Supply (${formatCurrency(totalValue)})`}
+              title={processing ? 'Processing...' : `Receive Supply (${formatCurrency(totalValue)})`}
               onPress={handleReceiveSupply}
               disabled={processing || !supplierName.trim() || selectedItems.length === 0}
               variant="primary"
