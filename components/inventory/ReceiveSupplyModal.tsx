@@ -53,6 +53,8 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
   const [showItemSearch, setShowItemSearch] = useState(false);
   const [totalTax, setTotalTax] = useState('');
   const [editingTax, setEditingTax] = useState(false);
+  const [taxRate, setTaxRate] = useState('');
+  const [editingTaxRate, setEditingTaxRate] = useState(false);
 
   // Local editing state so numeric fields can be freely typed without reformatting mid-keystroke
   const [editingQuantities, setEditingQuantities] = useState<Record<string, string>>({});
@@ -76,6 +78,8 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
       setShowItemSearch(false);
       setTotalTax('');
       setEditingTax(false);
+      setTaxRate('');
+      setEditingTaxRate(false);
     }
   }, [visible]);
 
@@ -154,18 +158,22 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
       console.log('Date:', receiveDate);
       console.log('Items:', selectedItems);
 
-      const totalTaxAmount = parseFloat(totalTax) || 0;
-      const taxPerItem = selectedItems.length > 0 ? totalTaxAmount / selectedItems.length : 0;
-
+      const taxRateVal = parseFloat(taxRate) || 0;
       const subtotal = selectedItems.reduce((sum, item) => sum + (item.totalCost || 0), 0);
+      const calculatedTaxFromRate = subtotal * taxRateVal / 100;
+      // Use manual total tax if entered; otherwise use calculated from rate
+      const totalTaxAmount = totalTax.trim() !== '' ? (parseFloat(totalTax) || 0) : calculatedTaxFromRate;
       const totalValue = subtotal + totalTaxAmount;
+
+      // Distribute tax proportionally by item value
+      const getItemTax = (item: SelectedItem) =>
+        subtotal > 0 ? totalTaxAmount * (item.totalCost || 0) / subtotal : 0;
 
       // Log the incoming transfer with per-item tax amounts (non-blocking)
       try {
         await logInventoryTransfer({
           items: selectedItems.map(item => {
-            const taxAmount = taxPerItem;
-            const taxPerUnit = item.quantity > 0 ? taxAmount / item.quantity : 0;
+            const taxAmount = getItemTax(item);
             return {
               name: item.name,
               quantity: item.quantity,
@@ -192,15 +200,17 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
       // Call the onReceive callback with landed costs (base + tax per unit)
       const itemIds = selectedItems.map(item => item.id);
       const quantities = selectedItems.map(item => item.quantity);
-      const taxPerUnits = selectedItems.map(item =>
-        item.quantity > 0 ? taxPerItem / item.quantity : 0
-      );
+      const taxPerUnits = selectedItems.map(item => {
+        const itemTax = getItemTax(item);
+        return item.quantity > 0 ? itemTax / item.quantity : 0;
+      });
       const landedCosts = selectedItems.map((item, i) => (item.unitCost || 0) + taxPerUnits[i]);
 
       await onReceive(itemIds, quantities, landedCosts, taxPerUnits);
 
       const itemSummary = selectedItems.map(item => `${item.quantity} ${item.unit} ${item.name}`).join(', ');
-      const taxLine = totalTaxAmount > 0 ? `\nTax: ${formatCurrency(totalTaxAmount)}` : '';
+      const taxDesc = taxRateVal > 0 ? `${taxRateVal}%` : 'manual';
+      const taxLine = totalTaxAmount > 0 ? `\nTax (${taxDesc}): ${formatCurrency(totalTaxAmount)}` : '';
 
       onClose();
 
@@ -222,8 +232,14 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
 
   const totalItems = selectedItems.reduce((sum, item) => sum + item.quantity, 0);
   const subtotal = selectedItems.reduce((sum, item) => sum + (item.totalCost || 0), 0);
-  const totalTaxAmount = parseFloat(totalTax) || 0;
-  const taxPerItem = selectedItems.length > 0 ? totalTaxAmount / selectedItems.length : 0;
+  const taxRateVal = parseFloat(taxRate) || 0;
+  const calculatedTaxFromRate = subtotal * taxRateVal / 100;
+  const manualTaxAmount = parseFloat(totalTax) || 0;
+  // Active tax: manual override if entered, otherwise use rate-calculated
+  const totalTaxAmount = totalTax.trim() !== '' ? manualTaxAmount : calculatedTaxFromRate;
+  // Per-item tax distributed proportionally by item value
+  const getDisplayItemTax = (item: SelectedItem) =>
+    subtotal > 0 ? totalTaxAmount * (item.totalCost || 0) / subtotal : 0;
   const totalValue = subtotal + totalTaxAmount;
 
   return (
@@ -469,12 +485,12 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
                     <View style={[commonStyles.row, commonStyles.spaceBetween, styles.totalRow]}>
                       <Text style={[typography.body, { color: colors.text, fontWeight: '600' }]}>Item Total:</Text>
                       <Text style={[typography.body, { color: colors.success, fontWeight: '700' }]}>
-                        {formatCurrency((item.totalCost || 0) + taxPerItem)}
+                        {formatCurrency((item.totalCost || 0) + getDisplayItemTax(item))}
                       </Text>
                     </View>
 
                     {/* Tax breakdown (shown when tax is entered) */}
-                    {taxPerItem > 0 && (
+                    {getDisplayItemTax(item) > 0 && (
                       <View style={styles.taxBreakdownRow}>
                         <View style={[commonStyles.row, commonStyles.spaceBetween]}>
                           <Text style={styles.taxBreakdownLabel}>Base ({item.quantity} × ${(item.unitCost || 0).toFixed(2)}):</Text>
@@ -482,16 +498,16 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
                         </View>
                         <View style={[commonStyles.row, commonStyles.spaceBetween]}>
                           <Text style={styles.taxBreakdownLabel}>
-                            Tax (÷{selectedItems.length} items = ${taxPerItem.toFixed(2)}):
+                            Tax ({taxRateVal > 0 ? `${taxRateVal}% of ${formatCurrency(item.totalCost || 0)}` : 'proportional'}):
                           </Text>
-                          <Text style={[styles.taxBreakdownValue, { color: colors.warning }]}>{formatCurrency(taxPerItem)}</Text>
+                          <Text style={[styles.taxBreakdownValue, { color: colors.warning }]}>{formatCurrency(getDisplayItemTax(item))}</Text>
                         </View>
                         <View style={[commonStyles.row, commonStyles.spaceBetween]}>
                           <Text style={[styles.taxBreakdownLabel, { fontWeight: '600' }]}>
                             Landed cost/unit:
                           </Text>
                           <Text style={[styles.taxBreakdownValue, { fontWeight: '600', color: colors.text }]}>
-                            ${((item.unitCost || 0) + (item.quantity > 0 ? taxPerItem / item.quantity : 0)).toFixed(4)}/{item.unit}
+                            ${((item.unitCost || 0) + (item.quantity > 0 ? getDisplayItemTax(item) / item.quantity : 0)).toFixed(4)}/{item.unit}
                           </Text>
                         </View>
                       </View>
@@ -576,14 +592,51 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
               )}
             </View>
 
-            {/* Total Tax */}
+            {/* Tax Rate */}
             <View style={{ marginBottom: spacing.md }}>
-              <Text style={styles.sectionLabel}>Total Tax (Optional)</Text>
+              <Text style={styles.sectionLabel}>Tax Rate (Optional)</Text>
+              <View style={[commonStyles.row, { alignItems: 'center' }]}>
+                <TextInput
+                  style={[commonStyles.textInput, { flex: 1 }]}
+                  placeholder="0"
+                  placeholderTextColor={colors.textSecondary}
+                  value={editingTaxRate ? taxRate : (taxRate || '')}
+                  onFocus={() => setEditingTaxRate(true)}
+                  onChangeText={(text) => {
+                    const cleaned = text.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1');
+                    setTaxRate(cleaned);
+                  }}
+                  onBlur={() => setEditingTaxRate(false)}
+                  selectTextOnFocus
+                  keyboardType="decimal-pad"
+                />
+                <Text style={[typography.body, { color: colors.text, marginLeft: spacing.xs }]}>%</Text>
+              </View>
+              {selectedItems.length > 0 && taxRateVal > 0 && (
+                <View style={[commonStyles.row, commonStyles.spaceBetween, {
+                  marginTop: spacing.xs,
+                  backgroundColor: colors.backgroundAlt,
+                  borderRadius: 8,
+                  padding: spacing.sm,
+                }]}>
+                  <Text style={[typography.caption, { color: colors.textSecondary }]}>
+                    Calculated tax ({taxRateVal}% of {formatCurrency(subtotal)}):
+                  </Text>
+                  <Text style={[typography.caption, { color: colors.warning, fontWeight: '600' }]}>
+                    {formatCurrency(calculatedTaxFromRate)}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            {/* Total Tax Override */}
+            <View style={{ marginBottom: spacing.md }}>
+              <Text style={styles.sectionLabel}>Total Tax Override (Optional)</Text>
               <View style={[commonStyles.row, { alignItems: 'center' }]}>
                 <Text style={[typography.body, { color: colors.text, marginRight: spacing.xs }]}>$</Text>
                 <TextInput
                   style={[commonStyles.textInput, { flex: 1 }]}
-                  placeholder="0.00"
+                  placeholder={taxRateVal > 0 && selectedItems.length > 0 ? calculatedTaxFromRate.toFixed(2) : '0.00'}
                   placeholderTextColor={colors.textSecondary}
                   value={editingTax ? totalTax : (totalTax || '')}
                   onFocus={() => setEditingTax(true)}
@@ -596,9 +649,23 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
                   keyboardType="decimal-pad"
                 />
               </View>
-              {selectedItems.length > 0 && totalTaxAmount > 0 && (
+              {taxRateVal > 0 && totalTax.trim() !== '' && selectedItems.length > 0 && (
+                <View style={[commonStyles.row, { marginTop: spacing.xs, gap: spacing.sm, flexWrap: 'wrap' }]}>
+                  <Text style={[typography.caption, { color: colors.textSecondary }]}>
+                    Calculated: {formatCurrency(calculatedTaxFromRate)}
+                  </Text>
+                  <Text style={[typography.caption, { color: colors.textSecondary }]}>·</Text>
+                  <Text style={[typography.caption, {
+                    color: Math.abs(manualTaxAmount - calculatedTaxFromRate) < 0.01 ? colors.success : colors.warning,
+                    fontWeight: '600',
+                  }]}>
+                    Difference: {formatCurrency(Math.abs(manualTaxAmount - calculatedTaxFromRate))}
+                  </Text>
+                </View>
+              )}
+              {!(taxRateVal > 0) && selectedItems.length > 0 && totalTaxAmount > 0 && (
                 <Text style={[typography.caption, { color: colors.textSecondary, marginTop: spacing.xs }]}>
-                  {formatCurrency(totalTaxAmount)} ÷ {selectedItems.length} items = {formatCurrency(taxPerItem)} per item
+                  Tax distributed proportionally by item value
                 </Text>
               )}
             </View>
@@ -629,8 +696,18 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
                       <Text style={[typography.body, { color: colors.text }]}>Subtotal:</Text>
                       <Text style={[typography.body, { color: colors.text, fontWeight: '600' }]}>{formatCurrency(subtotal)}</Text>
                     </View>
+                    {taxRateVal > 0 && (
+                      <View style={[commonStyles.row, commonStyles.spaceBetween, { marginBottom: spacing.xs }]}>
+                        <Text style={[typography.caption, { color: colors.textSecondary }]}>
+                          {taxRateVal}% calculated:
+                        </Text>
+                        <Text style={[typography.caption, { color: colors.textSecondary }]}>{formatCurrency(calculatedTaxFromRate)}</Text>
+                      </View>
+                    )}
                     <View style={[commonStyles.row, commonStyles.spaceBetween, { marginBottom: spacing.sm }]}>
-                      <Text style={[typography.body, { color: colors.warning }]}>Tax:</Text>
+                      <Text style={[typography.body, { color: colors.warning }]}>
+                        Tax{totalTax.trim() !== '' ? ' (override)' : taxRateVal > 0 ? ` (${taxRateVal}%)` : ''}:
+                      </Text>
                       <Text style={[typography.body, { color: colors.warning, fontWeight: '600' }]}>+ {formatCurrency(totalTaxAmount)}</Text>
                     </View>
                     <View style={[commonStyles.row, commonStyles.spaceBetween, { borderTopWidth: 1, borderTopColor: colors.success, paddingTop: spacing.sm }]}>
