@@ -160,30 +160,34 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
       const subtotal = selectedItems.reduce((sum, item) => sum + (item.totalCost || 0), 0);
       const totalValue = subtotal + totalTaxAmount;
 
-      // Log the incoming transfer with per-item tax amounts
-      await logInventoryTransfer({
-        items: selectedItems.map(item => {
-          const taxAmount = taxPerItem;
-          const taxPerUnit = item.quantity > 0 ? taxAmount / item.quantity : 0;
-          return {
-            name: item.name,
-            quantity: item.quantity,
-            unit: item.unit,
-            unitCost: item.unitCost,
-            totalCost: (item.totalCost || 0) + taxAmount,
-            taxAmount,
-          };
-        }),
-        destination: selectedWarehouse,
-        timestamp: new Date(receiveDate).toISOString(),
-        transferredBy: 'Supervisor',
-        notes: notes.trim() || undefined,
-        totalValue,
-        totalTax: totalTaxAmount,
-        type: 'incoming',
-        source: supplierName,
-        orderNumber: orderNumber,
-      });
+      // Log the incoming transfer with per-item tax amounts (non-blocking)
+      try {
+        await logInventoryTransfer({
+          items: selectedItems.map(item => {
+            const taxAmount = taxPerItem;
+            const taxPerUnit = item.quantity > 0 ? taxAmount / item.quantity : 0;
+            return {
+              name: item.name,
+              quantity: item.quantity,
+              unit: item.unit,
+              unitCost: item.unitCost,
+              totalCost: (item.totalCost || 0) + taxAmount,
+              taxAmount,
+            };
+          }),
+          destination: selectedWarehouse,
+          timestamp: new Date(receiveDate).toISOString(),
+          transferredBy: 'Supervisor',
+          notes: notes.trim() || undefined,
+          totalValue,
+          totalTax: totalTaxAmount,
+          type: 'incoming',
+          source: supplierName,
+          orderNumber: orderNumber,
+        });
+      } catch (logError) {
+        console.warn('⚠️ Failed to log transfer record (non-critical):', logError);
+      }
 
       // Call the onReceive callback with landed costs (base + tax per unit)
       const itemIds = selectedItems.map(item => item.id);

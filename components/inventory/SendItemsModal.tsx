@@ -290,47 +290,54 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
 
       if (destinationType === 'warehouse' && selectedWarehouseDestination) {
         // Warehouse-to-warehouse transfer
-        await logInventoryTransfer({
-          items: selectedItems.map(item => ({
-            name: item.name,
-            quantity: item.quantity,
-            unit: item.unit,
-            unitCost: item.unitCost,
-            totalCost: item.totalCost,
-          })),
-          destination: selectedWarehouseDestination,
-          timestamp: new Date().toISOString(),
-          transferredBy: 'Supervisor',
-          sentFrom: sentFrom.trim() || undefined,
-          orderNumber: orderNumber.trim() || undefined,
-          notes: notes.trim() || undefined,
-          totalValue,
-          type: 'outgoing',
-        });
+        try {
+          await logInventoryTransfer({
+            items: selectedItems.map(item => ({
+              name: item.name,
+              quantity: item.quantity,
+              unit: item.unit,
+              unitCost: item.unitCost,
+              totalCost: item.totalCost,
+            })),
+            destination: selectedWarehouseDestination,
+            timestamp: new Date().toISOString(),
+            transferredBy: 'Supervisor',
+            sentFrom: sentFrom.trim() || undefined,
+            orderNumber: orderNumber.trim() || undefined,
+            notes: notes.trim() || undefined,
+            totalValue,
+            type: 'outgoing',
+          });
+        } catch (logError) {
+          console.warn('⚠️ Failed to log transfer record (non-critical):', logError);
+        }
 
         if (onWarehouseTransfer) {
           await onWarehouseTransfer(itemIds, quantities, selectedWarehouseDestination);
         }
       } else {
         // Normal outgoing transfer to building/group
-        await logInventoryTransfer({
-          items: selectedItems.map(item => ({
-            name: item.name,
-            quantity: item.quantity,
-            unit: item.unit,
-            unitCost: item.unitCost,
-            totalCost: item.totalCost,
-          })),
-          destination: destinationName,
-          timestamp: new Date().toISOString(),
-          transferredBy: 'Supervisor',
-          sentFrom: sentFrom.trim() || undefined,
-          orderNumber: orderNumber.trim() || undefined,
-          notes: notes.trim() || undefined,
-          totalValue,
-        });
+        try {
+          await logInventoryTransfer({
+            items: selectedItems.map(item => ({
+              name: item.name,
+              quantity: item.quantity,
+              unit: item.unit,
+              unitCost: item.unitCost,
+              totalCost: item.totalCost,
+            })),
+            destination: destinationName,
+            timestamp: new Date().toISOString(),
+            transferredBy: 'Supervisor',
+            sentFrom: sentFrom.trim() || undefined,
+            orderNumber: orderNumber.trim() || undefined,
+            notes: notes.trim() || undefined,
+            totalValue,
+          });
+        } catch (logError) {
+          console.warn('⚠️ Failed to log transfer record (non-critical):', logError);
+        }
 
-        console.log('Calling onSend with:', { itemIds, quantities });
         await onSend(itemIds, quantities);
       }
 
