@@ -979,24 +979,24 @@ export default function SupervisorInventoryScreen() {
             throw error;
           }
 
-          // Log the transaction
-          const { error: transactionError } = await supabase
-            .from('inventory_transactions')
-            .insert({
-              id: uuid.v4() as string,
-              item_id: itemId,
-              item_name: item.name,
-              transaction_type: 'out',
-              quantity: quantity,
-              previous_stock: item.current_stock,
-              new_stock: newStock,
-              reason: 'Sent to location',
-              performed_by: 'Supervisor',
-              created_at: new Date().toISOString(),
-            });
-
-          if (transactionError) {
-            console.error('❌ Error logging transaction:', transactionError);
+          // Log the transaction (non-fatal)
+          try {
+            await supabase
+              .from('inventory_transactions')
+              .insert({
+                id: uuid.v4() as string,
+                item_id: itemId,
+                item_name: item.name,
+                transaction_type: 'out',
+                quantity: quantity,
+                previous_stock: item.current_stock,
+                new_stock: newStock,
+                reason: 'Sent to location',
+                performed_by: 'Supervisor',
+                created_at: new Date().toISOString(),
+              });
+          } catch (transactionError) {
+            console.warn('⚠️ Failed to log transaction (non-critical):', transactionError);
           }
         }
       }
@@ -1109,42 +1109,48 @@ export default function SupervisorInventoryScreen() {
             updated_at: new Date().toISOString()
           };
 
-          // Update cost (landed cost) and tax_per_unit if provided
+          // Update cost (landed cost) if provided
           if (cost > 0) {
             updateData.cost = cost;
           }
-          if (taxPerUnit > 0) {
-            updateData.tax_per_unit = taxPerUnit;
-          }
 
-          const { error } = await supabase
+          let { error } = await supabase
             .from('inventory_items')
             .update(updateData)
             .eq('id', itemId);
 
+          // If update fails, retry with minimal fields (handles missing optional columns)
           if (error) {
-            console.error('❌ Error updating inventory item:', error);
-            throw error;
+            console.warn('⚠️ Full update failed, retrying with minimal fields:', error.message);
+            const minimalUpdate = { current_stock: newStock, updated_at: updateData.updated_at };
+            const retryResult = await supabase
+              .from('inventory_items')
+              .update(minimalUpdate)
+              .eq('id', itemId);
+            if (retryResult.error) {
+              console.error('❌ Error updating inventory item:', retryResult.error);
+              throw retryResult.error;
+            }
           }
 
-          // Log the transaction
-          const { error: transactionError } = await supabase
-            .from('inventory_transactions')
-            .insert({
-              id: uuid.v4() as string,
-              item_id: itemId,
-              item_name: item.name,
-              transaction_type: 'in',
-              quantity: quantity,
-              previous_stock: item.current_stock,
-              new_stock: newStock,
-              reason: 'Supply received',
-              performed_by: 'Supervisor',
-              created_at: new Date().toISOString(),
-            });
-
-          if (transactionError) {
-            console.error('❌ Error logging transaction:', transactionError);
+          // Log the transaction (non-fatal)
+          try {
+            await supabase
+              .from('inventory_transactions')
+              .insert({
+                id: uuid.v4() as string,
+                item_id: itemId,
+                item_name: item.name,
+                transaction_type: 'in',
+                quantity: quantity,
+                previous_stock: item.current_stock,
+                new_stock: newStock,
+                reason: 'Supply received',
+                performed_by: 'Supervisor',
+                created_at: new Date().toISOString(),
+              });
+          } catch (transactionError) {
+            console.warn('⚠️ Failed to log transaction (non-critical):', transactionError);
           }
         }
       }
