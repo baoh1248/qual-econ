@@ -17,6 +17,7 @@ import SendItemsModal from '../../components/inventory/SendItemsModal';
 import TransferHistoryModal from '../../components/inventory/TransferHistoryModal';
 import ReceiveSupplyModal from '../../components/inventory/ReceiveSupplyModal';
 import uuid from 'react-native-uuid';
+import { formatCurrency } from '../../utils/inventoryTracking';
 import { commonStyles, colors, spacing, typography, buttonStyles, getContrastColor } from '../../styles/commonStyles';
 
 const WAREHOUSES = ['Sparks Warehouse', 'Regular Warehouse'] as const;
@@ -1103,15 +1104,21 @@ export default function SupervisorInventoryScreen() {
         if (item) {
           const newStock = item.current_stock + quantity;
 
-          // Update stock and optionally update cost if provided
+          // Weighted Average Cost (WAC):
+          // new_avg = (existing_stock × old_cost + received_qty × landed_cost) / new_total_stock
+          const landedCostPerUnit = cost; // already includes tax per unit
+          const existingValue = item.current_stock * (item.cost || 0);
+          const incomingValue = quantity * landedCostPerUnit;
+          const newAvgCost = newStock > 0 ? (existingValue + incomingValue) / newStock : landedCostPerUnit;
+
+          // Update stock and WAC cost
           const updateData: any = {
             current_stock: newStock,
             updated_at: new Date().toISOString()
           };
 
-          // Update cost (landed cost) if provided
-          if (cost > 0) {
-            updateData.cost = cost;
+          if (landedCostPerUnit > 0) {
+            updateData.cost = newAvgCost;
           }
 
           let { error } = await supabase
@@ -1145,7 +1152,7 @@ export default function SupervisorInventoryScreen() {
                 quantity: quantity,
                 previous_stock: item.current_stock,
                 new_stock: newStock,
-                reason: 'Supply received',
+                reason: `Supply received @ ${formatCurrency(landedCostPerUnit)}/unit (WAC: ${formatCurrency(newAvgCost)})`,
                 performed_by: 'Supervisor',
                 created_at: new Date().toISOString(),
               });
@@ -1398,6 +1405,14 @@ export default function SupervisorInventoryScreen() {
         >
           <Icon name="stats-chart" size={16} color={themeColor} />
           <Text style={[styles.actionButtonText, { color: themeColor }]}>Statements</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.actionButton, { borderColor: colors.primary }]}
+          onPress={() => router.push('/supervisor/inventory-catalog')}
+        >
+          <Icon name="list" size={16} color={colors.primary} />
+          <Text style={[styles.actionButtonText, { color: colors.primary }]}>Item Directory</Text>
         </TouchableOpacity>
       </View>
 
