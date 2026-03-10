@@ -636,7 +636,14 @@ export default function PurchaseOrders() {
                       <View key={item.id} style={[styles.receiveItemCard, rem === 0 && styles.receiveItemFulfilled]}>
                         <View style={[commonStyles.row, commonStyles.spaceBetween, { marginBottom: spacing.xs }]}>
                           <View style={{ flex: 1 }}>
-                            <Text style={styles.poItemName}>{item.item_name}</Text>
+                            <View style={[commonStyles.row, { flexWrap: 'wrap', gap: spacing.xs }]}>
+                              <Text style={styles.poItemName}>{item.item_name}</Text>
+                              {item.item_number ? (
+                                <View style={styles.itemNumBadge}>
+                                  <Text style={styles.itemNumText}>#{item.item_number}</Text>
+                                </View>
+                              ) : null}
+                            </View>
                             <Text style={styles.metaText}>
                               {formatCurrency(item.unit_cost)}/{item.unit} ·
                               Remaining: {rem} {item.unit}
@@ -866,7 +873,7 @@ export default function PurchaseOrders() {
                 <View style={{ marginTop: spacing.sm }}>
                   <TextInput
                     style={commonStyles.textInput}
-                    placeholder="Search items..."
+                    placeholder="Search by name or item #..."
                     placeholderTextColor={colors.textSecondary}
                     value={itemSearch}
                     onChangeText={setItemSearch}
@@ -881,7 +888,14 @@ export default function PurchaseOrders() {
                       >
                         <View style={[commonStyles.row, commonStyles.spaceBetween]}>
                           <View>
-                            <Text style={[typography.body, { color: colors.text, fontWeight: '600' }]}>{item.name}</Text>
+                            <View style={commonStyles.row}>
+                              <Text style={[typography.body, { color: colors.text, fontWeight: '600' }]}>{item.name}</Text>
+                              {item.item_number ? (
+                                <View style={styles.itemNumBadge}>
+                                  <Text style={styles.itemNumText}>#{item.item_number}</Text>
+                                </View>
+                              ) : null}
+                            </View>
                             <Text style={[typography.caption, { color: colors.textSecondary }]}>
                               Stock: {item.current_stock} {item.unit}
                               {item.cost ? ` · WAC: ${formatCurrency(item.cost)}` : ''}
@@ -1070,4 +1084,13 @@ const styles = StyleSheet.create({
   segBtnActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   segBtnText: { fontSize: 13, color: colors.textSecondary, fontWeight: '500' },
   segBtnTextActive: { color: colors.background, fontWeight: '700' },
+  itemNumBadge: {
+    backgroundColor: colors.primary + '18',
+    borderRadius: 5,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginLeft: 4,
+    alignSelf: 'center',
+  },
+  itemNumText: { fontSize: 11, color: colors.primary, fontWeight: '700' },
 });

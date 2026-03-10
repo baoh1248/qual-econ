@@ -362,10 +362,16 @@ export default function InventoryCatalog() {
                         </View>
                       )}
                     </View>
-                    <View style={[commonStyles.row, { gap: spacing.md, marginTop: 2, flexWrap: 'wrap' }]}>
+                    <View style={[commonStyles.row, { gap: spacing.sm, marginTop: 4, flexWrap: 'wrap', alignItems: 'center' }]}>
                       {entry.item_number ? (
-                        <Text style={styles.metaText}>#{entry.item_number}</Text>
-                      ) : null}
+                        <View style={styles.itemNumBadge}>
+                          <Text style={styles.itemNumText}>#{entry.item_number}</Text>
+                        </View>
+                      ) : (
+                        <View style={[styles.itemNumBadge, { backgroundColor: colors.backgroundAlt, borderColor: colors.border, borderWidth: 1 }]}>
+                          <Text style={[styles.itemNumText, { color: colors.textSecondary }]}>No item #</Text>
+                        </View>
+                      )}
                       <View style={[styles.categoryChip, { backgroundColor: colors.primary + '20' }]}>
                         <Text style={[styles.categoryChipText, { color: colors.primary }]}>
                           {getCategoryLabel(entry.category)}
@@ -688,6 +694,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6, paddingVertical: 2,
   },
   lowStockBadgeText: { fontSize: 10, fontWeight: '800', color: colors.warning },
+  itemNumBadge: {
+    backgroundColor: colors.primary + '18', borderRadius: 5,
+    paddingHorizontal: 7, paddingVertical: 3,
+  },
+  itemNumText: { fontSize: 12, fontWeight: '700', color: colors.primary },
   categoryChip: {
     borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2,
   },
