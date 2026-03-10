@@ -14,6 +14,7 @@ import CompanyLogo from '../../components/CompanyLogo';
 import Icon from '../../components/Icon';
 import uuid from 'react-native-uuid';
 import { commonStyles, colors, spacing, typography } from '../../styles/commonStyles';
+import { logInventoryTransfer } from '../../utils/inventoryTracking';
 
 interface Invoice {
   id: string;
@@ -28,6 +29,9 @@ interface LineItem {
   description: string;
   quantity: number;
   unit: string;
+  unit_price?: number;
+  line_total?: number;
+  item_id?: string;
 }
 
 interface ScheduleEntry {
@@ -420,9 +424,33 @@ export default function InvoiceSendToShiftScreen() {
         }
       }
 
+      // ── Log to inventory_transfers (monthly statements) ───────────
+      const inventoryLineItems = lineItems.filter(item => item.item_id);
+      if (inventoryLineItems.length > 0) {
+        try {
+          await logInventoryTransfer({
+            items: inventoryLineItems.map(item => ({
+              name: item.description,
+              quantity: item.quantity,
+              unit: item.unit,
+              unitCost: item.unit_price || 0,
+              totalCost: item.line_total || 0,
+            })),
+            destination: selectedLocation.building_name,
+            orderNumber: invoice.invoice_number,
+            timestamp: new Date().toISOString(),
+            transferredBy: 'Supervisor',
+            type: 'outgoing',
+            totalValue: inventoryLineItems.reduce((s, i) => s + (i.line_total || 0), 0),
+          });
+        } catch (logErr) {
+          console.warn('⚠️ Failed to log invoice send to transfer history (non-critical):', logErr);
+        }
+      }
+
       console.log('✅ Invoice sent to location successfully');
       showToast(
-        `Invoice ${invoice.invoice_number} sent to ${selectedLocation.building_name}`, 
+        `Invoice ${invoice.invoice_number} sent to ${selectedLocation.building_name}`,
         'success'
       );
       router.back();

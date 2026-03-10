@@ -13,6 +13,7 @@ import CompanyLogo from '../../components/CompanyLogo';
 import Icon from '../../components/Icon';
 import uuid from 'react-native-uuid';
 import { commonStyles, colors, spacing, typography } from '../../styles/commonStyles';
+import { logInventoryTransfer } from '../../utils/inventoryTracking';
 import InvoiceItemSelector from '../../components/invoice/InvoiceItemSelector';
 import InvoiceSummaryCard from '../../components/invoice/InvoiceSummaryCard';
 
@@ -422,6 +423,30 @@ export default function InvoiceCreateScreen() {
                 performed_by: 'Supervisor',
               });
           }
+        }
+      }
+
+      // ── Log to inventory_transfers (monthly statements) ───────────
+      const inventoryLineItems = lineItems.filter(item => item.item_id);
+      if (inventoryLineItems.length > 0) {
+        try {
+          await logInventoryTransfer({
+            items: inventoryLineItems.map(item => ({
+              name: item.description,
+              quantity: item.quantity,
+              unit: item.unit,
+              unitCost: item.unit_price,
+              totalCost: item.line_total,
+            })),
+            destination: customerName.trim(),
+            orderNumber: invoiceNumber.trim(),
+            timestamp: new Date().toISOString(),
+            transferredBy: 'Supervisor',
+            type: 'outgoing',
+            totalValue: inventoryLineItems.reduce((s, i) => s + i.line_total, 0),
+          });
+        } catch (logErr) {
+          console.warn('⚠️ Failed to log invoice to transfer history (non-critical):', logErr);
         }
       }
 

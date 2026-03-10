@@ -13,7 +13,7 @@ import Icon from '../../components/Icon';
 import IconButton from '../../components/IconButton';
 import Button from '../../components/Button';
 import { commonStyles, colors, spacing, typography } from '../../styles/commonStyles';
-import { formatCurrency } from '../../utils/inventoryTracking';
+import { formatCurrency, logInventoryTransfer } from '../../utils/inventoryTracking';
 import uuid from 'react-native-uuid';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -342,6 +342,38 @@ export default function PurchaseOrders() {
         invoice_number: invoiceNumber.trim() || null,
         updated_at: new Date().toISOString(),
       }).eq('id', receivePO.id);
+
+      // ── Log to inventory_transfers (monthly statements) ───────────
+      try {
+        const orderRef = invoiceNumber.trim()
+          ? `${receivePO.po_number} / INV ${invoiceNumber.trim()}`
+          : receivePO.po_number;
+        await logInventoryTransfer({
+          items: itemsToReceive.map(poItem => {
+            const qty = parseFloat(receiveQtys[poItem.id] || '0');
+            const itemSubtotal = qty * poItem.unit_cost;
+            const itemTax = subtotal > 0 ? totalTax * itemSubtotal / subtotal : 0;
+            return {
+              name: poItem.item_name,
+              quantity: qty,
+              unit: poItem.unit,
+              unitCost: poItem.unit_cost,
+              totalCost: itemSubtotal + itemTax,
+              taxAmount: itemTax,
+            };
+          }),
+          destination: receivePO.warehouse,
+          source: receivePO.supplier,
+          orderNumber: orderRef,
+          timestamp: new Date().toISOString(),
+          transferredBy: 'Supervisor',
+          type: 'incoming',
+          totalValue: subtotal + totalTax,
+          totalTax,
+        });
+      } catch (logErr) {
+        console.warn('⚠️ Failed to log PO receipt to transfer history (non-critical):', logErr);
+      }
 
       showToast(
         allFulfilled

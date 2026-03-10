@@ -234,6 +234,24 @@ export default function InventoryScreen() {
             showToast('Failed to save changes', 'error');
             return;
           }
+
+          // Log the adjustment to inventory_transactions
+          try {
+            await supabase.from('inventory_transactions').insert({
+              id: uuid.v4() as string,
+              item_id: change.itemId,
+              item_name: change.itemName,
+              transaction_type: change.difference > 0 ? 'in' : 'out',
+              quantity: Math.abs(change.difference),
+              previous_stock: change.originalStock,
+              new_stock: change.newStock,
+              reason: 'Stock count adjustment by cleaner',
+              performed_by: 'Cleaner',
+              created_at: new Date().toISOString(),
+            });
+          } catch (logErr) {
+            console.warn('⚠️ Failed to log stock adjustment (non-critical):', logErr);
+          }
         }
 
         showToast('Inventory updated', 'success');
