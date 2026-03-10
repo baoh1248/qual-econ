@@ -1316,6 +1316,24 @@ export default function InventoryTransferStatementsScreen() {
       </View>
 
       <ScrollView style={styles.content}>
+        <TouchableOpacity
+          style={{
+            flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+            backgroundColor: colors.primary + '12', borderRadius: 10, padding: spacing.md,
+            marginBottom: spacing.md, borderWidth: 1, borderColor: colors.primary,
+          }}
+          onPress={() => router.push('/supervisor/building-cost-report')}
+        >
+          <Icon name="bar-chart" size={20} color={colors.primary} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: colors.primary }}>Building Cost Report</Text>
+            <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 1 }}>
+              Supply cost per building · averaged per cleaning visit
+            </Text>
+          </View>
+          <Icon name="chevron-forward" size={18} color={colors.primary} />
+        </TouchableOpacity>
+
         <Text style={{ fontSize: typography.sizes.xl, fontWeight: typography.weights.bold as any, marginBottom: spacing.md }}>
           Monthly Inventory Statements
         </Text>

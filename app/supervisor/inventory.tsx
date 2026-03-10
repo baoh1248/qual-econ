@@ -1414,6 +1414,22 @@ export default function SupervisorInventoryScreen() {
           <Icon name="list" size={16} color={colors.primary} />
           <Text style={[styles.actionButtonText, { color: colors.primary }]}>Item Directory</Text>
         </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.actionButton, { borderColor: colors.warning }]}
+          onPress={() => router.push('/supervisor/purchase-orders')}
+        >
+          <Icon name="document-text" size={16} color={colors.warning} />
+          <Text style={[styles.actionButtonText, { color: colors.warning }]}>Purchase Orders</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.actionButton, { borderColor: '#8B5CF6' }]}
+          onPress={() => router.push('/supervisor/building-cost-report')}
+        >
+          <Icon name="bar-chart" size={16} color="#8B5CF6" />
+          <Text style={[styles.actionButtonText, { color: '#8B5CF6' }]}>Cost Report</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Warehouse Toggle */}
