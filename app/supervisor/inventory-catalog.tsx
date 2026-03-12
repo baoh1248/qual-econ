@@ -61,6 +61,7 @@ interface CatalogEntry {
   total_stock: number;
   by_warehouse: WarehouseStock[];
   is_low_stock: boolean;
+  buildings_serviced: string[];
 }
 
 type CategoryFilter = 'all' | 'cleaning-supplies' | 'equipment' | 'safety';
@@ -127,15 +128,36 @@ export default function InventoryCatalog() {
   const loadCatalog = useCallback(async () => {
     try {
       setIsLoading(true);
-      const { data, error } = await supabase
-        .from('inventory_items')
-        .select('*')
-        .order('name');
 
-      if (error) throw error;
+      // Load inventory items + recent outgoing transfers in parallel
+      const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+      const [itemsRes, transfersRes] = await Promise.all([
+        supabase.from('inventory_items').select('*').order('name'),
+        supabase
+          .from('inventory_transfers')
+          .select('destination, items')
+          .eq('type', 'outgoing')
+          .gte('created_at', ninetyDaysAgo),
+      ]);
+
+      if (itemsRes.error) throw itemsRes.error;
+
+      // Build buildings-served map: itemNameLower → { destination: count }
+      const buildingMap: Record<string, Record<string, number>> = {};
+      for (const t of transfersRes.data || []) {
+        const dest = t.destination?.trim();
+        if (!dest) continue;
+        const items = Array.isArray(t.items) ? t.items : [];
+        for (const itm of items) {
+          const key = (itm.item_name || '').toLowerCase().trim();
+          if (!key) continue;
+          if (!buildingMap[key]) buildingMap[key] = {};
+          buildingMap[key][dest] = (buildingMap[key][dest] || 0) + 1;
+        }
+      }
 
       const groups: Record<string, any[]> = {};
-      for (const item of data || []) {
+      for (const item of itemsRes.data || []) {
         const key = item.name.toLowerCase().trim();
         if (!groups[key]) groups[key] = [];
         groups[key].push(item);
@@ -151,6 +173,13 @@ export default function InventoryCatalog() {
           new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime()
         )[0];
 
+        const nameKey = master.name.toLowerCase().trim();
+        const destCounts = buildingMap[nameKey] || {};
+        const buildingsServiced = Object.entries(destCounts)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 4)
+          .map(([dest]) => dest);
+
         return {
           name: master.name,
           item_number: master.item_number || '',
@@ -162,6 +191,7 @@ export default function InventoryCatalog() {
           avg_cost: avgCost,
           total_stock: totalStock,
           is_low_stock: isLowStock,
+          buildings_serviced: buildingsServiced,
           by_warehouse: items.map(i => ({
             warehouse: i.location || 'Unknown',
             current_stock: i.current_stock || 0,
@@ -533,10 +563,10 @@ export default function InventoryCatalog() {
             filtered.map(entry => (
               <View key={entry.name} style={[styles.card, entry.is_low_stock && styles.cardLowStock]}>
 
-                {/* ── Card body: image + info + edit ── */}
-                <View style={[commonStyles.row, { gap: spacing.md }]}>
+                {/* ── Row 1: thumb + name/badges + edit button ── */}
+                <View style={[commonStyles.row, { gap: spacing.sm, alignItems: 'flex-start' }]}>
 
-                  {/* Item photo / placeholder */}
+                  {/* Item photo */}
                   <View style={styles.thumbContainer}>
                     {entry.image_url ? (
                       <Image source={{ uri: entry.image_url }} style={styles.thumb} resizeMode="cover" />
@@ -545,16 +575,12 @@ export default function InventoryCatalog() {
                         <Icon name="cube-outline" size={24} style={{ color: colors.textSecondary }} />
                       </View>
                     )}
-                    {entry.is_low_stock && (
-                      <View style={styles.lowStockDot} />
-                    )}
+                    {entry.is_low_stock && <View style={styles.lowStockDot} />}
                   </View>
 
-                  {/* Item details */}
-                  <View style={{ flex: 1 }}>
-
-                    {/* Name + LOW badge */}
-                    <View style={[commonStyles.row, { flexWrap: 'wrap', gap: spacing.xs, marginBottom: 3 }]}>
+                  {/* Name + badges */}
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <View style={[commonStyles.row, { flexWrap: 'wrap', gap: spacing.xs, marginBottom: 4 }]}>
                       <Text style={styles.itemName} numberOfLines={2}>{entry.name}</Text>
                       {entry.is_low_stock && (
                         <View style={styles.lowStockBadge}>
@@ -562,9 +588,7 @@ export default function InventoryCatalog() {
                         </View>
                       )}
                     </View>
-
-                    {/* Item # + supply type row */}
-                    <View style={[commonStyles.row, { gap: spacing.xs, flexWrap: 'wrap', marginBottom: spacing.xs }]}>
+                    <View style={[commonStyles.row, { gap: spacing.xs, flexWrap: 'wrap' }]}>
                       {entry.item_number ? (
                         <View style={styles.itemNumBadge}>
                           <Text style={styles.itemNumText}>#{entry.item_number}</Text>
@@ -580,24 +604,34 @@ export default function InventoryCatalog() {
                         </View>
                       ) : null}
                     </View>
+                  </View>
 
-                    {/* Supplier + cost */}
-                    <View style={[commonStyles.row, { gap: spacing.md, flexWrap: 'wrap', marginBottom: spacing.xs }]}>
-                      {entry.supplier ? (
-                        <View style={[commonStyles.row, { gap: 4 }]}>
-                          <Icon name="business" size={12} style={{ color: colors.textSecondary }} />
-                          <Text style={styles.metaText}>{entry.supplier}</Text>
-                        </View>
-                      ) : (
-                        <Text style={styles.metaText}>No supplier</Text>
-                      )}
-                      <Text style={[styles.metaText, { color: colors.success, fontWeight: '700' }]}>
-                        {formatCurrency(entry.avg_cost)}/{entry.unit}
+                  {/* Edit button */}
+                  <TouchableOpacity style={styles.editBtn} onPress={() => openEdit(entry)}>
+                    <Icon name="create" size={16} color={colors.primary} />
+                    <Text style={styles.editBtnText}>Edit</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* ── Row 2: two-column detail grid ── */}
+                <View style={[commonStyles.row, { gap: spacing.sm, marginTop: spacing.sm, alignItems: 'flex-start' }]}>
+
+                  {/* Left col: supplier + cost */}
+                  <View style={styles.detailCol}>
+                    <View style={[commonStyles.row, { gap: 4, marginBottom: 4 }]}>
+                      <Icon name="business" size={12} style={{ color: colors.textSecondary }} />
+                      <Text style={styles.metaText} numberOfLines={1}>
+                        {entry.supplier || 'No supplier'}
                       </Text>
                     </View>
+                    <Text style={[styles.metaText, { color: colors.success, fontWeight: '700', fontSize: 13 }]}>
+                      {formatCurrency(entry.avg_cost)}/{entry.unit}
+                    </Text>
+                  </View>
 
-                    {/* Stock across warehouses */}
-                    <View style={styles.warehouseRow}>
+                  {/* Right col: warehouse stock chips */}
+                  <View style={[styles.detailCol, { alignItems: 'flex-end' }]}>
+                    <View style={[styles.warehouseRow, { justifyContent: 'flex-end' }]}>
                       {entry.by_warehouse.map(ws => (
                         <View key={ws.warehouse} style={styles.warehouseChip}>
                           <Text style={styles.warehouseLabel} numberOfLines={1}>{ws.warehouse}</Text>
@@ -605,8 +639,8 @@ export default function InventoryCatalog() {
                             styles.warehouseStock,
                             { color: ws.current_stock <= ws.min_stock && ws.min_stock > 0 ? colors.warning : colors.success }
                           ]}>
-                            {ws.current_stock} {entry.unit}
-                            {ws.current_stock <= ws.min_stock && ws.min_stock > 0 ? ' ⚠' : ''}
+                            {ws.current_stock}
+                            {ws.current_stock <= ws.min_stock && ws.min_stock > 0 ? '⚠' : ''}
                           </Text>
                         </View>
                       ))}
@@ -618,13 +652,20 @@ export default function InventoryCatalog() {
                       </View>
                     </View>
                   </View>
-
-                  {/* Edit button */}
-                  <TouchableOpacity style={styles.editBtn} onPress={() => openEdit(entry)}>
-                    <Icon name="create" size={16} color={colors.primary} />
-                    <Text style={styles.editBtnText}>Edit</Text>
-                  </TouchableOpacity>
                 </View>
+
+                {/* ── Row 3: buildings serviced ── */}
+                {entry.buildings_serviced.length > 0 && (
+                  <View style={[commonStyles.row, { gap: spacing.xs, flexWrap: 'wrap', marginTop: spacing.sm, alignItems: 'center' }]}>
+                    <Icon name="location" size={12} style={{ color: colors.textSecondary }} />
+                    <Text style={[styles.metaText, { fontWeight: '600' }]}>Sent to:</Text>
+                    {entry.buildings_serviced.map(b => (
+                      <View key={b} style={styles.buildingChip}>
+                        <Text style={styles.buildingChipText} numberOfLines={1}>{b}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
               </View>
             ))
           )}
@@ -957,7 +998,8 @@ const styles = StyleSheet.create({
 
   // Meta
   metaText: { fontSize: 12, color: colors.textSecondary },
-  warehouseRow: { flexDirection: 'row', gap: spacing.xs, flexWrap: 'wrap', marginTop: spacing.xs },
+  detailCol: { flex: 1 },
+  warehouseRow: { flexDirection: 'row', gap: spacing.xs, flexWrap: 'wrap' },
   warehouseChip: {
     backgroundColor: colors.backgroundAlt, borderRadius: 6,
     paddingVertical: 3, paddingHorizontal: spacing.sm,
@@ -1002,6 +1044,14 @@ const styles = StyleSheet.create({
   typeChipBtnActive: { backgroundColor: '#8B5CF6', borderColor: '#8B5CF6' },
   typeChipBtnText: { fontSize: 12, color: colors.textSecondary, fontWeight: '500' },
   typeChipBtnTextActive: { color: '#fff', fontWeight: '700' },
+
+  // Buildings serviced
+  buildingChip: {
+    backgroundColor: colors.primary + '12', borderRadius: 5,
+    paddingHorizontal: 7, paddingVertical: 3,
+    maxWidth: 140,
+  },
+  buildingChipText: { fontSize: 11, fontWeight: '600', color: colors.primary },
 
   emptyState: { alignItems: 'center', paddingVertical: 60 },
   emptyText: { fontSize: 16, color: colors.textSecondary, marginTop: spacing.md, textAlign: 'center' },
