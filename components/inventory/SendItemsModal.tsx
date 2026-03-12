@@ -13,6 +13,8 @@ import type { ClientBuilding } from '../../hooks/useClientData';
 interface InventoryItem {
   id: string;
   name: string;
+  item_number?: string;
+  supply_type?: string;
   current_stock: number;
   unit: string;
   category: string;
@@ -188,7 +190,8 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
   const filteredInventory = inventory.filter(item => {
     const q = searchQuery.toLowerCase();
     const matchesSearch = item.name.toLowerCase().includes(q) ||
-      (item.item_number ? item.item_number.toLowerCase().includes(q) : false);
+      (item.item_number ? item.item_number.toLowerCase().includes(q) : false) ||
+      (item.supply_type ? item.supply_type.toLowerCase().includes(q) : false);
     const hasStock = item.current_stock > 0;
     const notSelected = !selectedItems.some(selected => selected.id === item.id);
     const matchesWarehouse = !sentFrom || !warehouses || !warehouses.length || item.location === sentFrom;
@@ -1033,7 +1036,19 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
                       borderBottomColor: colors.border + '30',
                     }}>
                       <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 14, color: colors.text, fontWeight: '600' }}>{item.name}</Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, alignItems: 'center', marginBottom: 2 }}>
+                          <Text style={{ fontSize: 14, color: colors.text, fontWeight: '600' }}>{item.name}</Text>
+                          {item.item_number ? (
+                            <View style={{ backgroundColor: colors.primary + '18', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 }}>
+                              <Text style={{ fontSize: 11, color: colors.primary, fontWeight: '700' }}>#{item.item_number}</Text>
+                            </View>
+                          ) : null}
+                          {item.supply_type ? (
+                            <View style={{ backgroundColor: '#8B5CF6' + '18', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 }}>
+                              <Text style={{ fontSize: 11, color: '#8B5CF6', fontWeight: '600' }}>{item.supply_type}</Text>
+                            </View>
+                          ) : null}
+                        </View>
                         <Text style={{ fontSize: 12, color: colors.textSecondary }}>Available: {item.current_stock} {item.unit}</Text>
                       </View>
                       <TouchableOpacity

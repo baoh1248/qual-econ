@@ -2,9 +2,10 @@
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
-  StyleSheet, Alert, Modal, Platform,
+  StyleSheet, Alert, Modal, Platform, Image,
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../integrations/supabase/client';
 import { useToast } from '../../hooks/useToast';
 import Toast from '../../components/Toast';
@@ -16,6 +17,8 @@ import { commonStyles, colors, spacing, typography } from '../../styles/commonSt
 import { formatCurrency } from '../../utils/inventoryTracking';
 import uuid from 'react-native-uuid';
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+
 const WAREHOUSES = ['Sparks Warehouse', 'Regular Warehouse'];
 
 const CATEGORIES = [
@@ -25,6 +28,20 @@ const CATEGORIES = [
   { key: 'safety', label: 'Safety' },
 ];
 
+const SUPPLY_TYPES = [
+  'Cleaning Chemical',
+  'Disinfectant',
+  'Paper Product',
+  'Cleaning Tool',
+  'PPE',
+  'Equipment',
+  'Trash Liner',
+  'Janitorial Supply',
+  'Other',
+];
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 interface WarehouseStock {
   warehouse: string;
   current_stock: number;
@@ -33,13 +50,14 @@ interface WarehouseStock {
 }
 
 interface CatalogEntry {
-  // Derived from grouping inventory_items by name
   name: string;
   item_number: string;
   category: string;
+  supply_type: string;
+  image_url: string;
   unit: string;
   supplier: string;
-  avg_cost: number; // weighted average across all instances
+  avg_cost: number;
   total_stock: number;
   by_warehouse: WarehouseStock[];
   is_low_stock: boolean;
@@ -47,13 +65,36 @@ interface CatalogEntry {
 
 type CategoryFilter = 'all' | 'cleaning-supplies' | 'equipment' | 'safety';
 
-const BLANK_EDIT = {
+const BLANK_FORM = {
   name: '',
   item_number: '',
   category: 'cleaning-supplies' as CategoryFilter,
+  supply_type: '',
+  image_url: '',
   unit: '',
   supplier: '',
 };
+
+// ─── Image upload helper ──────────────────────────────────────────────────────
+
+async function uploadItemImage(localUri: string): Promise<string> {
+  const fileName = `item_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
+  const path = `items/${fileName}`;
+
+  const response = await fetch(localUri);
+  const blob = await response.blob();
+
+  const { error } = await supabase.storage
+    .from('inventory-images')
+    .upload(path, blob, { contentType: 'image/jpeg', upsert: false });
+
+  if (error) throw error;
+
+  const { data } = supabase.storage.from('inventory-images').getPublicUrl(path);
+  return data.publicUrl;
+}
+
+// ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function InventoryCatalog() {
   const { toastVisible, toastMessage, toastType, showToast, hideToast } = useToast();
@@ -65,22 +106,23 @@ export default function InventoryCatalog() {
   // Edit modal
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingEntry, setEditingEntry] = useState<CatalogEntry | null>(null);
-  const [editForm, setEditForm] = useState(BLANK_EDIT);
+  const [editForm, setEditForm] = useState(BLANK_FORM);
   const [saving, setSaving] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
-  // Add new item modal
+  // Add modal
   const [showAddModal, setShowAddModal] = useState(false);
   const [addForm, setAddForm] = useState({
-    name: '',
-    item_number: '',
-    category: 'cleaning-supplies' as CategoryFilter,
+    ...BLANK_FORM,
     unit: 'unit',
-    supplier: '',
     cost: '',
     min_stock: '',
     warehouse: WAREHOUSES[0],
   });
   const [adding, setAdding] = useState(false);
+  const [uploadingAddImage, setUploadingAddImage] = useState(false);
+
+  // ── Load ──────────────────────────────────────────────────────────────────
 
   const loadCatalog = useCallback(async () => {
     try {
@@ -92,7 +134,6 @@ export default function InventoryCatalog() {
 
       if (error) throw error;
 
-      // Group items by name (case-insensitive)
       const groups: Record<string, any[]> = {};
       for (const item of data || []) {
         const key = item.name.toLowerCase().trim();
@@ -104,9 +145,8 @@ export default function InventoryCatalog() {
         const totalStock = items.reduce((s, i) => s + (i.current_stock || 0), 0);
         const totalValue = items.reduce((s, i) => s + (i.current_stock || 0) * (i.cost || 0), 0);
         const avgCost = totalStock > 0 ? totalValue / totalStock : (items[0]?.cost || 0);
-        const isLowStock = items.some(i => (i.current_stock || 0) <= (i.min_stock || 0));
+        const isLowStock = items.some(i => (i.current_stock || 0) <= (i.min_stock || 0) && (i.min_stock || 0) > 0);
 
-        // Use the most recently updated row for master data
         const master = items.sort((a, b) =>
           new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime()
         )[0];
@@ -115,6 +155,8 @@ export default function InventoryCatalog() {
           name: master.name,
           item_number: master.item_number || '',
           category: master.category || 'cleaning-supplies',
+          supply_type: master.supply_type || '',
+          image_url: master.image_url || '',
           unit: master.unit || 'unit',
           supplier: master.supplier || '',
           avg_cost: avgCost,
@@ -129,7 +171,6 @@ export default function InventoryCatalog() {
         };
       });
 
-      // Sort: low stock first, then alphabetically
       entries.sort((a, b) => {
         if (a.is_low_stock && !b.is_low_stock) return -1;
         if (!a.is_low_stock && b.is_low_stock) return 1;
@@ -147,12 +188,71 @@ export default function InventoryCatalog() {
 
   useFocusEffect(useCallback(() => { loadCatalog(); }, [loadCatalog]));
 
+  // ── Image picker ──────────────────────────────────────────────────────────
+
+  const pickImage = async (
+    setUploading: (v: boolean) => void,
+    setUrl: (url: string) => void,
+  ) => {
+    Alert.alert('Add Photo', 'Choose source', [
+      {
+        text: 'Camera',
+        onPress: async () => {
+          const perm = await ImagePicker.requestCameraPermissionsAsync();
+          if (perm.status !== 'granted') { Alert.alert('Permission needed'); return; }
+          const result = await ImagePicker.launchCameraAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true, aspect: [1, 1], quality: 0.75,
+          });
+          if (!result.canceled) await handleImageSelected(result.assets[0].uri, setUploading, setUrl);
+        },
+      },
+      {
+        text: 'Photo Library',
+        onPress: async () => {
+          const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+          if (perm.status !== 'granted') { Alert.alert('Permission needed'); return; }
+          const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true, aspect: [1, 1], quality: 0.75,
+          });
+          if (!result.canceled) await handleImageSelected(result.assets[0].uri, setUploading, setUrl);
+        },
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  const handleImageSelected = async (
+    uri: string,
+    setUploading: (v: boolean) => void,
+    setUrl: (url: string) => void,
+  ) => {
+    try {
+      setUploading(true);
+      const publicUrl = await uploadItemImage(uri);
+      setUrl(publicUrl);
+    } catch (err: any) {
+      // If storage bucket isn't set up, keep local URI as temp preview
+      // and inform user what SQL to run
+      console.warn('Storage upload failed:', err?.message);
+      setUrl(uri);
+      showToast('Image saved locally — run SQL below to enable cloud storage', 'error');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // ── Edit ──────────────────────────────────────────────────────────────────
+
   const openEdit = (entry: CatalogEntry) => {
     setEditingEntry(entry);
     setEditForm({
       name: entry.name,
       item_number: entry.item_number,
       category: entry.category as CategoryFilter,
+      supply_type: entry.supply_type,
+      image_url: entry.image_url,
       unit: entry.unit,
       supplier: entry.supplier,
     });
@@ -166,18 +266,19 @@ export default function InventoryCatalog() {
     }
     try {
       setSaving(true);
-      // Update all inventory_items rows that match the original name
       const { error } = await supabase
         .from('inventory_items')
         .update({
           name: editForm.name.trim(),
           item_number: editForm.item_number.trim() || null,
           category: editForm.category,
+          supply_type: editForm.supply_type.trim() || null,
+          image_url: editForm.image_url.trim() || null,
           unit: editForm.unit.trim(),
           supplier: editForm.supplier.trim(),
           updated_at: new Date().toISOString(),
         })
-        .ilike('name', editingEntry.name); // match all warehouse rows
+        .ilike('name', editingEntry.name);
 
       if (error) throw error;
       showToast('Item updated across all warehouses', 'success');
@@ -191,6 +292,8 @@ export default function InventoryCatalog() {
     }
   };
 
+  // ── Add ───────────────────────────────────────────────────────────────────
+
   const handleAdd = async () => {
     if (!addForm.name.trim()) {
       showToast('Item name is required', 'error');
@@ -198,34 +301,30 @@ export default function InventoryCatalog() {
     }
     try {
       setAdding(true);
-      const { error } = await supabase
-        .from('inventory_items')
-        .insert({
-          id: uuid.v4() as string,
-          name: addForm.name.trim(),
-          item_number: addForm.item_number.trim() || null,
-          category: addForm.category,
-          unit: addForm.unit.trim() || 'unit',
-          supplier: addForm.supplier.trim() || '',
-          cost: parseFloat(addForm.cost) || 0,
-          current_stock: 0,
-          min_stock: parseInt(addForm.min_stock) || 0,
-          max_stock: 0,
-          location: addForm.warehouse,
-          auto_reorder_enabled: false,
-          reorder_quantity: 0,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        });
+      const { error } = await supabase.from('inventory_items').insert({
+        id: uuid.v4() as string,
+        name: addForm.name.trim(),
+        item_number: addForm.item_number.trim() || null,
+        category: addForm.category,
+        supply_type: addForm.supply_type.trim() || null,
+        image_url: addForm.image_url.trim() || null,
+        unit: addForm.unit.trim() || 'unit',
+        supplier: addForm.supplier.trim() || '',
+        cost: parseFloat(addForm.cost) || 0,
+        current_stock: 0,
+        min_stock: parseInt(addForm.min_stock) || 0,
+        max_stock: 0,
+        location: addForm.warehouse,
+        auto_reorder_enabled: false,
+        reorder_quantity: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
 
       if (error) throw error;
       showToast(`"${addForm.name.trim()}" added to ${addForm.warehouse}`, 'success');
       setShowAddModal(false);
-      setAddForm({
-        name: '', item_number: '', category: 'cleaning-supplies',
-        unit: 'unit', supplier: '', cost: '', min_stock: '',
-        warehouse: WAREHOUSES[0],
-      });
+      setAddForm({ ...BLANK_FORM, unit: 'unit', cost: '', min_stock: '', warehouse: WAREHOUSES[0] });
       loadCatalog();
     } catch (err) {
       console.error('Failed to add item:', err);
@@ -235,13 +334,15 @@ export default function InventoryCatalog() {
     }
   };
 
-  // Filter
+  // ── Filter ────────────────────────────────────────────────────────────────
+
   const filtered = catalog.filter(entry => {
     const q = searchQuery.toLowerCase();
     const matchesSearch = !q ||
       entry.name.toLowerCase().includes(q) ||
       entry.item_number.toLowerCase().includes(q) ||
-      entry.supplier.toLowerCase().includes(q);
+      entry.supplier.toLowerCase().includes(q) ||
+      entry.supply_type.toLowerCase().includes(q);
     const matchesCategory = categoryFilter === 'all' || entry.category === categoryFilter;
     return matchesSearch && matchesCategory;
   });
@@ -261,6 +362,90 @@ export default function InventoryCatalog() {
     return colors.success;
   };
 
+  // ── Shared form sections ──────────────────────────────────────────────────
+
+  const renderImagePicker = (
+    imageUrl: string,
+    setUrl: (v: string) => void,
+    uploading: boolean,
+    setUploading: (v: boolean) => void,
+  ) => (
+    <View style={{ marginBottom: spacing.md }}>
+      <Text style={styles.fieldLabel}>Item Photo</Text>
+      <View style={[commonStyles.row, { gap: spacing.md, alignItems: 'flex-start' }]}>
+        {/* Thumbnail preview */}
+        <TouchableOpacity
+          onPress={() => pickImage(setUploading, setUrl)}
+          style={styles.imagePicker}
+          activeOpacity={0.8}
+        >
+          {imageUrl ? (
+            <Image source={{ uri: imageUrl }} style={styles.imagePreview} resizeMode="cover" />
+          ) : (
+            <View style={styles.imagePlaceholder}>
+              <Icon name="camera" size={28} style={{ color: colors.textSecondary }} />
+              <Text style={styles.imagePlaceholderText}>Add Photo</Text>
+            </View>
+          )}
+          {uploading && (
+            <View style={styles.imageOverlay}>
+              <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>Uploading…</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+
+        <View style={{ flex: 1 }}>
+          <TextInput
+            style={[commonStyles.textInput, { fontSize: 13 }]}
+            value={imageUrl}
+            onChangeText={setUrl}
+            placeholder="Or paste image URL…"
+            placeholderTextColor={colors.textSecondary}
+            autoCapitalize="none"
+          />
+          {imageUrl ? (
+            <TouchableOpacity onPress={() => setUrl('')} style={{ marginTop: spacing.xs }}>
+              <Text style={{ fontSize: 12, color: colors.danger }}>Remove photo</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      </View>
+    </View>
+  );
+
+  const renderSupplyTypePicker = (
+    value: string,
+    onChange: (v: string) => void,
+  ) => (
+    <View style={{ marginBottom: spacing.md }}>
+      <Text style={styles.fieldLabel}>Type of Supply</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing.xs }}>
+        <View style={{ flexDirection: 'row', gap: spacing.xs, paddingRight: spacing.md }}>
+          {SUPPLY_TYPES.map(t => (
+            <TouchableOpacity
+              key={t}
+              style={[styles.typeChipBtn, value === t && styles.typeChipBtnActive]}
+              onPress={() => onChange(value === t ? '' : t)}
+            >
+              <Text style={[styles.typeChipBtnText, value === t && styles.typeChipBtnTextActive]}>
+                {t}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </ScrollView>
+      <TextInput
+        style={[commonStyles.textInput, { fontSize: 13 }]}
+        value={value}
+        onChangeText={onChange}
+        placeholder="Or type a custom supply type…"
+        placeholderTextColor={colors.textSecondary}
+      />
+    </View>
+  );
+
+  // ─── Render ───────────────────────────────────────────────────────────────
+
   return (
     <View style={styles.container}>
       <Toast visible={toastVisible} message={toastMessage} type={toastType} onHide={hideToast} />
@@ -272,7 +457,7 @@ export default function InventoryCatalog() {
           <View style={{ marginLeft: spacing.md }}>
             <Text style={styles.headerTitle}>Item Directory</Text>
             <Text style={styles.headerSubtitle}>
-              {stats.total} products · {stats.lowStock} low stock
+              {stats.total} products · {stats.lowStock > 0 ? `${stats.lowStock} low stock` : 'all stocked'}
             </Text>
           </View>
         </View>
@@ -307,7 +492,7 @@ export default function InventoryCatalog() {
         <Icon name="search" size={18} style={{ color: colors.textSecondary, marginRight: spacing.sm }} />
         <TextInput
           style={styles.searchInput}
-          placeholder="Search by name, item number, supplier..."
+          placeholder="Search by name, item #, supplier, supply type…"
           placeholderTextColor={colors.textSecondary}
           value={searchQuery}
           onChangeText={setSearchQuery}
@@ -320,7 +505,8 @@ export default function InventoryCatalog() {
       </View>
 
       {/* Category filters */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow} contentContainerStyle={{ paddingHorizontal: spacing.md, gap: spacing.sm }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow}
+        contentContainerStyle={{ paddingHorizontal: spacing.md, gap: spacing.sm }}>
         {CATEGORIES.map(cat => (
           <TouchableOpacity
             key={cat.key}
@@ -334,9 +520,7 @@ export default function InventoryCatalog() {
         ))}
       </ScrollView>
 
-      {isLoading ? (
-        <LoadingSpinner />
-      ) : (
+      {isLoading ? <LoadingSpinner /> : (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: spacing.md }}>
           {filtered.length === 0 ? (
             <View style={styles.emptyState}>
@@ -344,25 +528,43 @@ export default function InventoryCatalog() {
               <Text style={styles.emptyText}>
                 {searchQuery ? `No items matching "${searchQuery}"` : 'No items in directory'}
               </Text>
-              <Text style={[typography.caption, { color: colors.textSecondary, marginTop: spacing.xs }]}>
-                Items are added via Receive Supply or the New Item button
-              </Text>
             </View>
           ) : (
             filtered.map(entry => (
               <View key={entry.name} style={[styles.card, entry.is_low_stock && styles.cardLowStock]}>
-                {/* Card header */}
-                <View style={[commonStyles.row, commonStyles.spaceBetween, { marginBottom: spacing.sm }]}>
+
+                {/* ── Card body: image + info + edit ── */}
+                <View style={[commonStyles.row, { gap: spacing.md }]}>
+
+                  {/* Item photo / placeholder */}
+                  <View style={styles.thumbContainer}>
+                    {entry.image_url ? (
+                      <Image source={{ uri: entry.image_url }} style={styles.thumb} resizeMode="cover" />
+                    ) : (
+                      <View style={[styles.thumb, styles.thumbPlaceholder]}>
+                        <Icon name="cube-outline" size={24} style={{ color: colors.textSecondary }} />
+                      </View>
+                    )}
+                    {entry.is_low_stock && (
+                      <View style={styles.lowStockDot} />
+                    )}
+                  </View>
+
+                  {/* Item details */}
                   <View style={{ flex: 1 }}>
-                    <View style={[commonStyles.row, { flexWrap: 'wrap', gap: spacing.xs }]}>
-                      <Text style={styles.itemName}>{entry.name}</Text>
+
+                    {/* Name + LOW badge */}
+                    <View style={[commonStyles.row, { flexWrap: 'wrap', gap: spacing.xs, marginBottom: 3 }]}>
+                      <Text style={styles.itemName} numberOfLines={2}>{entry.name}</Text>
                       {entry.is_low_stock && (
                         <View style={styles.lowStockBadge}>
                           <Text style={styles.lowStockBadgeText}>LOW</Text>
                         </View>
                       )}
                     </View>
-                    <View style={[commonStyles.row, { gap: spacing.sm, marginTop: 4, flexWrap: 'wrap', alignItems: 'center' }]}>
+
+                    {/* Item # + supply type row */}
+                    <View style={[commonStyles.row, { gap: spacing.xs, flexWrap: 'wrap', marginBottom: spacing.xs }]}>
                       {entry.item_number ? (
                         <View style={styles.itemNumBadge}>
                           <Text style={styles.itemNumText}>#{entry.item_number}</Text>
@@ -372,49 +574,56 @@ export default function InventoryCatalog() {
                           <Text style={[styles.itemNumText, { color: colors.textSecondary }]}>No item #</Text>
                         </View>
                       )}
-                      <View style={[styles.categoryChip, { backgroundColor: colors.primary + '20' }]}>
-                        <Text style={[styles.categoryChipText, { color: colors.primary }]}>
-                          {getCategoryLabel(entry.category)}
+                      {entry.supply_type ? (
+                        <View style={styles.supplyTypeChip}>
+                          <Text style={styles.supplyTypeText}>{entry.supply_type}</Text>
+                        </View>
+                      ) : null}
+                    </View>
+
+                    {/* Supplier + cost */}
+                    <View style={[commonStyles.row, { gap: spacing.md, flexWrap: 'wrap', marginBottom: spacing.xs }]}>
+                      {entry.supplier ? (
+                        <View style={[commonStyles.row, { gap: 4 }]}>
+                          <Icon name="business" size={12} style={{ color: colors.textSecondary }} />
+                          <Text style={styles.metaText}>{entry.supplier}</Text>
+                        </View>
+                      ) : (
+                        <Text style={styles.metaText}>No supplier</Text>
+                      )}
+                      <Text style={[styles.metaText, { color: colors.success, fontWeight: '700' }]}>
+                        {formatCurrency(entry.avg_cost)}/{entry.unit}
+                      </Text>
+                    </View>
+
+                    {/* Stock across warehouses */}
+                    <View style={styles.warehouseRow}>
+                      {entry.by_warehouse.map(ws => (
+                        <View key={ws.warehouse} style={styles.warehouseChip}>
+                          <Text style={styles.warehouseLabel} numberOfLines={1}>{ws.warehouse}</Text>
+                          <Text style={[
+                            styles.warehouseStock,
+                            { color: ws.current_stock <= ws.min_stock && ws.min_stock > 0 ? colors.warning : colors.success }
+                          ]}>
+                            {ws.current_stock} {entry.unit}
+                            {ws.current_stock <= ws.min_stock && ws.min_stock > 0 ? ' ⚠' : ''}
+                          </Text>
+                        </View>
+                      ))}
+                      <View style={[styles.warehouseChip, styles.totalChip]}>
+                        <Text style={styles.warehouseLabel}>Total</Text>
+                        <Text style={[styles.warehouseStock, { color: getStockColor(entry), fontWeight: '700' }]}>
+                          {entry.total_stock} {entry.unit}
                         </Text>
                       </View>
                     </View>
                   </View>
+
+                  {/* Edit button */}
                   <TouchableOpacity style={styles.editBtn} onPress={() => openEdit(entry)}>
                     <Icon name="create" size={16} color={colors.primary} />
                     <Text style={styles.editBtnText}>Edit</Text>
                   </TouchableOpacity>
-                </View>
-
-                {/* Supplier + WAC cost row */}
-                <View style={[commonStyles.row, commonStyles.spaceBetween, { marginBottom: spacing.sm }]}>
-                  <Text style={styles.metaText}>
-                    {entry.supplier ? `Supplier: ${entry.supplier}` : 'No supplier'}
-                  </Text>
-                  <Text style={styles.metaText}>
-                    WAC: <Text style={{ color: colors.text, fontWeight: '600' }}>{formatCurrency(entry.avg_cost)}/{entry.unit}</Text>
-                  </Text>
-                </View>
-
-                {/* Stock across warehouses */}
-                <View style={styles.warehouseRow}>
-                  {entry.by_warehouse.map(ws => (
-                    <View key={ws.warehouse} style={styles.warehouseChip}>
-                      <Text style={styles.warehouseLabel} numberOfLines={1}>{ws.warehouse}</Text>
-                      <Text style={[
-                        styles.warehouseStock,
-                        { color: ws.current_stock <= ws.min_stock ? colors.warning : colors.success }
-                      ]}>
-                        {ws.current_stock} {entry.unit}
-                        {ws.current_stock <= ws.min_stock ? ' ⚠' : ''}
-                      </Text>
-                    </View>
-                  ))}
-                  <View style={[styles.warehouseChip, styles.totalChip]}>
-                    <Text style={styles.warehouseLabel}>Total</Text>
-                    <Text style={[styles.warehouseStock, { color: getStockColor(entry), fontWeight: '700' }]}>
-                      {entry.total_stock} {entry.unit}
-                    </Text>
-                  </View>
                 </View>
               </View>
             ))
@@ -423,7 +632,7 @@ export default function InventoryCatalog() {
         </ScrollView>
       )}
 
-      {/* ── Edit Modal ── */}
+      {/* ── Edit Modal ─────────────────────────────────────────────────────── */}
       <Modal
         visible={showEditModal}
         animationType="slide"
@@ -441,8 +650,16 @@ export default function InventoryCatalog() {
 
             <ScrollView style={commonStyles.content}>
               <Text style={[typography.caption, { color: colors.warning, marginBottom: spacing.md, backgroundColor: colors.warning + '15', padding: spacing.sm, borderRadius: 8 }]}>
-                Changes will apply to this item across ALL warehouses.
+                Changes apply to this item across ALL warehouses.
               </Text>
+
+              {/* Photo */}
+              {renderImagePicker(
+                editForm.image_url,
+                v => setEditForm(f => ({ ...f, image_url: v })),
+                uploadingImage,
+                setUploadingImage,
+              )}
 
               <Text style={styles.fieldLabel}>Item Name *</Text>
               <TextInput
@@ -458,9 +675,15 @@ export default function InventoryCatalog() {
                 style={commonStyles.textInput}
                 value={editForm.item_number}
                 onChangeText={v => setEditForm(f => ({ ...f, item_number: v }))}
-                placeholder="e.g. ITM-001"
+                placeholder="e.g. CLN-001"
                 placeholderTextColor={colors.textSecondary}
               />
+
+              {/* Supply type */}
+              {renderSupplyTypePicker(
+                editForm.supply_type,
+                v => setEditForm(f => ({ ...f, supply_type: v })),
+              )}
 
               <Text style={styles.fieldLabel}>Category</Text>
               <View style={{ flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap', marginBottom: spacing.md }}>
@@ -496,9 +719,9 @@ export default function InventoryCatalog() {
               />
 
               <Button
-                title={saving ? 'Saving...' : 'Save Changes'}
+                title={saving ? 'Saving…' : 'Save Changes'}
                 onPress={saveEdit}
-                disabled={saving}
+                disabled={saving || uploadingImage}
                 variant="primary"
                 style={{ marginTop: spacing.md, marginBottom: spacing.lg }}
               />
@@ -507,7 +730,7 @@ export default function InventoryCatalog() {
         </View>
       </Modal>
 
-      {/* ── Add Item Modal ── */}
+      {/* ── Add Item Modal ──────────────────────────────────────────────────── */}
       <Modal
         visible={showAddModal}
         animationType="slide"
@@ -524,6 +747,14 @@ export default function InventoryCatalog() {
             </View>
 
             <ScrollView style={commonStyles.content}>
+              {/* Photo */}
+              {renderImagePicker(
+                addForm.image_url,
+                v => setAddForm(f => ({ ...f, image_url: v })),
+                uploadingAddImage,
+                setUploadingAddImage,
+              )}
+
               <Text style={styles.fieldLabel}>Item Name *</Text>
               <TextInput
                 style={commonStyles.textInput}
@@ -541,6 +772,12 @@ export default function InventoryCatalog() {
                 placeholder="e.g. CLN-001"
                 placeholderTextColor={colors.textSecondary}
               />
+
+              {/* Supply type */}
+              {renderSupplyTypePicker(
+                addForm.supply_type,
+                v => setAddForm(f => ({ ...f, supply_type: v })),
+              )}
 
               <Text style={styles.fieldLabel}>Category</Text>
               <View style={{ flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap', marginBottom: spacing.md }}>
@@ -562,7 +799,7 @@ export default function InventoryCatalog() {
                 style={commonStyles.textInput}
                 value={addForm.unit}
                 onChangeText={v => setAddForm(f => ({ ...f, unit: v }))}
-                placeholder="bottle, roll, pack, unit..."
+                placeholder="bottle, roll, pack, unit…"
                 placeholderTextColor={colors.textSecondary}
               />
 
@@ -606,8 +843,7 @@ export default function InventoryCatalog() {
                     style={[styles.segBtn, { flex: 1 }, addForm.warehouse === wh && styles.segBtnActive]}
                     onPress={() => setAddForm(f => ({ ...f, warehouse: wh }))}
                   >
-                    <Text style={[styles.segBtnText, addForm.warehouse === wh && styles.segBtnTextActive]}
-                      numberOfLines={1}>
+                    <Text style={[styles.segBtnText, addForm.warehouse === wh && styles.segBtnTextActive]} numberOfLines={1}>
                       {wh}
                     </Text>
                   </TouchableOpacity>
@@ -615,9 +851,9 @@ export default function InventoryCatalog() {
               </View>
 
               <Button
-                title={adding ? 'Adding...' : 'Add to Directory'}
+                title={adding ? 'Adding…' : 'Add to Directory'}
                 onPress={handleAdd}
-                disabled={adding || !addForm.name.trim()}
+                disabled={adding || !addForm.name.trim() || uploadingAddImage}
                 variant="primary"
                 style={{ marginTop: spacing.md, marginBottom: spacing.lg, backgroundColor: colors.success }}
               />
@@ -628,6 +864,8 @@ export default function InventoryCatalog() {
     </View>
   );
 }
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F5F7FA' },
@@ -642,12 +880,8 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 16,
     borderBottomRightRadius: 16,
   },
-  headerTitle: {
-    fontSize: 20, fontWeight: '700', color: colors.background, letterSpacing: 0.5,
-  },
-  headerSubtitle: {
-    fontSize: 12, color: 'rgba(255,255,255,0.85)', marginTop: 2,
-  },
+  headerTitle: { fontSize: 20, fontWeight: '700', color: colors.background, letterSpacing: 0.5 },
+  headerSubtitle: { fontSize: 12, color: 'rgba(255,255,255,0.85)', marginTop: 2 },
   addBtn: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
     backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 8,
@@ -675,12 +909,13 @@ const styles = StyleSheet.create({
   filterRow: { maxHeight: 44, marginBottom: spacing.sm },
   filterChip: {
     paddingVertical: spacing.xs, paddingHorizontal: spacing.md,
-    borderRadius: 20, backgroundColor: colors.surface, borderWidth: 1,
-    borderColor: colors.border,
+    borderRadius: 20, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
   },
   filterChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   filterChipText: { fontSize: 13, color: colors.textSecondary, fontWeight: '500' },
   filterChipTextActive: { color: colors.background, fontWeight: '700' },
+
+  // Card
   card: {
     backgroundColor: colors.surface, borderRadius: 14, padding: spacing.md,
     marginBottom: spacing.sm, borderWidth: 1, borderColor: colors.border,
@@ -688,10 +923,25 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
   },
   cardLowStock: { borderColor: colors.warning, borderWidth: 1.5 },
-  itemName: { fontSize: 16, fontWeight: '700', color: colors.text },
+
+  // Thumbnail
+  thumbContainer: { position: 'relative' },
+  thumb: { width: 64, height: 64, borderRadius: 10 },
+  thumbPlaceholder: {
+    backgroundColor: colors.backgroundAlt, borderWidth: 1, borderColor: colors.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  lowStockDot: {
+    position: 'absolute', top: -3, right: -3,
+    width: 10, height: 10, borderRadius: 5,
+    backgroundColor: colors.warning, borderWidth: 1.5, borderColor: colors.surface,
+  },
+
+  // Item badges
+  itemName: { fontSize: 15, fontWeight: '700', color: colors.text, flexShrink: 1 },
   lowStockBadge: {
     backgroundColor: colors.warning + '25', borderRadius: 4,
-    paddingHorizontal: 6, paddingVertical: 2,
+    paddingHorizontal: 6, paddingVertical: 2, alignSelf: 'flex-start',
   },
   lowStockBadgeText: { fontSize: 10, fontWeight: '800', color: colors.warning },
   itemNumBadge: {
@@ -699,32 +949,64 @@ const styles = StyleSheet.create({
     paddingHorizontal: 7, paddingVertical: 3,
   },
   itemNumText: { fontSize: 12, fontWeight: '700', color: colors.primary },
-  categoryChip: {
-    borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2,
+  supplyTypeChip: {
+    backgroundColor: '#8B5CF6' + '18', borderRadius: 5,
+    paddingHorizontal: 7, paddingVertical: 3,
   },
-  categoryChipText: { fontSize: 11, fontWeight: '600' },
+  supplyTypeText: { fontSize: 12, fontWeight: '600', color: '#8B5CF6' },
+
+  // Meta
   metaText: { fontSize: 12, color: colors.textSecondary },
-  editBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: colors.primary + '15', borderRadius: 8,
-    paddingVertical: spacing.xs, paddingHorizontal: spacing.sm,
-  },
-  editBtnText: { fontSize: 13, color: colors.primary, fontWeight: '600' },
-  warehouseRow: {
-    flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap',
-    marginTop: spacing.xs,
-  },
+  warehouseRow: { flexDirection: 'row', gap: spacing.xs, flexWrap: 'wrap', marginTop: spacing.xs },
   warehouseChip: {
-    flex: 1, minWidth: 110, backgroundColor: colors.backgroundAlt,
-    borderRadius: 8, padding: spacing.sm, alignItems: 'center',
+    backgroundColor: colors.backgroundAlt, borderRadius: 6,
+    paddingVertical: 3, paddingHorizontal: spacing.sm,
+    alignItems: 'center',
   },
-  totalChip: {
-    backgroundColor: colors.primary + '12',
+  totalChip: { backgroundColor: colors.primary + '15' },
+  warehouseLabel: { fontSize: 10, color: colors.textSecondary, fontWeight: '600' },
+  warehouseStock: { fontSize: 13, fontWeight: '700' },
+
+  // Edit button
+  editBtn: {
+    flexDirection: 'column', alignItems: 'center', gap: 2,
+    backgroundColor: colors.primary + '12', borderRadius: 8,
+    paddingVertical: spacing.sm, paddingHorizontal: spacing.sm,
+    alignSelf: 'flex-start',
   },
-  warehouseLabel: { fontSize: 11, color: colors.textSecondary, marginBottom: 2, textAlign: 'center' },
-  warehouseStock: { fontSize: 14, fontWeight: '700', textAlign: 'center' },
-  emptyState: { alignItems: 'center', paddingVertical: spacing.xxl },
+  editBtnText: { fontSize: 11, color: colors.primary, fontWeight: '600' },
+
+  // Image picker
+  imagePicker: { width: 80, height: 80, borderRadius: 10, overflow: 'hidden' },
+  imagePreview: { width: 80, height: 80 },
+  imagePlaceholder: {
+    width: 80, height: 80, borderRadius: 10,
+    backgroundColor: colors.backgroundAlt, borderWidth: 2,
+    borderColor: colors.border, borderStyle: 'dashed',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  imagePlaceholderText: { fontSize: 10, color: colors.textSecondary, marginTop: 4, fontWeight: '600' },
+  imageOverlay: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center', justifyContent: 'center',
+    borderRadius: 10,
+  },
+
+  // Supply type picker
+  typeChipBtn: {
+    paddingVertical: spacing.xs + 1, paddingHorizontal: spacing.sm + 2,
+    borderRadius: 20, backgroundColor: colors.surface,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  typeChipBtnActive: { backgroundColor: '#8B5CF6', borderColor: '#8B5CF6' },
+  typeChipBtnText: { fontSize: 12, color: colors.textSecondary, fontWeight: '500' },
+  typeChipBtnTextActive: { color: '#fff', fontWeight: '700' },
+
+  emptyState: { alignItems: 'center', paddingVertical: 60 },
   emptyText: { fontSize: 16, color: colors.textSecondary, marginTop: spacing.md, textAlign: 'center' },
+
+  // Modals
   modalOverlay: {
     flex: 1,
     backgroundColor: Platform.OS === 'ios' ? colors.background : 'rgba(0,0,0,0.5)',
@@ -734,16 +1016,16 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     borderTopLeftRadius: Platform.OS === 'ios' ? 0 : 20,
     borderTopRightRadius: Platform.OS === 'ios' ? 0 : 20,
-    maxHeight: '90%',
+    maxHeight: '92%',
     ...(Platform.OS === 'ios' ? { flex: 1 } : {}),
   },
-  fieldLabel: {
-    fontSize: 14, fontWeight: '600', color: colors.text, marginBottom: spacing.xs, marginTop: spacing.sm,
-  },
+
+  // Form
+  fieldLabel: { fontSize: 14, fontWeight: '600', color: colors.text, marginBottom: spacing.xs, marginTop: spacing.sm },
   segBtn: {
     paddingVertical: spacing.sm, paddingHorizontal: spacing.md,
     borderRadius: 8, borderWidth: 1, borderColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surface, alignItems: 'center',
   },
   segBtnActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   segBtnText: { fontSize: 13, color: colors.textSecondary, fontWeight: '500' },

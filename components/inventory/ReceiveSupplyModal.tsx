@@ -12,6 +12,7 @@ interface InventoryItem {
   id: string;
   name: string;
   item_number?: string;
+  supply_type?: string;
   current_stock: number;
   unit: string;
   category: string;
@@ -564,12 +565,19 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
                       >
                         <View style={[commonStyles.row, commonStyles.spaceBetween]}>
                           <View style={{ flex: 1 }}>
-                            <View style={commonStyles.row}>
+                            <View style={[commonStyles.row, { flexWrap: 'wrap', gap: 4 }]}>
                               <Text style={[typography.body, { color: colors.text, fontWeight: '600' }]}>
                                 {item.name}
                               </Text>
                               {item.item_number ? (
-                                <Text style={[typography.caption, { color: colors.textSecondary }]}> · {item.item_number}</Text>
+                                <View style={{ backgroundColor: colors.primary + '18', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 }}>
+                                  <Text style={{ fontSize: 11, color: colors.primary, fontWeight: '700' }}>#{item.item_number}</Text>
+                                </View>
+                              ) : null}
+                              {item.supply_type ? (
+                                <View style={{ backgroundColor: '#8B5CF6' + '18', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 }}>
+                                  <Text style={{ fontSize: 11, color: '#8B5CF6', fontWeight: '600' }}>{item.supply_type}</Text>
+                                </View>
                               ) : null}
                             </View>
                             <Text style={[typography.caption, { color: colors.textSecondary }]}>

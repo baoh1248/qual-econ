@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Text, View, ScrollView, TouchableOpacity, TextInput, Alert, Modal, StyleSheet, Platform, Dimensions } from 'react-native';
+import { Text, View, ScrollView, TouchableOpacity, TextInput, Alert, Modal, StyleSheet, Platform, Dimensions, Image } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useToast } from '../../hooks/useToast';
 import { useDatabase } from '../../hooks/useDatabase';
@@ -28,6 +28,8 @@ interface InventoryItem {
   name: string;
   item_number?: string;
   category: 'cleaning-supplies' | 'equipment' | 'safety';
+  supply_type?: string;
+  image_url?: string;
   current_stock: number;
   min_stock: number;
   max_stock: number;
@@ -1282,7 +1284,8 @@ export default function SupervisorInventoryScreen() {
     const q = searchQuery.toLowerCase();
     const matchesSearch = item.name.toLowerCase().includes(q) ||
                          item.supplier.toLowerCase().includes(q) ||
-                         (item.item_number ? item.item_number.toLowerCase().includes(q) : false);
+                         (item.item_number ? item.item_number.toLowerCase().includes(q) : false) ||
+                         (item.supply_type ? item.supply_type.toLowerCase().includes(q) : false);
     const matchesCategory = filterCategory === 'all' || item.category === filterCategory;
     const matchesWarehouse = selectedWarehouse === 'all' || item.location === selectedWarehouse;
     return matchesSearch && matchesCategory && matchesWarehouse;
@@ -1551,11 +1554,18 @@ export default function SupervisorInventoryScreen() {
                 return (
                   <AnimatedCard key={item.id} style={styles.itemCard}>
                     <View style={styles.itemHeader}>
-                      <Icon name={getCategoryIcon(item.category)} size={32} color={themeColor} />
+                      {item.image_url ? (
+                        <Image source={{ uri: item.image_url }} style={{ width: 36, height: 36, borderRadius: 6 }} resizeMode="cover" />
+                      ) : (
+                        <Icon name={getCategoryIcon(item.category)} size={32} color={themeColor} />
+                      )}
                       <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
                       {item.item_number && (
                         <Text style={styles.itemProductNumber}>{item.item_number}</Text>
                       )}
+                      {item.supply_type ? (
+                        <Text style={[styles.itemProductNumber, { color: '#8B5CF6', marginTop: 2 }]}>{item.supply_type}</Text>
+                      ) : null}
                     </View>
 
                     <View style={styles.itemInfo}>
@@ -1671,12 +1681,19 @@ export default function SupervisorInventoryScreen() {
                             const stockStatus = getStockStatus(item);
                             return (
                               <View key={item.id} style={styles.bvItemRow}>
-                                <Icon name={getCategoryIcon(item.category)} size={20} style={{ color: themeColor }} />
+                                {item.image_url ? (
+                                  <Image source={{ uri: item.image_url }} style={{ width: 28, height: 28, borderRadius: 5 }} resizeMode="cover" />
+                                ) : (
+                                  <Icon name={getCategoryIcon(item.category)} size={20} style={{ color: themeColor }} />
+                                )}
                                 <View style={{ flex: 1, marginLeft: spacing.sm }}>
                                   <Text style={styles.bvItemName}>{item.name}</Text>
                                   {item.item_number && (
                                     <Text style={styles.itemProductNumber}>{item.item_number}</Text>
                                   )}
+                                  {item.supply_type ? (
+                                    <Text style={[styles.itemProductNumber, { color: '#8B5CF6' }]}>{item.supply_type}</Text>
+                                  ) : null}
                                   <Text style={styles.bvItemNumber}>{item.location}</Text>
                                 </View>
                                 <View style={[styles.bvItemStock, { backgroundColor: stockStatus.color + '20' }]}>
