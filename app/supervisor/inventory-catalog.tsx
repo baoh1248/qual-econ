@@ -562,40 +562,29 @@ export default function InventoryCatalog() {
           ) : (
             filtered.map(entry => (
               <View key={entry.name} style={[styles.card, entry.is_low_stock && styles.cardLowStock]}>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm }}>
 
-                {/* ── Row 1: thumb + name/badges + edit button ── */}
-                <View style={[commonStyles.row, { gap: spacing.sm, alignItems: 'flex-start' }]}>
-
-                  {/* Item photo */}
+                  {/* ── Icon box ── */}
                   <View style={styles.thumbContainer}>
                     {entry.image_url ? (
                       <Image source={{ uri: entry.image_url }} style={styles.thumb} resizeMode="cover" />
                     ) : (
                       <View style={[styles.thumb, styles.thumbPlaceholder]}>
-                        <Icon name="cube-outline" size={24} style={{ color: colors.textSecondary }} />
+                        <Icon name="cube-outline" size={22} style={{ color: colors.textSecondary }} />
                       </View>
                     )}
                     {entry.is_low_stock && <View style={styles.lowStockDot} />}
                   </View>
 
-                  {/* Name + badges */}
+                  {/* ── Main content block ── */}
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <View style={[commonStyles.row, { flexWrap: 'wrap', gap: spacing.xs, marginBottom: 4 }]}>
+
+                    {/* Line 1: name + LOW badge */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.xs, marginBottom: 3 }}>
                       <Text style={styles.itemName} numberOfLines={2}>{entry.name}</Text>
                       {entry.is_low_stock && (
                         <View style={styles.lowStockBadge}>
                           <Text style={styles.lowStockBadgeText}>LOW</Text>
-                        </View>
-                      )}
-                    </View>
-                    <View style={[commonStyles.row, { gap: spacing.xs, flexWrap: 'wrap' }]}>
-                      {entry.item_number ? (
-                        <View style={styles.itemNumBadge}>
-                          <Text style={styles.itemNumText}>#{entry.item_number}</Text>
-                        </View>
-                      ) : (
-                        <View style={[styles.itemNumBadge, { backgroundColor: colors.backgroundAlt, borderColor: colors.border, borderWidth: 1 }]}>
-                          <Text style={[styles.itemNumText, { color: colors.textSecondary }]}>No item #</Text>
                         </View>
                       )}
                       {entry.supply_type ? (
@@ -604,46 +593,38 @@ export default function InventoryCatalog() {
                         </View>
                       ) : null}
                     </View>
-                  </View>
 
-                  {/* Edit button */}
-                  <TouchableOpacity style={styles.editBtn} onPress={() => openEdit(entry)}>
-                    <Icon name="create" size={16} color={colors.primary} />
-                    <Text style={styles.editBtnText}>Edit</Text>
-                  </TouchableOpacity>
-                </View>
+                    {/* Line 2: item number (prominent blue text) */}
+                    {entry.item_number ? (
+                      <Text style={styles.itemNumLine}>#{entry.item_number}</Text>
+                    ) : (
+                      <Text style={styles.itemNumLineMuted}>No item #</Text>
+                    )}
 
-                {/* ── Row 2: two-column detail grid ── */}
-                <View style={[commonStyles.row, { gap: spacing.sm, marginTop: spacing.sm, alignItems: 'flex-start' }]}>
-
-                  {/* Left col: supplier + cost */}
-                  <View style={styles.detailCol}>
-                    <View style={[commonStyles.row, { gap: 4, marginBottom: 4 }]}>
-                      <Icon name="business" size={12} style={{ color: colors.textSecondary }} />
+                    {/* Line 3: supplier icon + name + cost */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: 5, flexWrap: 'wrap' }}>
+                      <Icon name="list" size={13} style={{ color: colors.textSecondary }} />
                       <Text style={styles.metaText} numberOfLines={1}>
                         {entry.supplier || 'No supplier'}
                       </Text>
+                      <Text style={styles.costText}>
+                        {formatCurrency(entry.avg_cost)}/{entry.unit}
+                      </Text>
                     </View>
-                    <Text style={[styles.metaText, { color: colors.success, fontWeight: '700', fontSize: 13 }]}>
-                      {formatCurrency(entry.avg_cost)}/{entry.unit}
-                    </Text>
-                  </View>
 
-                  {/* Right col: warehouse stock chips */}
-                  <View style={[styles.detailCol, { alignItems: 'flex-end' }]}>
-                    <View style={[styles.warehouseRow, { justifyContent: 'flex-end' }]}>
-                      {entry.by_warehouse.map(ws => (
-                        <View key={ws.warehouse} style={styles.warehouseChip}>
-                          <Text style={styles.warehouseLabel} numberOfLines={1}>{ws.warehouse}</Text>
-                          <Text style={[
-                            styles.warehouseStock,
-                            { color: ws.current_stock <= ws.min_stock && ws.min_stock > 0 ? colors.warning : colors.success }
-                          ]}>
-                            {ws.current_stock}
-                            {ws.current_stock <= ws.min_stock && ws.min_stock > 0 ? '⚠' : ''}
-                          </Text>
-                        </View>
-                      ))}
+                    {/* Line 4: warehouse stock chips */}
+                    <View style={[styles.warehouseRow, { marginTop: spacing.xs }]}>
+                      {entry.by_warehouse.map(ws => {
+                        const isLow = ws.current_stock <= ws.min_stock && ws.min_stock > 0;
+                        return (
+                          <View key={ws.warehouse} style={styles.warehouseChip}>
+                            <Text style={styles.warehouseLabel} numberOfLines={1}>{ws.warehouse}</Text>
+                            <Text style={[styles.warehouseStock, { color: isLow ? colors.warning : colors.success }]}>
+                              {ws.current_stock} {entry.unit}{isLow ? ' △' : ''}
+                            </Text>
+                          </View>
+                        );
+                      })}
                       <View style={[styles.warehouseChip, styles.totalChip]}>
                         <Text style={styles.warehouseLabel}>Total</Text>
                         <Text style={[styles.warehouseStock, { color: getStockColor(entry), fontWeight: '700' }]}>
@@ -651,21 +632,28 @@ export default function InventoryCatalog() {
                         </Text>
                       </View>
                     </View>
-                  </View>
-                </View>
 
-                {/* ── Row 3: buildings serviced ── */}
-                {entry.buildings_serviced.length > 0 && (
-                  <View style={[commonStyles.row, { gap: spacing.xs, flexWrap: 'wrap', marginTop: spacing.sm, alignItems: 'center' }]}>
-                    <Icon name="location" size={12} style={{ color: colors.textSecondary }} />
-                    <Text style={[styles.metaText, { fontWeight: '600' }]}>Sent to:</Text>
-                    {entry.buildings_serviced.map(b => (
-                      <View key={b} style={styles.buildingChip}>
-                        <Text style={styles.buildingChipText} numberOfLines={1}>{b}</Text>
+                    {/* Line 5: buildings serviced */}
+                    {entry.buildings_serviced.length > 0 && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flexWrap: 'wrap', marginTop: spacing.xs }}>
+                        <Icon name="location" size={12} style={{ color: colors.textSecondary }} />
+                        <Text style={[styles.metaText, { fontWeight: '600' }]}>Sent to:</Text>
+                        {entry.buildings_serviced.map(b => (
+                          <View key={b} style={styles.buildingChip}>
+                            <Text style={styles.buildingChipText} numberOfLines={1}>{b}</Text>
+                          </View>
+                        ))}
                       </View>
-                    ))}
+                    )}
                   </View>
-                )}
+
+                  {/* ── Edit button (top-right) ── */}
+                  <TouchableOpacity style={styles.editBtn} onPress={() => openEdit(entry)}>
+                    <Icon name="create" size={18} color={colors.primary} />
+                    <Text style={styles.editBtnText}>Edit</Text>
+                  </TouchableOpacity>
+
+                </View>
               </View>
             ))
           )}
@@ -958,65 +946,64 @@ const styles = StyleSheet.create({
 
   // Card
   card: {
-    backgroundColor: colors.surface, borderRadius: 14, padding: spacing.md,
+    backgroundColor: colors.surface, borderRadius: 12, padding: spacing.md,
     marginBottom: spacing.sm, borderWidth: 1, borderColor: colors.border,
     shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
+    shadowOpacity: 0.04, shadowRadius: 3, elevation: 2,
   },
-  cardLowStock: { borderColor: colors.warning, borderWidth: 1.5 },
+  cardLowStock: { borderColor: colors.warning, borderWidth: 2 },
 
   // Thumbnail
   thumbContainer: { position: 'relative' },
-  thumb: { width: 64, height: 64, borderRadius: 10 },
+  thumb: { width: 52, height: 52, borderRadius: 10 },
   thumbPlaceholder: {
-    backgroundColor: colors.backgroundAlt, borderWidth: 1, borderColor: colors.border,
+    backgroundColor: '#F0F2F5', borderWidth: 1, borderColor: colors.border,
     alignItems: 'center', justifyContent: 'center',
   },
   lowStockDot: {
-    position: 'absolute', top: -3, right: -3,
+    position: 'absolute', top: -2, left: -2,
     width: 10, height: 10, borderRadius: 5,
     backgroundColor: colors.warning, borderWidth: 1.5, borderColor: colors.surface,
   },
 
-  // Item badges
+  // Item name + badges
   itemName: { fontSize: 15, fontWeight: '700', color: colors.text, flexShrink: 1 },
   lowStockBadge: {
-    backgroundColor: colors.warning + '25', borderRadius: 4,
-    paddingHorizontal: 6, paddingVertical: 2, alignSelf: 'flex-start',
+    backgroundColor: colors.warning, borderRadius: 4,
+    paddingHorizontal: 6, paddingVertical: 2, alignSelf: 'center',
   },
-  lowStockBadgeText: { fontSize: 10, fontWeight: '800', color: colors.warning },
-  itemNumBadge: {
-    backgroundColor: colors.primary + '18', borderRadius: 5,
-    paddingHorizontal: 7, paddingVertical: 3,
-  },
-  itemNumText: { fontSize: 12, fontWeight: '700', color: colors.primary },
+  lowStockBadgeText: { fontSize: 10, fontWeight: '800', color: '#fff' },
   supplyTypeChip: {
-    backgroundColor: '#8B5CF6' + '18', borderRadius: 5,
-    paddingHorizontal: 7, paddingVertical: 3,
+    backgroundColor: '#EDE9FE', borderRadius: 4,
+    paddingHorizontal: 6, paddingVertical: 2,
   },
-  supplyTypeText: { fontSize: 12, fontWeight: '600', color: '#8B5CF6' },
+  supplyTypeText: { fontSize: 11, fontWeight: '600', color: '#7C3AED' },
 
-  // Meta
+  // Item number lines
+  itemNumLine: { fontSize: 13, fontWeight: '700', color: colors.primary, marginBottom: 1 },
+  itemNumLineMuted: { fontSize: 12, color: colors.textSecondary, marginBottom: 1 },
+
+  // Meta + cost
   metaText: { fontSize: 12, color: colors.textSecondary },
-  detailCol: { flex: 1 },
+  costText: { fontSize: 13, fontWeight: '700', color: '#0891B2' },
+
+  // Warehouse chips
   warehouseRow: { flexDirection: 'row', gap: spacing.xs, flexWrap: 'wrap' },
   warehouseChip: {
-    backgroundColor: colors.backgroundAlt, borderRadius: 6,
-    paddingVertical: 3, paddingHorizontal: spacing.sm,
-    alignItems: 'center',
+    backgroundColor: '#F8F9FB', borderRadius: 6, borderWidth: 1, borderColor: '#E5E7EB',
+    paddingVertical: 4, paddingHorizontal: 10, alignItems: 'flex-start',
   },
-  totalChip: { backgroundColor: colors.primary + '15' },
-  warehouseLabel: { fontSize: 10, color: colors.textSecondary, fontWeight: '600' },
+  totalChip: { backgroundColor: colors.primary + '10', borderColor: colors.primary + '30' },
+  warehouseLabel: { fontSize: 10, color: colors.textSecondary, fontWeight: '500', marginBottom: 1 },
   warehouseStock: { fontSize: 13, fontWeight: '700' },
 
   // Edit button
   editBtn: {
     flexDirection: 'column', alignItems: 'center', gap: 2,
-    backgroundColor: colors.primary + '12', borderRadius: 8,
-    paddingVertical: spacing.sm, paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs, paddingHorizontal: spacing.sm,
     alignSelf: 'flex-start',
   },
-  editBtnText: { fontSize: 11, color: colors.primary, fontWeight: '600' },
+  editBtnText: { fontSize: 12, color: colors.primary, fontWeight: '600' },
 
   // Image picker
   imagePicker: { width: 80, height: 80, borderRadius: 10, overflow: 'hidden' },
