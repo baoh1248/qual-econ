@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
   StyleSheet, Alert, Modal, Platform, Image,
@@ -20,6 +20,21 @@ import uuid from 'react-native-uuid';
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const WAREHOUSES = ['Sparks Warehouse', 'Regular Warehouse'];
+
+const COLUMNS = [
+  { key: 'image',       label: 'Picture',              width: 60,  sort: null },
+  { key: 'item_number', label: 'Product Number',       width: 115, sort: null },
+  { key: 'name',        label: 'Item Name',            width: 200, sort: null },
+  { key: 'supply_type', label: 'Type of Supply',       width: 130, sort: 'alpha' as const },
+  { key: 'supplier',    label: 'Supplier',             width: 120, sort: 'alpha' as const },
+  { key: 'unit',        label: 'Type of Unit',         width: 90,  sort: 'alpha' as const },
+  { key: 'avg_cost',    label: 'Cost per Unit/WAC',    width: 130, sort: 'value' as const },
+  { key: 'warehouse',   label: 'Warehouse',            width: 210, sort: 'alpha' as const },
+  { key: 'total_stock', label: 'Total',                width: 90,  sort: 'value' as const },
+  { key: 'buildings',   label: 'Associated Buildings', width: 165, sort: 'alpha' as const },
+  { key: 'sent_to',     label: 'Sent To',              width: 165, sort: 'alpha' as const },
+  { key: 'edit',        label: '',                     width: 55,  sort: null },
+];
 
 const CATEGORIES = [
   { key: 'all', label: 'All' },
@@ -102,7 +117,6 @@ export default function InventoryCatalog() {
   const [isLoading, setIsLoading] = useState(true);
   const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
 
   // Edit modal
   const [showEditModal, setShowEditModal] = useState(false);
@@ -122,6 +136,14 @@ export default function InventoryCatalog() {
   });
   const [adding, setAdding] = useState(false);
   const [uploadingAddImage, setUploadingAddImage] = useState(false);
+
+  // Sort & filter
+  const [sortCol, setSortCol] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [showFilterModal, setShowFilterModal] = useState(false);
+  const [filterSupplyTypes, setFilterSupplyTypes] = useState<string[]>([]);
+  const [filterWarehouses, setFilterWarehouses] = useState<string[]>([]);
+  const [filterBuildings, setFilterBuildings] = useState<string[]>([]);
 
   // ── Load ──────────────────────────────────────────────────────────────────
 
@@ -364,18 +386,61 @@ export default function InventoryCatalog() {
     }
   };
 
-  // ── Filter ────────────────────────────────────────────────────────────────
+  // ── Sort & filter ─────────────────────────────────────────────────────────
 
-  const filtered = catalog.filter(entry => {
+  const handleSort = (col: string) => {
+    if (sortCol !== col) { setSortCol(col); setSortDir('asc'); }
+    else if (sortDir === 'asc') setSortDir('desc');
+    else setSortCol(null);
+  };
+
+  const getSortValue = (entry: CatalogEntry, col: string): string | number => {
+    switch (col) {
+      case 'supply_type': return entry.supply_type.toLowerCase();
+      case 'supplier':    return entry.supplier.toLowerCase();
+      case 'unit':        return entry.unit.toLowerCase();
+      case 'warehouse':   return entry.by_warehouse.map(w => w.warehouse).join(', ').toLowerCase();
+      case 'buildings':
+      case 'sent_to':     return entry.buildings_serviced.join(', ').toLowerCase();
+      case 'avg_cost':    return entry.avg_cost;
+      case 'total_stock': return entry.total_stock;
+      default:            return '';
+    }
+  };
+
+  const allBuildings = useMemo(
+    () => [...new Set(catalog.flatMap(e => e.buildings_serviced))].sort(),
+    [catalog],
+  );
+
+  const activeFilterCount = filterSupplyTypes.length + filterWarehouses.length + filterBuildings.length;
+
+  const filtered = useMemo(() => {
     const q = searchQuery.toLowerCase();
-    const matchesSearch = !q ||
-      entry.name.toLowerCase().includes(q) ||
-      entry.item_number.toLowerCase().includes(q) ||
-      entry.supplier.toLowerCase().includes(q) ||
-      entry.supply_type.toLowerCase().includes(q);
-    const matchesCategory = categoryFilter === 'all' || entry.category === categoryFilter;
-    return matchesSearch && matchesCategory;
-  });
+    let result = catalog.filter(entry => {
+      const matchesSearch = !q ||
+        entry.name.toLowerCase().includes(q) ||
+        entry.item_number.toLowerCase().includes(q) ||
+        entry.supplier.toLowerCase().includes(q) ||
+        entry.supply_type.toLowerCase().includes(q) ||
+        entry.buildings_serviced.some(b => b.toLowerCase().includes(q));
+      const matchesSupplyType = !filterSupplyTypes.length || filterSupplyTypes.includes(entry.supply_type);
+      const matchesWarehouse  = !filterWarehouses.length  || entry.by_warehouse.some(w => filterWarehouses.includes(w.warehouse));
+      const matchesBuilding   = !filterBuildings.length   || entry.buildings_serviced.some(b => filterBuildings.includes(b));
+      return matchesSearch && matchesSupplyType && matchesWarehouse && matchesBuilding;
+    });
+    if (sortCol) {
+      result = [...result].sort((a, b) => {
+        const av = getSortValue(a, sortCol);
+        const bv = getSortValue(b, sortCol);
+        const cmp = typeof av === 'number' && typeof bv === 'number'
+          ? av - bv
+          : String(av).localeCompare(String(bv));
+        return sortDir === 'asc' ? cmp : -cmp;
+      });
+    }
+    return result;
+  }, [catalog, searchQuery, filterSupplyTypes, filterWarehouses, filterBuildings, sortCol, sortDir]);
 
   const stats = {
     total: catalog.length,
@@ -383,13 +448,18 @@ export default function InventoryCatalog() {
     outOfStock: catalog.filter(e => e.total_stock === 0).length,
   };
 
-  const getCategoryLabel = (cat: string) =>
-    CATEGORIES.find(c => c.key === cat)?.label || cat;
-
   const getStockColor = (entry: CatalogEntry) => {
     if (entry.total_stock === 0) return colors.danger;
     if (entry.is_low_stock) return colors.warning;
     return colors.success;
+  };
+
+  const toggleFilter = <T,>(arr: T[], setArr: (v: T[]) => void, val: T) =>
+    setArr(arr.includes(val) ? arr.filter(x => x !== val) : [...arr, val]);
+
+  const sortIcon = (col: string) => {
+    if (sortCol !== col) return '↕';
+    return sortDir === 'asc' ? '↑' : '↓';
   };
 
   // ── Shared form sections ──────────────────────────────────────────────────
@@ -534,132 +604,290 @@ export default function InventoryCatalog() {
         )}
       </View>
 
-      {/* Category filters */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow}
-        contentContainerStyle={{ paddingHorizontal: spacing.md, gap: spacing.sm }}>
-        {CATEGORIES.map(cat => (
-          <TouchableOpacity
-            key={cat.key}
-            style={[styles.filterChip, categoryFilter === cat.key && styles.filterChipActive]}
-            onPress={() => setCategoryFilter(cat.key as CategoryFilter)}
-          >
-            <Text style={[styles.filterChipText, categoryFilter === cat.key && styles.filterChipTextActive]}>
-              {cat.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      {/* Filter bar */}
+      <View style={styles.filterBar}>
+        <TouchableOpacity
+          style={[styles.filterBtn, activeFilterCount > 0 && styles.filterBtnActive]}
+          onPress={() => setShowFilterModal(true)}
+        >
+          <Icon name="options" size={16} color={activeFilterCount > 0 ? '#fff' : colors.primary} />
+          <Text style={[styles.filterBtnText, activeFilterCount > 0 && { color: '#fff' }]}>
+            Filter{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+          </Text>
+        </TouchableOpacity>
+
+        {/* Active filter chips */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}
+          contentContainerStyle={{ gap: spacing.xs, paddingLeft: spacing.xs }}>
+          {filterSupplyTypes.map(t => (
+            <TouchableOpacity key={t} style={styles.activeChip}
+              onPress={() => toggleFilter(filterSupplyTypes, setFilterSupplyTypes, t)}>
+              <Text style={styles.activeChipText}>{t}</Text>
+              <Icon name="close" size={12} color={colors.primary} />
+            </TouchableOpacity>
+          ))}
+          {filterWarehouses.map(w => (
+            <TouchableOpacity key={w} style={styles.activeChip}
+              onPress={() => toggleFilter(filterWarehouses, setFilterWarehouses, w)}>
+              <Text style={styles.activeChipText}>{w}</Text>
+              <Icon name="close" size={12} color={colors.primary} />
+            </TouchableOpacity>
+          ))}
+          {filterBuildings.map(b => (
+            <TouchableOpacity key={b} style={styles.activeChip}
+              onPress={() => toggleFilter(filterBuildings, setFilterBuildings, b)}>
+              <Text style={styles.activeChipText}>{b}</Text>
+              <Icon name="close" size={12} color={colors.primary} />
+            </TouchableOpacity>
+          ))}
+          {activeFilterCount > 0 && (
+            <TouchableOpacity style={styles.clearChip}
+              onPress={() => { setFilterSupplyTypes([]); setFilterWarehouses([]); setFilterBuildings([]); }}>
+              <Text style={styles.clearChipText}>Clear all</Text>
+            </TouchableOpacity>
+          )}
+        </ScrollView>
+
+        <Text style={styles.resultCount}>{filtered.length} items</Text>
+      </View>
 
       {isLoading ? <LoadingSpinner /> : (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: spacing.md }}>
-          {filtered.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Icon name="cube" size={48} style={{ color: colors.textSecondary }} />
-              <Text style={styles.emptyText}>
-                {searchQuery ? `No items matching "${searchQuery}"` : 'No items in directory'}
-              </Text>
-            </View>
-          ) : (
-            filtered.map(entry => (
-              <View key={entry.name} style={[styles.card, entry.is_low_stock && styles.cardLowStock]}>
-                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm }}>
+        <ScrollView style={{ flex: 1 }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator bounces={false}>
+            <View>
 
-                  {/* ── Icon box ── */}
-                  <View style={styles.thumbContainer}>
-                    {entry.image_url ? (
-                      <Image source={{ uri: entry.image_url }} style={styles.thumb} resizeMode="cover" />
-                    ) : (
-                      <View style={[styles.thumb, styles.thumbPlaceholder]}>
-                        <Icon name="cube-outline" size={22} style={{ color: colors.textSecondary }} />
-                      </View>
-                    )}
-                    {entry.is_low_stock && <View style={styles.lowStockDot} />}
-                  </View>
-
-                  {/* ── Main content block ── */}
-                  <View style={{ flex: 1, minWidth: 0 }}>
-
-                    {/* Line 1: name + LOW badge */}
-                    <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.xs, marginBottom: 3 }}>
-                      <Text style={styles.itemName} numberOfLines={2}>{entry.name}</Text>
-                      {entry.is_low_stock && (
-                        <View style={styles.lowStockBadge}>
-                          <Text style={styles.lowStockBadgeText}>LOW</Text>
-                        </View>
-                      )}
-                      {entry.supply_type ? (
-                        <View style={styles.supplyTypeChip}>
-                          <Text style={styles.supplyTypeText}>{entry.supply_type}</Text>
-                        </View>
-                      ) : null}
-                    </View>
-
-                    {/* Line 2: item number (prominent blue text) */}
-                    {entry.item_number ? (
-                      <Text style={styles.itemNumLine}>#{entry.item_number}</Text>
-                    ) : (
-                      <Text style={styles.itemNumLineMuted}>No item #</Text>
-                    )}
-
-                    {/* Line 3: supplier icon + name + cost */}
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: 5, flexWrap: 'wrap' }}>
-                      <Icon name="list" size={13} style={{ color: colors.textSecondary }} />
-                      <Text style={styles.metaText} numberOfLines={1}>
-                        {entry.supplier || 'No supplier'}
+              {/* ── Table header ── */}
+              <View style={styles.tableHeader}>
+                {COLUMNS.map(col => (
+                  <TouchableOpacity
+                    key={col.key}
+                    style={[styles.headerCell, { width: col.width }]}
+                    onPress={() => col.sort ? handleSort(col.key) : undefined}
+                    activeOpacity={col.sort ? 0.7 : 1}
+                  >
+                    <Text style={styles.headerText} numberOfLines={2}>{col.label}</Text>
+                    {col.sort && (
+                      <Text style={[
+                        styles.sortIcon,
+                        sortCol === col.key && styles.sortIconActive,
+                      ]}>
+                        {sortIcon(col.key)}
                       </Text>
-                      <Text style={styles.costText}>
-                        {formatCurrency(entry.avg_cost)}/{entry.unit}
-                      </Text>
-                    </View>
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
 
-                    {/* Line 4: warehouse stock chips */}
-                    <View style={[styles.warehouseRow, { marginTop: spacing.xs }]}>
-                      {entry.by_warehouse.map(ws => {
-                        const isLow = ws.current_stock <= ws.min_stock && ws.min_stock > 0;
-                        return (
-                          <View key={ws.warehouse} style={styles.warehouseChip}>
-                            <Text style={styles.warehouseLabel} numberOfLines={1}>{ws.warehouse}</Text>
-                            <Text style={[styles.warehouseStock, { color: isLow ? colors.warning : colors.success }]}>
-                              {ws.current_stock} {entry.unit}{isLow ? ' △' : ''}
-                            </Text>
+              {/* ── Table rows ── */}
+              {filtered.length === 0 ? (
+                <View style={[styles.emptyState, { width: COLUMNS.reduce((s, c) => s + c.width, 0) }]}>
+                  <Icon name="cube" size={40} style={{ color: colors.textSecondary }} />
+                  <Text style={styles.emptyText}>
+                    {searchQuery || activeFilterCount > 0 ? 'No items match filters' : 'No items in directory'}
+                  </Text>
+                </View>
+              ) : (
+                filtered.map((entry, idx) => {
+                  const rowBg = entry.is_low_stock
+                    ? colors.warning + '08'
+                    : idx % 2 === 0 ? colors.surface : '#FAFBFC';
+                  return (
+                    <View key={entry.name} style={[
+                      styles.tableRow,
+                      { backgroundColor: rowBg },
+                      entry.is_low_stock && styles.tableRowLow,
+                    ]}>
+
+                      {/* Picture */}
+                      <View style={[styles.cell, { width: 60, alignItems: 'center' }]}>
+                        {entry.image_url ? (
+                          <Image source={{ uri: entry.image_url }} style={styles.cellThumb} resizeMode="cover" />
+                        ) : (
+                          <View style={styles.cellThumbPlaceholder}>
+                            <Icon name="cube-outline" size={20} style={{ color: colors.textSecondary }} />
                           </View>
-                        );
-                      })}
-                      <View style={[styles.warehouseChip, styles.totalChip]}>
-                        <Text style={styles.warehouseLabel}>Total</Text>
-                        <Text style={[styles.warehouseStock, { color: getStockColor(entry), fontWeight: '700' }]}>
+                        )}
+                        {entry.is_low_stock && <View style={styles.lowDot} />}
+                      </View>
+
+                      {/* Product Number */}
+                      <View style={[styles.cell, { width: 115 }]}>
+                        {entry.item_number
+                          ? <Text style={styles.cellItemNum}>#{entry.item_number}</Text>
+                          : <Text style={styles.cellMuted}>—</Text>}
+                      </View>
+
+                      {/* Item Name */}
+                      <View style={[styles.cell, { width: 200 }]}>
+                        <Text style={styles.cellName} numberOfLines={3}>{entry.name}</Text>
+                        {entry.is_low_stock && (
+                          <View style={styles.lowBadge}><Text style={styles.lowBadgeText}>LOW</Text></View>
+                        )}
+                      </View>
+
+                      {/* Type of Supply */}
+                      <View style={[styles.cell, { width: 130 }]}>
+                        <Text style={styles.cellText} numberOfLines={2}>{entry.supply_type || '—'}</Text>
+                      </View>
+
+                      {/* Supplier */}
+                      <View style={[styles.cell, { width: 120 }]}>
+                        <Text style={styles.cellText} numberOfLines={2}>{entry.supplier || '—'}</Text>
+                      </View>
+
+                      {/* Type of Unit */}
+                      <View style={[styles.cell, { width: 90 }]}>
+                        <Text style={styles.cellText}>{entry.unit}</Text>
+                      </View>
+
+                      {/* Cost per Unit/WAC */}
+                      <View style={[styles.cell, { width: 130 }]}>
+                        <Text style={styles.cellCost}>{formatCurrency(entry.avg_cost)}/{entry.unit}</Text>
+                      </View>
+
+                      {/* Warehouse */}
+                      <View style={[styles.cell, { width: 210 }]}>
+                        {entry.by_warehouse.map(ws => {
+                          const isLow = ws.current_stock <= ws.min_stock && ws.min_stock > 0;
+                          return (
+                            <Text key={ws.warehouse} style={styles.cellText} numberOfLines={1}>
+                              {ws.warehouse}{' '}
+                              <Text style={{ color: isLow ? colors.warning : colors.success, fontWeight: '700' }}>
+                                {ws.current_stock} {entry.unit}{isLow ? ' △' : ''}
+                              </Text>
+                            </Text>
+                          );
+                        })}
+                      </View>
+
+                      {/* Total */}
+                      <View style={[styles.cell, { width: 90 }]}>
+                        <Text style={[styles.cellCost, { color: getStockColor(entry) }]}>
                           {entry.total_stock} {entry.unit}
                         </Text>
                       </View>
-                    </View>
 
-                    {/* Line 5: buildings serviced */}
-                    {entry.buildings_serviced.length > 0 && (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flexWrap: 'wrap', marginTop: spacing.xs }}>
-                        <Icon name="location" size={12} style={{ color: colors.textSecondary }} />
-                        <Text style={[styles.metaText, { fontWeight: '600' }]}>Sent to:</Text>
-                        {entry.buildings_serviced.map(b => (
-                          <View key={b} style={styles.buildingChip}>
-                            <Text style={styles.buildingChipText} numberOfLines={1}>{b}</Text>
-                          </View>
-                        ))}
+                      {/* Associated Buildings */}
+                      <View style={[styles.cell, { width: 165 }]}>
+                        {entry.buildings_serviced.length > 0
+                          ? <Text style={styles.cellText} numberOfLines={3}>
+                              {entry.buildings_serviced.slice(0, 3).join(', ')}
+                              {entry.buildings_serviced.length > 3 ? ` +${entry.buildings_serviced.length - 3}` : ''}
+                            </Text>
+                          : <Text style={styles.cellMuted}>—</Text>}
                       </View>
-                    )}
-                  </View>
 
-                  {/* ── Edit button (top-right) ── */}
-                  <TouchableOpacity style={styles.editBtn} onPress={() => openEdit(entry)}>
-                    <Icon name="create" size={18} color={colors.primary} />
-                    <Text style={styles.editBtnText}>Edit</Text>
-                  </TouchableOpacity>
+                      {/* Sent To */}
+                      <View style={[styles.cell, { width: 165 }]}>
+                        {entry.buildings_serviced.length > 0
+                          ? entry.buildings_serviced.map(b => (
+                              <Text key={b} style={styles.cellText} numberOfLines={1}>{b}</Text>
+                            ))
+                          : <Text style={styles.cellMuted}>—</Text>}
+                      </View>
 
-                </View>
-              </View>
-            ))
-          )}
-          <View style={{ height: spacing.xxl }} />
+                      {/* Edit */}
+                      <View style={[styles.cell, { width: 55, alignItems: 'center' }]}>
+                        <TouchableOpacity style={styles.editBtn} onPress={() => openEdit(entry)}>
+                          <Icon name="create" size={17} color={colors.primary} />
+                          <Text style={styles.editBtnText}>Edit</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                    </View>
+                  );
+                })
+              )}
+            </View>
+          </ScrollView>
+          <View style={{ height: 80 }} />
         </ScrollView>
       )}
+
+      {/* ── Filter Modal ─────────────────────────────────────────────────────── */}
+      <Modal
+        visible={showFilterModal}
+        animationType="slide"
+        presentationStyle={Platform.OS === 'ios' ? 'pageSheet' : 'overFullScreen'}
+        transparent={Platform.OS !== 'ios'}
+        onRequestClose={() => setShowFilterModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <View style={[commonStyles.header, { backgroundColor: colors.primary }]}>
+              <IconButton icon="close" onPress={() => setShowFilterModal(false)} variant="white" />
+              <Text style={commonStyles.headerTitle}>Filter Directory</Text>
+              {activeFilterCount > 0 ? (
+                <TouchableOpacity onPress={() => { setFilterSupplyTypes([]); setFilterWarehouses([]); setFilterBuildings([]); }}
+                  style={{ paddingHorizontal: spacing.sm }}>
+                  <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>Clear all</Text>
+                </TouchableOpacity>
+              ) : <View style={{ width: 60 }} />}
+            </View>
+
+            <ScrollView style={commonStyles.content}>
+              {/* Type of Supply */}
+              <Text style={styles.fieldLabel}>Type of Supply</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.md }}>
+                {SUPPLY_TYPES.map(t => (
+                  <TouchableOpacity
+                    key={t}
+                    style={[styles.filterModalChip, filterSupplyTypes.includes(t) && styles.filterModalChipActive]}
+                    onPress={() => toggleFilter(filterSupplyTypes, setFilterSupplyTypes, t)}
+                  >
+                    <Text style={[styles.filterModalChipText, filterSupplyTypes.includes(t) && styles.filterModalChipTextActive]}>
+                      {t}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Warehouse */}
+              <Text style={styles.fieldLabel}>Warehouse</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.md }}>
+                {WAREHOUSES.map(w => (
+                  <TouchableOpacity
+                    key={w}
+                    style={[styles.filterModalChip, filterWarehouses.includes(w) && styles.filterModalChipActive]}
+                    onPress={() => toggleFilter(filterWarehouses, setFilterWarehouses, w)}
+                  >
+                    <Text style={[styles.filterModalChipText, filterWarehouses.includes(w) && styles.filterModalChipTextActive]}>
+                      {w}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Associated Buildings */}
+              {allBuildings.length > 0 && (
+                <>
+                  <Text style={styles.fieldLabel}>Associated Buildings</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.md }}>
+                    {allBuildings.map(b => (
+                      <TouchableOpacity
+                        key={b}
+                        style={[styles.filterModalChip, filterBuildings.includes(b) && styles.filterModalChipActive]}
+                        onPress={() => toggleFilter(filterBuildings, setFilterBuildings, b)}
+                      >
+                        <Text style={[styles.filterModalChipText, filterBuildings.includes(b) && styles.filterModalChipTextActive]}>
+                          {b}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              )}
+
+              <Button
+                title="Apply Filters"
+                onPress={() => setShowFilterModal(false)}
+                variant="primary"
+                style={{ marginTop: spacing.md, marginBottom: spacing.lg }}
+              />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       {/* ── Edit Modal ─────────────────────────────────────────────────────── */}
       <Modal
@@ -935,75 +1163,102 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   searchInput: { flex: 1, fontSize: 15, color: colors.text },
-  filterRow: { maxHeight: 44, marginBottom: spacing.sm },
-  filterChip: {
-    paddingVertical: spacing.xs, paddingHorizontal: spacing.md,
-    borderRadius: 20, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
+  // Filter bar
+  filterBar: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
+    borderBottomWidth: 1, borderBottomColor: colors.border,
   },
-  filterChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  filterChipText: { fontSize: 13, color: colors.textSecondary, fontWeight: '500' },
-  filterChipTextActive: { color: colors.background, fontWeight: '700' },
-
-  // Card
-  card: {
-    backgroundColor: colors.surface, borderRadius: 12, padding: spacing.md,
-    marginBottom: spacing.sm, borderWidth: 1, borderColor: colors.border,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04, shadowRadius: 3, elevation: 2,
+  filterBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
+    backgroundColor: colors.primary + '12', borderRadius: 8,
+    paddingVertical: spacing.xs + 2, paddingHorizontal: spacing.sm + 2,
+    borderWidth: 1, borderColor: colors.primary + '30',
   },
-  cardLowStock: { borderColor: colors.warning, borderWidth: 2 },
+  filterBtnActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  filterBtnText: { fontSize: 13, color: colors.primary, fontWeight: '600' },
+  activeChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: colors.primary + '15', borderRadius: 12,
+    paddingVertical: 3, paddingHorizontal: spacing.sm,
+    borderWidth: 1, borderColor: colors.primary + '30',
+  },
+  activeChipText: { fontSize: 11, color: colors.primary, fontWeight: '600' },
+  clearChip: {
+    borderRadius: 12, paddingVertical: 3, paddingHorizontal: spacing.sm,
+    backgroundColor: colors.danger + '12', borderWidth: 1, borderColor: colors.danger + '30',
+  },
+  clearChipText: { fontSize: 11, color: colors.danger, fontWeight: '600' },
+  resultCount: { fontSize: 12, color: colors.textSecondary, fontWeight: '600', minWidth: 50, textAlign: 'right' },
 
-  // Thumbnail
-  thumbContainer: { position: 'relative' },
-  thumb: { width: 52, height: 52, borderRadius: 10 },
-  thumbPlaceholder: {
+  // Table
+  tableHeader: {
+    flexDirection: 'row', backgroundColor: '#F0F2F6',
+    borderBottomWidth: 2, borderBottomColor: '#D1D5DB',
+  },
+  headerCell: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingVertical: spacing.sm, paddingHorizontal: spacing.sm,
+    borderRightWidth: 1, borderRightColor: '#E5E7EB',
+  },
+  headerText: {
+    fontSize: 11, fontWeight: '700', color: '#374151',
+    textTransform: 'uppercase', letterSpacing: 0.3, flexShrink: 1,
+  },
+  sortIcon: { fontSize: 12, color: '#9CA3AF', fontWeight: '700' },
+  sortIconActive: { color: colors.primary },
+
+  tableRow: {
+    flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
+  },
+  tableRowLow: { borderLeftWidth: 3, borderLeftColor: colors.warning },
+
+  cell: {
+    paddingVertical: spacing.sm, paddingHorizontal: spacing.sm,
+    justifyContent: 'center',
+    borderRightWidth: 1, borderRightColor: '#F3F4F6',
+  },
+
+  // Cell content
+  cellThumb: { width: 38, height: 38, borderRadius: 6 },
+  cellThumbPlaceholder: {
+    width: 38, height: 38, borderRadius: 6,
     backgroundColor: '#F0F2F5', borderWidth: 1, borderColor: colors.border,
     alignItems: 'center', justifyContent: 'center',
   },
-  lowStockDot: {
-    position: 'absolute', top: -2, left: -2,
-    width: 10, height: 10, borderRadius: 5,
-    backgroundColor: colors.warning, borderWidth: 1.5, borderColor: colors.surface,
+  lowDot: {
+    position: 'absolute', top: 4, left: 4,
+    width: 8, height: 8, borderRadius: 4,
+    backgroundColor: colors.warning, borderWidth: 1, borderColor: '#fff',
   },
-
-  // Item name + badges
-  itemName: { fontSize: 15, fontWeight: '700', color: colors.text, flexShrink: 1 },
-  lowStockBadge: {
-    backgroundColor: colors.warning, borderRadius: 4,
-    paddingHorizontal: 6, paddingVertical: 2, alignSelf: 'center',
+  cellItemNum: { fontSize: 13, fontWeight: '700', color: colors.primary },
+  cellName: { fontSize: 13, fontWeight: '600', color: colors.text },
+  cellText: { fontSize: 12, color: colors.text, lineHeight: 18 },
+  cellCost: { fontSize: 13, fontWeight: '700', color: '#0891B2' },
+  cellMuted: { fontSize: 12, color: colors.textSecondary },
+  lowBadge: {
+    marginTop: 3, alignSelf: 'flex-start',
+    backgroundColor: colors.warning, borderRadius: 3,
+    paddingHorizontal: 5, paddingVertical: 1,
   },
-  lowStockBadgeText: { fontSize: 10, fontWeight: '800', color: '#fff' },
-  supplyTypeChip: {
-    backgroundColor: '#EDE9FE', borderRadius: 4,
-    paddingHorizontal: 6, paddingVertical: 2,
-  },
-  supplyTypeText: { fontSize: 11, fontWeight: '600', color: '#7C3AED' },
-
-  // Item number lines
-  itemNumLine: { fontSize: 13, fontWeight: '700', color: colors.primary, marginBottom: 1 },
-  itemNumLineMuted: { fontSize: 12, color: colors.textSecondary, marginBottom: 1 },
-
-  // Meta + cost
-  metaText: { fontSize: 12, color: colors.textSecondary },
-  costText: { fontSize: 13, fontWeight: '700', color: '#0891B2' },
-
-  // Warehouse chips
-  warehouseRow: { flexDirection: 'row', gap: spacing.xs, flexWrap: 'wrap' },
-  warehouseChip: {
-    backgroundColor: '#F8F9FB', borderRadius: 6, borderWidth: 1, borderColor: '#E5E7EB',
-    paddingVertical: 4, paddingHorizontal: 10, alignItems: 'flex-start',
-  },
-  totalChip: { backgroundColor: colors.primary + '10', borderColor: colors.primary + '30' },
-  warehouseLabel: { fontSize: 10, color: colors.textSecondary, fontWeight: '500', marginBottom: 1 },
-  warehouseStock: { fontSize: 13, fontWeight: '700' },
+  lowBadgeText: { fontSize: 9, fontWeight: '800', color: '#fff' },
 
   // Edit button
   editBtn: {
-    flexDirection: 'column', alignItems: 'center', gap: 2,
-    paddingVertical: spacing.xs, paddingHorizontal: spacing.sm,
-    alignSelf: 'flex-start',
+    flexDirection: 'column', alignItems: 'center', gap: 1,
+    paddingVertical: 4, paddingHorizontal: spacing.xs,
   },
-  editBtnText: { fontSize: 12, color: colors.primary, fontWeight: '600' },
+  editBtnText: { fontSize: 11, color: colors.primary, fontWeight: '600' },
+
+  // Filter modal chips
+  filterModalChip: {
+    paddingVertical: spacing.xs + 1, paddingHorizontal: spacing.sm + 2,
+    borderRadius: 20, backgroundColor: colors.surface,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  filterModalChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  filterModalChipText: { fontSize: 13, color: colors.textSecondary, fontWeight: '500' },
+  filterModalChipTextActive: { color: '#fff', fontWeight: '700' },
 
   // Image picker
   imagePicker: { width: 80, height: 80, borderRadius: 10, overflow: 'hidden' },
@@ -1031,14 +1286,6 @@ const styles = StyleSheet.create({
   typeChipBtnActive: { backgroundColor: '#8B5CF6', borderColor: '#8B5CF6' },
   typeChipBtnText: { fontSize: 12, color: colors.textSecondary, fontWeight: '500' },
   typeChipBtnTextActive: { color: '#fff', fontWeight: '700' },
-
-  // Buildings serviced
-  buildingChip: {
-    backgroundColor: colors.primary + '12', borderRadius: 5,
-    paddingHorizontal: 7, paddingVertical: 3,
-    maxWidth: 140,
-  },
-  buildingChipText: { fontSize: 11, fontWeight: '600', color: colors.primary },
 
   emptyState: { alignItems: 'center', paddingVertical: 60 },
   emptyText: { fontSize: 16, color: colors.textSecondary, marginTop: spacing.md, textAlign: 'center' },
