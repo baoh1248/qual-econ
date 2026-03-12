@@ -2,7 +2,7 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
-  StyleSheet, Alert, Modal, Platform, Image,
+  StyleSheet, Alert, Modal, Platform, Image, useWindowDimensions,
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -21,20 +21,22 @@ import uuid from 'react-native-uuid';
 
 const WAREHOUSES = ['Sparks Warehouse', 'Regular Warehouse'];
 
+// Relative flex weights — they are normalized to screen width at runtime
 const COLUMNS = [
-  { key: 'image',       label: 'Picture',              width: 60,  sort: null },
-  { key: 'item_number', label: 'Product Number',       width: 115, sort: null },
-  { key: 'name',        label: 'Item Name',            width: 200, sort: null },
-  { key: 'supply_type', label: 'Type of Supply',       width: 130, sort: 'alpha' as const },
-  { key: 'supplier',    label: 'Supplier',             width: 120, sort: 'alpha' as const },
-  { key: 'unit',        label: 'Type of Unit',         width: 90,  sort: 'alpha' as const },
-  { key: 'avg_cost',    label: 'Cost per Unit/WAC',    width: 130, sort: 'value' as const },
-  { key: 'warehouse',   label: 'Warehouse',            width: 210, sort: 'alpha' as const },
-  { key: 'total_stock', label: 'Total',                width: 90,  sort: 'value' as const },
-  { key: 'buildings',   label: 'Associated Buildings', width: 165, sort: 'alpha' as const },
-  { key: 'sent_to',     label: 'Sent To',              width: 165, sort: 'alpha' as const },
-  { key: 'edit',        label: '',                     width: 55,  sort: null },
+  { key: 'image',       label: 'Picture',              flex: 4.0,  sort: null },
+  { key: 'item_number', label: 'Product Number',       flex: 7.5,  sort: null },
+  { key: 'name',        label: 'Item Name',            flex: 14.0, sort: null },
+  { key: 'supply_type', label: 'Type of Supply',       flex: 9.0,  sort: 'alpha' as const },
+  { key: 'supplier',    label: 'Supplier',             flex: 8.0,  sort: 'alpha' as const },
+  { key: 'unit',        label: 'Type of Unit',         flex: 5.5,  sort: 'alpha' as const },
+  { key: 'avg_cost',    label: 'Cost per Unit/WAC',    flex: 9.0,  sort: 'value' as const },
+  { key: 'warehouse',   label: 'Warehouse',            flex: 13.0, sort: 'alpha' as const },
+  { key: 'total_stock', label: 'Total',                flex: 6.5,  sort: 'value' as const },
+  { key: 'buildings',   label: 'Associated Buildings', flex: 9.5,  sort: 'alpha' as const },
+  { key: 'sent_to',     label: 'Sent To',              flex: 9.5,  sort: 'alpha' as const },
+  { key: 'edit',        label: '',                     flex: 4.5,  sort: null },
 ];
+const TOTAL_FLEX = COLUMNS.reduce((s, c) => s + c.flex, 0);
 
 const CATEGORIES = [
   { key: 'all', label: 'All' },
@@ -457,6 +459,13 @@ export default function InventoryCatalog() {
   const toggleFilter = <T,>(arr: T[], setArr: (v: T[]) => void, val: T) =>
     setArr(arr.includes(val) ? arr.filter(x => x !== val) : [...arr, val]);
 
+  // Compute pixel width of each column from screen width
+  const { width: screenWidth } = useWindowDimensions();
+  const colW = (key: string) => {
+    const col = COLUMNS.find(c => c.key === key)!;
+    return (screenWidth * col.flex) / TOTAL_FLEX;
+  };
+
   const sortIcon = (col: string) => {
     if (sortCol !== col) return '↕';
     return sortDir === 'asc' ? '↑' : '↓';
@@ -653,153 +662,146 @@ export default function InventoryCatalog() {
 
       {isLoading ? <LoadingSpinner /> : (
         <ScrollView style={{ flex: 1 }}>
-          <ScrollView horizontal showsHorizontalScrollIndicator bounces={false}>
-            <View>
 
-              {/* ── Table header ── */}
-              <View style={styles.tableHeader}>
-                {COLUMNS.map(col => (
-                  <TouchableOpacity
-                    key={col.key}
-                    style={[styles.headerCell, { width: col.width }]}
-                    onPress={() => col.sort ? handleSort(col.key) : undefined}
-                    activeOpacity={col.sort ? 0.7 : 1}
-                  >
-                    <Text style={styles.headerText} numberOfLines={2}>{col.label}</Text>
-                    {col.sort && (
-                      <Text style={[
-                        styles.sortIcon,
-                        sortCol === col.key && styles.sortIconActive,
-                      ]}>
-                        {sortIcon(col.key)}
-                      </Text>
-                    )}
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              {/* ── Table rows ── */}
-              {filtered.length === 0 ? (
-                <View style={[styles.emptyState, { width: COLUMNS.reduce((s, c) => s + c.width, 0) }]}>
-                  <Icon name="cube" size={40} style={{ color: colors.textSecondary }} />
-                  <Text style={styles.emptyText}>
-                    {searchQuery || activeFilterCount > 0 ? 'No items match filters' : 'No items in directory'}
+          {/* ── Table header ── */}
+          <View style={styles.tableHeader}>
+            {COLUMNS.map(col => (
+              <TouchableOpacity
+                key={col.key}
+                style={[styles.headerCell, { width: colW(col.key) }]}
+                onPress={() => col.sort ? handleSort(col.key) : undefined}
+                activeOpacity={col.sort ? 0.7 : 1}
+              >
+                <Text style={styles.headerText} numberOfLines={2}>{col.label}</Text>
+                {col.sort && (
+                  <Text style={[styles.sortIcon, sortCol === col.key && styles.sortIconActive]}>
+                    {sortIcon(col.key)}
                   </Text>
-                </View>
-              ) : (
-                filtered.map((entry, idx) => {
-                  const rowBg = entry.is_low_stock
-                    ? colors.warning + '08'
-                    : idx % 2 === 0 ? colors.surface : '#FAFBFC';
-                  return (
-                    <View key={entry.name} style={[
-                      styles.tableRow,
-                      { backgroundColor: rowBg },
-                      entry.is_low_stock && styles.tableRowLow,
-                    ]}>
+                )}
+              </TouchableOpacity>
+            ))}
+          </View>
 
-                      {/* Picture */}
-                      <View style={[styles.cell, { width: 60, alignItems: 'center' }]}>
-                        {entry.image_url ? (
-                          <Image source={{ uri: entry.image_url }} style={styles.cellThumb} resizeMode="cover" />
-                        ) : (
-                          <View style={styles.cellThumbPlaceholder}>
-                            <Icon name="cube-outline" size={20} style={{ color: colors.textSecondary }} />
-                          </View>
-                        )}
-                        {entry.is_low_stock && <View style={styles.lowDot} />}
-                      </View>
-
-                      {/* Product Number */}
-                      <View style={[styles.cell, { width: 115 }]}>
-                        {entry.item_number
-                          ? <Text style={styles.cellItemNum}>#{entry.item_number}</Text>
-                          : <Text style={styles.cellMuted}>—</Text>}
-                      </View>
-
-                      {/* Item Name */}
-                      <View style={[styles.cell, { width: 200 }]}>
-                        <Text style={styles.cellName} numberOfLines={3}>{entry.name}</Text>
-                        {entry.is_low_stock && (
-                          <View style={styles.lowBadge}><Text style={styles.lowBadgeText}>LOW</Text></View>
-                        )}
-                      </View>
-
-                      {/* Type of Supply */}
-                      <View style={[styles.cell, { width: 130 }]}>
-                        <Text style={styles.cellText} numberOfLines={2}>{entry.supply_type || '—'}</Text>
-                      </View>
-
-                      {/* Supplier */}
-                      <View style={[styles.cell, { width: 120 }]}>
-                        <Text style={styles.cellText} numberOfLines={2}>{entry.supplier || '—'}</Text>
-                      </View>
-
-                      {/* Type of Unit */}
-                      <View style={[styles.cell, { width: 90 }]}>
-                        <Text style={styles.cellText}>{entry.unit}</Text>
-                      </View>
-
-                      {/* Cost per Unit/WAC */}
-                      <View style={[styles.cell, { width: 130 }]}>
-                        <Text style={styles.cellCost}>{formatCurrency(entry.avg_cost)}/{entry.unit}</Text>
-                      </View>
-
-                      {/* Warehouse */}
-                      <View style={[styles.cell, { width: 210 }]}>
-                        {entry.by_warehouse.map(ws => {
-                          const isLow = ws.current_stock <= ws.min_stock && ws.min_stock > 0;
-                          return (
-                            <Text key={ws.warehouse} style={styles.cellText} numberOfLines={1}>
-                              {ws.warehouse}{' '}
-                              <Text style={{ color: isLow ? colors.warning : colors.success, fontWeight: '700' }}>
-                                {ws.current_stock} {entry.unit}{isLow ? ' △' : ''}
-                              </Text>
-                            </Text>
-                          );
-                        })}
-                      </View>
-
-                      {/* Total */}
-                      <View style={[styles.cell, { width: 90 }]}>
-                        <Text style={[styles.cellCost, { color: getStockColor(entry) }]}>
-                          {entry.total_stock} {entry.unit}
-                        </Text>
-                      </View>
-
-                      {/* Associated Buildings */}
-                      <View style={[styles.cell, { width: 165 }]}>
-                        {entry.buildings_serviced.length > 0
-                          ? <Text style={styles.cellText} numberOfLines={3}>
-                              {entry.buildings_serviced.slice(0, 3).join(', ')}
-                              {entry.buildings_serviced.length > 3 ? ` +${entry.buildings_serviced.length - 3}` : ''}
-                            </Text>
-                          : <Text style={styles.cellMuted}>—</Text>}
-                      </View>
-
-                      {/* Sent To */}
-                      <View style={[styles.cell, { width: 165 }]}>
-                        {entry.buildings_serviced.length > 0
-                          ? entry.buildings_serviced.map(b => (
-                              <Text key={b} style={styles.cellText} numberOfLines={1}>{b}</Text>
-                            ))
-                          : <Text style={styles.cellMuted}>—</Text>}
-                      </View>
-
-                      {/* Edit */}
-                      <View style={[styles.cell, { width: 55, alignItems: 'center' }]}>
-                        <TouchableOpacity style={styles.editBtn} onPress={() => openEdit(entry)}>
-                          <Icon name="create" size={17} color={colors.primary} />
-                          <Text style={styles.editBtnText}>Edit</Text>
-                        </TouchableOpacity>
-                      </View>
-
-                    </View>
-                  );
-                })
-              )}
+          {/* ── Table rows ── */}
+          {filtered.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Icon name="cube" size={40} style={{ color: colors.textSecondary }} />
+              <Text style={styles.emptyText}>
+                {searchQuery || activeFilterCount > 0 ? 'No items match filters' : 'No items in directory'}
+              </Text>
             </View>
-          </ScrollView>
+          ) : (
+            filtered.map((entry, idx) => {
+              const rowBg = entry.is_low_stock
+                ? colors.warning + '08'
+                : idx % 2 === 0 ? colors.surface : '#FAFBFC';
+              return (
+                <View key={entry.name} style={[
+                  styles.tableRow,
+                  { backgroundColor: rowBg },
+                  entry.is_low_stock && styles.tableRowLow,
+                ]}>
+
+                  {/* Picture */}
+                  <View style={[styles.cell, { width: colW('image'), alignItems: 'center' }]}>
+                    {entry.image_url ? (
+                      <Image source={{ uri: entry.image_url }} style={styles.cellThumb} resizeMode="cover" />
+                    ) : (
+                      <View style={styles.cellThumbPlaceholder}>
+                        <Icon name="cube-outline" size={20} style={{ color: colors.textSecondary }} />
+                      </View>
+                    )}
+                    {entry.is_low_stock && <View style={styles.lowDot} />}
+                  </View>
+
+                  {/* Product Number */}
+                  <View style={[styles.cell, { width: colW('item_number') }]}>
+                    {entry.item_number
+                      ? <Text style={styles.cellItemNum}>#{entry.item_number}</Text>
+                      : <Text style={styles.cellMuted}>—</Text>}
+                  </View>
+
+                  {/* Item Name */}
+                  <View style={[styles.cell, { width: colW('name') }]}>
+                    <Text style={styles.cellName} numberOfLines={3}>{entry.name}</Text>
+                    {entry.is_low_stock && (
+                      <View style={styles.lowBadge}><Text style={styles.lowBadgeText}>LOW</Text></View>
+                    )}
+                  </View>
+
+                  {/* Type of Supply */}
+                  <View style={[styles.cell, { width: colW('supply_type') }]}>
+                    <Text style={styles.cellText} numberOfLines={2}>{entry.supply_type || '—'}</Text>
+                  </View>
+
+                  {/* Supplier */}
+                  <View style={[styles.cell, { width: colW('supplier') }]}>
+                    <Text style={styles.cellText} numberOfLines={2}>{entry.supplier || '—'}</Text>
+                  </View>
+
+                  {/* Type of Unit */}
+                  <View style={[styles.cell, { width: colW('unit') }]}>
+                    <Text style={styles.cellText}>{entry.unit}</Text>
+                  </View>
+
+                  {/* Cost per Unit/WAC */}
+                  <View style={[styles.cell, { width: colW('avg_cost') }]}>
+                    <Text style={styles.cellCost}>{formatCurrency(entry.avg_cost)}/{entry.unit}</Text>
+                  </View>
+
+                  {/* Warehouse */}
+                  <View style={[styles.cell, { width: colW('warehouse') }]}>
+                    {entry.by_warehouse.map(ws => {
+                      const isLow = ws.current_stock <= ws.min_stock && ws.min_stock > 0;
+                      return (
+                        <Text key={ws.warehouse} style={styles.cellText} numberOfLines={1}>
+                          {ws.warehouse}{' '}
+                          <Text style={{ color: isLow ? colors.warning : colors.success, fontWeight: '700' }}>
+                            {ws.current_stock} {entry.unit}{isLow ? ' △' : ''}
+                          </Text>
+                        </Text>
+                      );
+                    })}
+                  </View>
+
+                  {/* Total */}
+                  <View style={[styles.cell, { width: colW('total_stock') }]}>
+                    <Text style={[styles.cellCost, { color: getStockColor(entry) }]}>
+                      {entry.total_stock} {entry.unit}
+                    </Text>
+                  </View>
+
+                  {/* Associated Buildings */}
+                  <View style={[styles.cell, { width: colW('buildings') }]}>
+                    {entry.buildings_serviced.length > 0
+                      ? <Text style={styles.cellText} numberOfLines={3}>
+                          {entry.buildings_serviced.slice(0, 3).join(', ')}
+                          {entry.buildings_serviced.length > 3 ? ` +${entry.buildings_serviced.length - 3}` : ''}
+                        </Text>
+                      : <Text style={styles.cellMuted}>—</Text>}
+                  </View>
+
+                  {/* Sent To */}
+                  <View style={[styles.cell, { width: colW('sent_to') }]}>
+                    {entry.buildings_serviced.length > 0
+                      ? entry.buildings_serviced.map(b => (
+                          <Text key={b} style={styles.cellText} numberOfLines={1}>{b}</Text>
+                        ))
+                      : <Text style={styles.cellMuted}>—</Text>}
+                  </View>
+
+                  {/* Edit */}
+                  <View style={[styles.cell, { width: colW('edit'), alignItems: 'center' }]}>
+                    <TouchableOpacity style={styles.editBtn} onPress={() => openEdit(entry)}>
+                      <Icon name="create" size={17} color={colors.primary} />
+                      <Text style={styles.editBtnText}>Edit</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                </View>
+              );
+            })
+          )}
           <View style={{ height: 80 }} />
         </ScrollView>
       )}
