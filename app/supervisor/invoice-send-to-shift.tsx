@@ -407,12 +407,12 @@ export default function InvoiceSendToShiftScreen() {
 
       // Create inventory transactions for each line item
       for (const item of lineItems) {
-        if (item.id) {
+        if (item.item_id) {
           await supabase
             .from('inventory_transactions')
             .insert({
               id: uuid.v4() as string,
-              item_id: item.id,
+              item_id: item.item_id,
               item_name: item.description,
               transaction_type: 'out',
               quantity: item.quantity,

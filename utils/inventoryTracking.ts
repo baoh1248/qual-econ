@@ -35,25 +35,29 @@ export async function logInventoryTransfer(transfer: Omit<InventoryTransfer, 'id
     // Generate unique ID
     const id = Date.now().toString() + Math.random().toString(36).substr(2, 9);
 
-    const { error } = await supabase
-      .from('inventory_transfers')
-      .insert({
-        id,
-        items: transfer.items,
-        destination: transfer.destination,
-        timestamp: transfer.timestamp,
-        transferred_by: transfer.transferredBy,
-        notes: transfer.notes || null,
-        total_value: totalValue,
-        total_tax: transfer.totalTax || 0,
-        type: transfer.type || 'outgoing',
-        source: transfer.source || null,
-        order_number: transfer.orderNumber || null,
-        sent_from: transfer.sentFrom || null,
-      });
+    const row = {
+      id,
+      items: transfer.items,
+      destination: transfer.destination,
+      timestamp: transfer.timestamp,
+      transferred_by: transfer.transferredBy,
+      notes: transfer.notes || null,
+      total_value: totalValue,
+      total_tax: transfer.totalTax || 0,
+      type: transfer.type || 'outgoing',
+      source: transfer.source || null,
+      order_number: transfer.orderNumber || null,
+      sent_from: transfer.sentFrom || null,
+    };
+
+    let { error } = await supabase.from('inventory_transfers').insert(row);
 
     if (error) {
-      throw error;
+      // Retry without total_tax in case the column migration hasn't been applied yet
+      console.warn('⚠️ Full insert failed, retrying without total_tax:', error.message);
+      const { total_tax: _dropped, ...rowWithoutTax } = row;
+      const retry = await supabase.from('inventory_transfers').insert(rowWithoutTax);
+      if (retry.error) throw retry.error;
     }
 
     console.log('Inventory transfer logged successfully with total value:', totalValue);
