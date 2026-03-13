@@ -12,6 +12,7 @@ import LoadingSpinner from '../../components/LoadingSpinner';
 import Icon from '../../components/Icon';
 import IconButton from '../../components/IconButton';
 import Button from '../../components/Button';
+import SupplierPicker from '../../components/inventory/SupplierPicker';
 import { commonStyles, colors, spacing, typography } from '../../styles/commonStyles';
 import { formatCurrency, logInventoryTransfer } from '../../utils/inventoryTracking';
 import uuid from 'react-native-uuid';
@@ -908,13 +909,12 @@ export default function PurchaseOrders() {
               </View>
 
               {/* Supplier */}
-              <Text style={styles.fieldLabel}>Supplier *</Text>
-              <TextInput
-                style={[commonStyles.textInput, { marginBottom: spacing.md }]}
+              <SupplierPicker
+                label="Supplier"
+                required
                 value={newPO.supplier}
-                onChangeText={v => setNewPO(f => ({ ...f, supplier: v }))}
+                onChange={v => setNewPO(f => ({ ...f, supplier: v }))}
                 placeholder="Supplier company name"
-                placeholderTextColor={colors.textSecondary}
               />
 
               {/* Warehouse */}

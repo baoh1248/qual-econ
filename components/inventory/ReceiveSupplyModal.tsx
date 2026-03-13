@@ -7,6 +7,7 @@ import Icon from '../Icon';
 import Button from '../Button';
 import IconButton from '../IconButton';
 import { logInventoryTransfer, type InventoryTransferItem, formatCurrency } from '../../utils/inventoryTracking';
+import SupplierPicker from './SupplierPicker';
 
 interface InventoryItem {
   id: string;
@@ -322,16 +323,12 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
             </View>
 
             {/* Supplier Name */}
-            <View style={{ marginBottom: spacing.md }}>
-              <Text style={styles.sectionLabel}>Supplier Name *</Text>
-              <TextInput
-                style={commonStyles.textInput}
-                placeholder="Enter supplier name"
-                placeholderTextColor={colors.textSecondary}
-                value={supplierName}
-                onChangeText={setSupplierName}
-              />
-            </View>
+            <SupplierPicker
+              label="Supplier Name"
+              required
+              value={supplierName}
+              onChange={setSupplierName}
+            />
 
             {/* Date */}
             <View style={{ marginBottom: spacing.md }}>
