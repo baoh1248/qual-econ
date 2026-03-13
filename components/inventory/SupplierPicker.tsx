@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { supabase } from '../../app/integrations/supabase/client';
 import { colors, spacing, typography, commonStyles } from '../../styles/commonStyles';
 
@@ -52,22 +52,9 @@ const SupplierPicker: React.FC<SupplierPickerProps> = ({
     }
   };
 
-  const deleteSupplier = (supplier: Supplier) => {
-    Alert.alert(
-      'Remove Supplier',
-      `Remove "${supplier.name}" from saved suppliers?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            await supabase.from('suppliers').delete().eq('id', supplier.id);
-            setSuppliers(prev => prev.filter(s => s.id !== supplier.id));
-          },
-        },
-      ]
-    );
+  const deleteSupplier = async (supplier: Supplier) => {
+    await supabase.from('suppliers').delete().eq('id', supplier.id);
+    setSuppliers(prev => prev.filter(s => s.id !== supplier.id));
   };
 
   const isAlreadySaved = suppliers.some(
@@ -95,15 +82,14 @@ const SupplierPicker: React.FC<SupplierPickerProps> = ({
           contentContainerStyle={styles.chipsContent}
         >
           {suppliers.map(s => (
-            <TouchableOpacity
-              key={s.id}
-              style={styles.chip}
-              onPress={() => onChange(s.name)}
-              onLongPress={() => deleteSupplier(s)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.chipText}>{s.name}</Text>
-            </TouchableOpacity>
+            <View key={s.id} style={styles.chip}>
+              <TouchableOpacity onPress={() => onChange(s.name)} activeOpacity={0.7}>
+                <Text style={styles.chipText}>{s.name}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => deleteSupplier(s)} style={styles.chipX} activeOpacity={0.6} hitSlop={{ top: 6, bottom: 6, left: 4, right: 6 }}>
+                <Text style={styles.chipXText}>×</Text>
+              </TouchableOpacity>
+            </View>
           ))}
           {showSaveChip && (
             <TouchableOpacity style={styles.saveChip} onPress={saveSupplier} activeOpacity={0.7}>
@@ -134,9 +120,12 @@ const styles = StyleSheet.create({
     paddingRight: spacing.sm,
   },
   chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: colors.primaryPale,
     borderRadius: 16,
-    paddingHorizontal: spacing.md,
+    paddingLeft: spacing.md,
+    paddingRight: spacing.sm,
     paddingVertical: 5,
     borderWidth: 1,
     borderColor: colors.primaryLight,
@@ -145,6 +134,15 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.primary,
     fontWeight: '500',
+  },
+  chipX: {
+    marginLeft: 4,
+  },
+  chipXText: {
+    fontSize: 16,
+    lineHeight: 18,
+    color: colors.primary,
+    opacity: 0.6,
   },
   saveChip: {
     backgroundColor: colors.successLight,
