@@ -58,6 +58,17 @@ interface InventoryItem {
   current_stock: number;
 }
 
+interface POReceipt {
+  id: string;
+  po_id: string;
+  received_at: string;
+  items: { name: string; quantity: number; unit: string; unit_cost: number; total_cost: number }[];
+  invoice_number?: string;
+  received_by: string;
+  total_value: number;
+  total_tax: number;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const WAREHOUSES = ['Sparks Warehouse', 'Regular Warehouse'];
@@ -105,6 +116,7 @@ export default function PurchaseOrders() {
 
   // Detail / Receive state
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
+  const [poReceipts, setPoReceipts] = useState<POReceipt[]>([]);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showReceiveModal, setShowReceiveModal] = useState(false);
   const [receivePO, setReceivePO] = useState<PurchaseOrder | null>(null);
@@ -154,6 +166,22 @@ export default function PurchaseOrders() {
     setNewPO({ po_number: generatePoNumber(), supplier: '', warehouse: WAREHOUSES[0], expected_delivery: '', notes: '' });
     setNewPOItems([]);
     setShowCreateModal(true);
+  };
+
+  const openDetail = async (po: PurchaseOrder) => {
+    setSelectedPO(po);
+    setPoReceipts([]);
+    setShowDetailModal(true);
+    try {
+      const { data } = await supabase
+        .from('purchase_order_receipts')
+        .select('*')
+        .eq('po_id', po.id)
+        .order('received_at', { ascending: false });
+      setPoReceipts(data || []);
+    } catch {
+      // non-critical — receipt history just won't show
+    }
   };
 
   const addItemToPO = (item: InventoryItem) => {
@@ -327,6 +355,32 @@ export default function PurchaseOrders() {
         }).eq('id', poItem.id);
       }
 
+      // ── Log receipt event ─────────────────────────────────────────
+      try {
+        await supabase.from('purchase_order_receipts').insert({
+          po_id: receivePO.id,
+          received_at: new Date().toISOString(),
+          items: itemsToReceive.map(poItem => {
+            const qty = parseFloat(receiveQtys[poItem.id] || '0');
+            const itemSubtotal = qty * poItem.unit_cost;
+            const itemTax = subtotal > 0 ? totalTax * itemSubtotal / subtotal : 0;
+            return {
+              name: poItem.item_name,
+              quantity: qty,
+              unit: poItem.unit,
+              unit_cost: poItem.unit_cost,
+              total_cost: itemSubtotal + itemTax,
+            };
+          }),
+          invoice_number: invoiceNumber.trim() || null,
+          received_by: 'Supervisor',
+          total_value: subtotal + totalTax,
+          total_tax: totalTax,
+        });
+      } catch (receiptErr) {
+        console.warn('⚠️ Failed to log PO receipt record (non-critical):', receiptErr);
+      }
+
       // ── Update PO status ──────────────────────────────────────────
       const allItems = receivePO.items || [];
       const updatedItems = allItems.map(item => {
@@ -469,7 +523,7 @@ export default function PurchaseOrders() {
               <TouchableOpacity
                 key={po.id}
                 style={styles.card}
-                onPress={() => { setSelectedPO(po); setShowDetailModal(true); }}
+                onPress={() => openDetail(po)}
                 activeOpacity={0.8}
               >
                 <View style={[commonStyles.row, commonStyles.spaceBetween, { marginBottom: spacing.xs }]}>
@@ -598,6 +652,35 @@ export default function PurchaseOrders() {
                       <Text style={styles.detailLabel}>Notes</Text>
                       <Text style={styles.detailValue}>{selectedPO.notes}</Text>
                     </View>
+                  )}
+
+                  {/* Receipt History */}
+                  {poReceipts.length > 0 && (
+                    <>
+                      <Text style={[typography.h3, { color: colors.text, marginTop: spacing.md, marginBottom: spacing.sm }]}>
+                        Receipt History ({poReceipts.length})
+                      </Text>
+                      {poReceipts.map(receipt => (
+                        <View key={receipt.id} style={styles.receiptCard}>
+                          <View style={[commonStyles.row, commonStyles.spaceBetween, { marginBottom: spacing.xs }]}>
+                            <Text style={styles.receiptDate}>
+                              {new Date(receipt.received_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                            </Text>
+                            <Text style={[styles.detailValue, { color: colors.success }]}>
+                              {formatCurrency(receipt.total_value)}
+                            </Text>
+                          </View>
+                          {receipt.invoice_number && (
+                            <Text style={styles.metaText}>INV: {receipt.invoice_number}</Text>
+                          )}
+                          {(receipt.items as POReceipt['items']).map((item, i) => (
+                            <Text key={i} style={[styles.metaText, { marginTop: 2 }]}>
+                              · {item.quantity} {item.unit} {item.name}
+                            </Text>
+                          ))}
+                        </View>
+                      ))}
+                    </>
                   )}
 
                   {/* Actions */}
@@ -1125,4 +1208,9 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   itemNumText: { fontSize: 11, color: colors.primary, fontWeight: '700' },
+  receiptCard: {
+    backgroundColor: colors.success + '0D', borderRadius: 10, padding: spacing.sm,
+    marginBottom: spacing.sm, borderWidth: 1, borderColor: colors.success + '40',
+  },
+  receiptDate: { fontSize: 13, fontWeight: '700', color: colors.text },
 });
