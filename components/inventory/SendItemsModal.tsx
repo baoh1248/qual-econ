@@ -69,6 +69,7 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
   const [orderNumber, setOrderNumber] = useState('');
   const [notes, setNotes] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [buildingSearch, setBuildingSearch] = useState('');
   const [sending, setSending] = useState(false);
   
   const [buildings, setBuildings] = useState<ClientBuilding[]>([]);
@@ -378,6 +379,18 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
     return acc;
   }, {} as Record<string, ClientBuilding[]>);
 
+  // Filtered buildings by search query
+  const filteredBuildingsByClient = buildingSearch.trim()
+    ? Object.entries(buildingsByClient).reduce((acc, [clientName, clientBuildings]) => {
+        const q = buildingSearch.toLowerCase();
+        const matched = clientBuildings.filter(
+          b => b.buildingName.toLowerCase().includes(q) || clientName.toLowerCase().includes(q)
+        );
+        if (matched.length > 0) acc[clientName] = matched;
+        return acc;
+      }, {} as Record<string, ClientBuilding[]>)
+    : buildingsByClient;
+
   // Group building groups by client
   const groupsByClient = buildingGroups.reduce((acc, group) => {
     if (!acc[group.client_name]) {
@@ -672,9 +685,17 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
 
               {/* Building Selector - Collapsible by Client */}
               {destinationType === 'building' && (
+                <View>
+                  <TextInput
+                    style={[commonStyles.textInput, { marginBottom: spacing.sm }]}
+                    placeholder="Search buildings..."
+                    placeholderTextColor={colors.textSecondary}
+                    value={buildingSearch}
+                    onChangeText={setBuildingSearch}
+                  />
                 <ScrollView style={{ maxHeight: 300 }} showsVerticalScrollIndicator={false}>
-                  {Object.entries(buildingsByClient).map(([clientName, clientBuildings]) => {
-                    const isExpanded = expandedBuildingClients.has(clientName);
+                  {Object.entries(filteredBuildingsByClient).map(([clientName, clientBuildings]) => {
+                    const isExpanded = buildingSearch.trim() ? true : expandedBuildingClients.has(clientName);
                     return (
                       <View key={clientName} style={{ marginBottom: spacing.sm }}>
                         <TouchableOpacity
@@ -749,12 +770,13 @@ const SendItemsModal = memo<SendItemsModalProps>(({ visible, onClose, inventory,
                       </View>
                     );
                   })}
-                  {buildings.length === 0 && (
+                  {Object.keys(filteredBuildingsByClient).length === 0 && (
                     <Text style={[typography.caption, { color: colors.textSecondary, textAlign: 'center', padding: spacing.md }]}>
-                      No buildings available
+                      {buildingSearch.trim() ? 'No buildings match your search' : 'No buildings available'}
                     </Text>
                   )}
                 </ScrollView>
+                </View>
               )}
 
               {/* Warehouse Destination Selector */}
