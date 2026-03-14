@@ -1227,7 +1227,8 @@ export default function PayrollScreen() {
     } else {
       showToast('CSV export is available on web', 'info');
     }
-  }, [filteredAndSortedHours, hoursSource, approvalStatus, formatDateRange, showToast]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredAndSortedHours, hoursSource, approvalStatus, showToast]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
