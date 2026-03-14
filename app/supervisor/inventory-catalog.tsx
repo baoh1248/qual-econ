@@ -24,8 +24,8 @@ const WAREHOUSES = ['Sparks Warehouse', 'Regular Warehouse'];
 // Relative flex weights — they are normalized to screen width at runtime
 const COLUMNS = [
   { key: 'image',       label: 'Picture',              flex: 4.0,  sort: null },
-  { key: 'item_number', label: 'Product Number',       flex: 7.5,  sort: null },
-  { key: 'name',        label: 'Item Name',            flex: 14.0, sort: null },
+  { key: 'item_number', label: 'Product Number',       flex: 7.5,  sort: 'alpha' as const },
+  { key: 'name',        label: 'Item Name',            flex: 14.0, sort: 'alpha' as const },
   { key: 'supply_type', label: 'Type of Supply',       flex: 9.0,  sort: 'alpha' as const },
   { key: 'supplier',    label: 'Supplier',             flex: 8.0,  sort: 'alpha' as const },
   { key: 'unit',        label: 'Type of Unit',         flex: 5.5,  sort: 'alpha' as const },
@@ -398,6 +398,8 @@ export default function InventoryCatalog() {
 
   const getSortValue = (entry: CatalogEntry, col: string): string | number => {
     switch (col) {
+      case 'item_number': return entry.item_number.toLowerCase();
+      case 'name':        return entry.name.toLowerCase();
       case 'supply_type': return entry.supply_type.toLowerCase();
       case 'supplier':    return entry.supplier.toLowerCase();
       case 'unit':        return entry.unit.toLowerCase();
