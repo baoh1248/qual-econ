@@ -1154,7 +1154,7 @@ export default function InventoryCatalog() {
         >
           <Image
             source={{ uri: hoveredImage.url }}
-            style={{ width: 180, height: 180, borderRadius: 6 }}
+            style={{ width: 190, height: 190, borderRadius: 6 }}
             resizeMode="contain"
           />
         </View>

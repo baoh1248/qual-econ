@@ -618,6 +618,7 @@ export default function SupervisorInventoryScreen() {
   const { theme, themeColor } = useTheme();
   const { toast, showToast, hideToast } = useToast();
   const { config, syncStatus } = useDatabase();
+  const [hoveredImage, setHoveredImage] = useState<{ url: string; x: number; y: number } | null>(null);
 
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [restockRequests, setRestockRequests] = useState<RestockRequest[]>([]);
@@ -1555,7 +1556,13 @@ export default function SupervisorInventoryScreen() {
                   <AnimatedCard key={item.id} style={styles.itemCard}>
                     <View style={styles.itemHeader}>
                       {item.image_url ? (
-                        <Image source={{ uri: item.image_url }} style={{ width: 36, height: 36, borderRadius: 6 }} resizeMode="cover" />
+                        <View
+                          // @ts-ignore — web-only hover events
+                          onMouseEnter={(e: any) => setHoveredImage({ url: item.image_url, x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
+                          onMouseLeave={() => setHoveredImage(null)}
+                        >
+                          <Image source={{ uri: item.image_url }} style={{ width: 36, height: 36, borderRadius: 6 }} resizeMode="cover" />
+                        </View>
                       ) : (
                         <Icon name={getCategoryIcon(item.category)} size={32} color={themeColor} />
                       )}
@@ -2283,6 +2290,36 @@ export default function SupervisorInventoryScreen() {
         visible={toast.visible}
         onHide={hideToast}
       />
+
+      {/* Image hover tooltip */}
+      {hoveredImage && (
+        <View
+          pointerEvents="none"
+          // @ts-ignore — position: fixed is web-only
+          style={{
+            position: 'fixed',
+            top: hoveredImage.y - 90,
+            left: hoveredImage.x + 16,
+            zIndex: 9999,
+            backgroundColor: colors.surface,
+            borderRadius: 10,
+            padding: 8,
+            shadowColor: '#000',
+            shadowOpacity: 0.18,
+            shadowRadius: 12,
+            shadowOffset: { width: 0, height: 4 },
+            elevation: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+          }}
+        >
+          <Image
+            source={{ uri: hoveredImage.url }}
+            style={{ width: 190, height: 190, borderRadius: 6 }}
+            resizeMode="contain"
+          />
+        </View>
+      )}
     </View>
   );
 }
