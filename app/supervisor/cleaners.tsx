@@ -619,6 +619,8 @@ export default function CleanersScreen() {
       fontWeight: '600',
     },
     cleanerDetails: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
       gap: spacing.xs,
       marginBottom: spacing.sm,
     },
@@ -626,6 +628,7 @@ export default function CleanersScreen() {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.xs,
+      width: '48%',
     },
     detailText: {
       ...typography.small,
