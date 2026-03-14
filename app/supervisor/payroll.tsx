@@ -13,6 +13,7 @@ import { useScheduleStorage, type ScheduleEntry } from '../../hooks/useScheduleS
 import { useClientData, type Cleaner } from '../../hooks/useClientData';
 import { useDatabase } from '../../hooks/useDatabase';
 import Button from '../../components/Button';
+import { supabase } from '../integrations/supabase/client';
 
 interface CleanerHours {
   cleanerId: string;
@@ -66,6 +67,37 @@ interface PayrollRecord {
   status: 'draft' | 'approved' | 'paid';
   created_at?: string;
   updated_at?: string;
+}
+
+interface ClockRecord {
+  id: string;
+  cleaner_id: string;
+  cleaner_name: string;
+  schedule_entry_id?: string;
+  building_name: string;
+  client_name: string;
+  clock_in_time?: string;
+  clock_out_time?: string;
+  total_minutes?: number;
+  status: 'clocked_in' | 'clocked_out' | 'auto_clocked_out';
+}
+
+interface JobsiteBreakdown {
+  key: string;
+  clientName: string;
+  buildingName: string;
+  totalHours: number;
+  totalPay: number;
+  cleanerCount: number;
+  cleaners: string[];
+}
+
+interface AnomalyFlag {
+  cleanerId: string;
+  cleanerName: string;
+  type: 'high_pay' | 'duplicate_hours' | 'no_clock_record';
+  message: string;
+  severity: 'warning' | 'error';
 }
 
 const styles = StyleSheet.create({
@@ -353,6 +385,116 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginLeft: spacing.sm,
   },
+  // Source toggle
+  sourceToggleRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  sourceToggleBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+  },
+  sourceToggleBtnActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  sourceToggleBtnText: { fontSize: 13, fontWeight: '600', color: colors.text },
+  sourceToggleBtnTextActive: { color: colors.background },
+  // View tabs
+  tabRow: {
+    flexDirection: 'row',
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 10,
+    padding: 3,
+    marginBottom: spacing.md,
+  },
+  tabBtn: {
+    flex: 1,
+    paddingVertical: spacing.sm,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  tabBtnActive: { backgroundColor: colors.background, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 4, elevation: 2 },
+  tabBtnText: { fontSize: 13, fontWeight: '600', color: colors.textSecondary },
+  tabBtnTextActive: { color: colors.primary },
+  // Anomaly banner
+  anomalyBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: 8,
+    marginBottom: spacing.xs,
+  },
+  anomalyText: { fontSize: 12, flex: 1, fontWeight: '500' },
+  // Approval row
+  approvalRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  approvalBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  approvalBtnText: { fontSize: 12, fontWeight: '700' },
+  approvalStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    marginTop: spacing.xs,
+  },
+  approvalStatusText: { fontSize: 11, fontWeight: '700' },
+  // Jobsite card
+  jobsiteCard: {
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 12,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.success,
+  },
+  jobsiteHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: spacing.sm },
+  jobsiteName: { fontSize: 16, fontWeight: '700', color: colors.text, flex: 1 },
+  jobsiteClient: { fontSize: 13, color: colors.textSecondary, marginTop: 2 },
+  jobsiteStats: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.xs },
+  jobsiteStatItem: { alignItems: 'center' },
+  jobsiteStatValue: { fontSize: 16, fontWeight: '700', color: colors.primary },
+  jobsiteStatLabel: { fontSize: 11, color: colors.textSecondary, marginTop: 2 },
+  // Clock source badge on card
+  clockBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    alignSelf: 'flex-start',
+    marginTop: spacing.xs,
+  },
+  clockBadgeText: { fontSize: 11, fontWeight: '600' },
 });
 
 export default function PayrollScreen() {
@@ -377,6 +519,14 @@ export default function PayrollScreen() {
   const [showDailyBreakdown, setShowDailyBreakdown] = useState<Set<string>>(new Set());
   const [payrollRecords, setPayrollRecords] = useState<PayrollRecord[]>([]);
   const [isGeneratingPayroll, setIsGeneratingPayroll] = useState(false);
+
+  // New state for improvements
+  const [hoursSource, setHoursSource] = useState<'scheduled' | 'actual'>('scheduled');
+  const [activeView, setActiveView] = useState<'cleaner' | 'jobsite'>('cleaner');
+  const [clockRecords, setClockRecords] = useState<ClockRecord[]>([]);
+  const [isLoadingClock, setIsLoadingClock] = useState(false);
+  const [previousRecords, setPreviousRecords] = useState<PayrollRecord[]>([]);
+  const [approvalStatus, setApprovalStatus] = useState<Record<string, 'draft' | 'approved' | 'paid'>>({});
 
   // Helper function to create date from string without timezone issues
   const createDateFromString = useCallback((dateString: string): Date => {
@@ -416,6 +566,78 @@ export default function PayrollScreen() {
       return new Date();
     }
   }, []);
+
+  // Load clock records from DB for current pay period
+  useEffect(() => {
+    const loadClockRecords = async () => {
+      setIsLoadingClock(true);
+      try {
+        const startStr = formatDateString(selectedWeekStart);
+        const daysInPeriod = filters.dateRange === 'week' ? 6 : 13;
+        const endDate = new Date(selectedWeekStart);
+        endDate.setDate(endDate.getDate() + daysInPeriod);
+        const endStr = formatDateString(endDate);
+
+        const { data, error } = await supabase
+          .from('clock_records')
+          .select('*')
+          .gte('clock_in_time', `${startStr}T00:00:00`)
+          .lte('clock_in_time', `${endStr}T23:59:59`);
+
+        if (!error && data) {
+          setClockRecords(data as ClockRecord[]);
+        }
+      } catch (e) {
+        console.error('Failed to load clock records:', e);
+      } finally {
+        setIsLoadingClock(false);
+      }
+    };
+    loadClockRecords();
+  }, [selectedWeekStart, filters.dateRange, formatDateString]);
+
+  // Load previous 4 weeks of payroll records for anomaly detection
+  useEffect(() => {
+    const loadPreviousRecords = async () => {
+      try {
+        const weekIds: string[] = [];
+        for (let i = 1; i <= 4; i++) {
+          const d = new Date(selectedWeekStart);
+          d.setDate(d.getDate() - i * 7);
+          weekIds.push(formatDateString(d));
+        }
+        const { data, error } = await supabase
+          .from('payroll_records')
+          .select('*')
+          .in('week_id', weekIds);
+        if (!error && data) setPreviousRecords(data as PayrollRecord[]);
+      } catch (e) {
+        console.error('Failed to load previous records:', e);
+      }
+    };
+    loadPreviousRecords();
+  }, [selectedWeekStart, formatDateString]);
+
+  // Load approval statuses from existing payroll records for current period
+  useEffect(() => {
+    const loadApprovalStatus = async () => {
+      try {
+        const weekId = formatDateString(selectedWeekStart);
+        const { data, error } = await supabase
+          .from('payroll_records')
+          .select('cleaner_id, status')
+          .eq('week_id', weekId);
+        if (!error && data) {
+          const map: Record<string, 'draft' | 'approved' | 'paid'> = {};
+          data.forEach((r: any) => { map[r.cleaner_id] = r.status; });
+          setApprovalStatus(map);
+        }
+      } catch (e) {
+        console.error('Failed to load approval status:', e);
+      }
+    };
+    loadApprovalStatus();
+  }, [selectedWeekStart, formatDateString, payrollRecords]);
 
   // Enhanced cleaner hours calculation with payment information
   const cleanerHoursData = useMemo(() => {
@@ -515,9 +737,21 @@ export default function PayrollScreen() {
             cleanerWeekHours.set(cleanerId, { hours: 0, entries: [] });
           }
           
-          const hours = entry.hours || 0;
+          let hours = entry.hours || 0;
+          // #1 — Use actual clocked hours when toggle is set
+          if (hoursSource === 'actual') {
+            const clockMatch = clockRecords.find(
+              cr => cr.schedule_entry_id === entry.id ||
+                (cr.cleaner_id === cleanerId && cr.clock_in_time?.startsWith(entry.date || ''))
+            );
+            if (clockMatch?.total_minutes) {
+              hours = clockMatch.total_minutes / 60;
+            } else {
+              hours = 0; // no clock record = no pay
+            }
+          }
           const splitHours = entryCleaners.length > 1 ? hours / entryCleaners.length : hours;
-          
+
           const data = cleanerWeekHours.get(cleanerId)!;
           data.hours += splitHours;
           data.entries.push(entry);
@@ -572,7 +806,14 @@ export default function PayrollScreen() {
             ? entry.cleanerNames 
             : (entry.cleanerName ? [entry.cleanerName] : []);
           
-          const hours = entry.hours || 0;
+          let hours = entry.hours || 0;
+          if (hoursSource === 'actual') {
+            const clockMatch = clockRecords.find(
+              cr => cr.schedule_entry_id === entry.id ||
+                (cr.cleaner_id === cleanerId && cr.clock_in_time?.startsWith(entry.date || ''))
+            );
+            hours = clockMatch?.total_minutes ? clockMatch.total_minutes / 60 : 0;
+          }
           const splitHours = entryCleaners.length > 1 ? hours / entryCleaners.length : hours;
           const paymentType = entry.paymentType || 'hourly';
           const entryDate = entry.date || weekId;
@@ -647,7 +888,7 @@ export default function PayrollScreen() {
     console.log('=== CALCULATION COMPLETE ===\n');
     
     return result;
-  }, [selectedWeekStart, filters.dateRange, cleaners, getWeekSchedule, getWeekIdFromDate]);
+  }, [selectedWeekStart, filters.dateRange, cleaners, getWeekSchedule, getWeekIdFromDate, hoursSource, clockRecords]);
 
   // Enhanced filter and sort with payment type filter
   const filteredAndSortedHours = useMemo(() => {
@@ -737,6 +978,135 @@ export default function PayrollScreen() {
     };
   }, [filteredAndSortedHours]);
 
+  // #3 — Per-jobsite payroll breakdown
+  const jobsiteBreakdown = useMemo((): JobsiteBreakdown[] => {
+    const map = new Map<string, JobsiteBreakdown>();
+    for (const cleaner of cleanerHoursData) {
+      const allEntries = [
+        ...cleaner.hourlyJobs,
+        ...cleaner.flatRateJobs,
+      ];
+      for (const entry of allEntries) {
+        const key = `${entry.clientName}||${entry.buildingName}`;
+        if (!map.has(key)) {
+          map.set(key, {
+            key,
+            clientName: entry.clientName || 'Unknown Client',
+            buildingName: entry.buildingName || 'Unknown Building',
+            totalHours: 0,
+            totalPay: 0,
+            cleanerCount: 0,
+            cleaners: [],
+          });
+        }
+        const site = map.get(key)!;
+        const entryCleaners = entry.cleanerNames?.length ? entry.cleanerNames : [entry.cleanerName || ''];
+        const splitHours = (entry.hours || 0) / (entryCleaners.length || 1);
+        let entryPay = 0;
+        if (entry.paymentType === 'flat_rate') {
+          entryPay = (entry.flatRateAmount || 0) / (entryCleaners.length || 1);
+        } else {
+          const rate = entry.hourlyRate || 15;
+          entryPay = splitHours * rate;
+        }
+        site.totalHours += splitHours;
+        site.totalPay += entryPay;
+        if (!site.cleaners.includes(cleaner.cleanerName)) {
+          site.cleaners.push(cleaner.cleanerName);
+          site.cleanerCount++;
+        }
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => b.totalPay - a.totalPay);
+  }, [cleanerHoursData]);
+
+  // #2 & #5 — Anomaly flags: duplicate hours + pay deviation vs previous periods
+  const anomalyFlags = useMemo((): Record<string, AnomalyFlag[]> => {
+    const result: Record<string, AnomalyFlag[]> = {};
+
+    // Build average pay per cleaner from previous records
+    const prevAvg: Record<string, number> = {};
+    const prevCount: Record<string, number> = {};
+    for (const rec of previousRecords) {
+      if (!prevAvg[rec.cleaner_id]) { prevAvg[rec.cleaner_id] = 0; prevCount[rec.cleaner_id] = 0; }
+      prevAvg[rec.cleaner_id] += rec.total_pay;
+      prevCount[rec.cleaner_id]++;
+    }
+    for (const id of Object.keys(prevAvg)) {
+      prevAvg[id] = prevAvg[id] / prevCount[id];
+    }
+
+    for (const cleaner of cleanerHoursData) {
+      const flags: AnomalyFlag[] = [];
+
+      // #5 High pay anomaly vs historical average
+      if (prevAvg[cleaner.cleanerId] && prevAvg[cleaner.cleanerId] > 0) {
+        const deviation = (cleaner.totalPay - prevAvg[cleaner.cleanerId]) / prevAvg[cleaner.cleanerId];
+        if (deviation > 0.20) {
+          flags.push({
+            cleanerId: cleaner.cleanerId,
+            cleanerName: cleaner.cleanerName,
+            type: 'high_pay',
+            message: `Pay is ${(deviation * 100).toFixed(0)}% above their 4-period average ($${prevAvg[cleaner.cleanerId].toFixed(2)})`,
+            severity: deviation > 0.50 ? 'error' : 'warning',
+          });
+        }
+      }
+
+      // #2 Duplicate hours: same hours on multiple days (copy-paste pattern)
+      const dailyHours = Object.values(cleaner.dailyBreakdown).map(d => d.hours).filter(h => h > 0);
+      const seen = new Set<number>();
+      const dupes = dailyHours.filter(h => { if (seen.has(h)) return true; seen.add(h); return false; });
+      if (dupes.length >= 2) {
+        flags.push({
+          cleanerId: cleaner.cleanerId,
+          cleanerName: cleaner.cleanerName,
+          type: 'duplicate_hours',
+          message: `Same hours (${dupes[0].toFixed(1)}h) appear on ${dupes.length + 1} days — possible copy-paste`,
+          severity: 'warning',
+        });
+      }
+
+      // #2 No clock record when using scheduled hours
+      if (hoursSource === 'scheduled') {
+        const allEntries = [...cleaner.hourlyJobs, ...cleaner.flatRateJobs];
+        const missingClocks = allEntries.filter(e =>
+          e.status === 'completed' &&
+          !clockRecords.find(cr => cr.schedule_entry_id === e.id || (cr.cleaner_id === cleaner.cleanerId && cr.clock_in_time?.startsWith(e.date || '')))
+        );
+        if (missingClocks.length > 0) {
+          flags.push({
+            cleanerId: cleaner.cleanerId,
+            cleanerName: cleaner.cleanerName,
+            type: 'no_clock_record',
+            message: `${missingClocks.length} completed shift${missingClocks.length > 1 ? 's' : ''} missing clock-in record`,
+            severity: 'warning',
+          });
+        }
+      }
+
+      if (flags.length > 0) result[cleaner.cleanerId] = flags;
+    }
+    return result;
+  }, [cleanerHoursData, previousRecords, clockRecords, hoursSource]);
+
+  // #6 — Approval handler
+  const handleApproval = useCallback(async (cleanerId: string, cleanerName: string, newStatus: 'approved' | 'paid') => {
+    try {
+      const weekId = formatDateString(selectedWeekStart);
+      const { error } = await supabase
+        .from('payroll_records')
+        .update({ status: newStatus, updated_at: new Date().toISOString() })
+        .eq('cleaner_id', cleanerId)
+        .eq('week_id', weekId);
+      if (error) throw error;
+      setApprovalStatus(prev => ({ ...prev, [cleanerId]: newStatus }));
+      showToast(`${cleanerName} marked as ${newStatus}`, 'success');
+    } catch (e) {
+      showToast('Failed to update approval status', 'error');
+    }
+  }, [selectedWeekStart, formatDateString, showToast]);
+
   // Generate payroll records
   const generatePayrollRecords = useCallback(async () => {
     try {
@@ -818,22 +1188,46 @@ export default function PayrollScreen() {
     });
   }, []);
 
+  // #4 — Real CSV export (QBO-compatible format)
   const exportPayrollData = useCallback(() => {
-    const exportData = filteredAndSortedHours.map(cleaner => ({
-      name: cleaner.cleanerName,
-      totalHours: cleaner.totalHours,
-      regularHours: cleaner.regularHours,
-      overtimeHours: cleaner.overtimeHours,
-      totalPay: cleaner.totalPay,
-      hourlyPay: cleaner.totalHourlyPay,
-      flatRatePay: cleaner.totalFlatRatePay,
-      averageRate: cleaner.averageHourlyRate,
-      dateRange: filters.dateRange,
-    }));
-    
-    console.log('Exporting payroll data:', exportData);
-    showToast('Payroll data exported successfully', 'success');
-  }, [filteredAndSortedHours, filters.dateRange, showToast]);
+    const periodLabel = formatDateRange();
+    const rows: string[][] = [
+      ['Employee Name', 'Pay Period', 'Hours Source', 'Total Hours', 'Regular Hours', 'Overtime Hours',
+       'Avg Hourly Rate', 'Regular Pay', 'Overtime Pay', 'Flat Rate Pay', 'Total Pay', 'Approval Status'],
+    ];
+    for (const cleaner of filteredAndSortedHours) {
+      const regularPay = cleaner.regularHours * cleaner.averageHourlyRate;
+      const overtimePay = cleaner.overtimeHours * cleaner.averageHourlyRate * 1.5;
+      rows.push([
+        cleaner.cleanerName,
+        periodLabel,
+        hoursSource === 'actual' ? 'Clock-In' : 'Scheduled',
+        cleaner.totalHours.toFixed(2),
+        cleaner.regularHours.toFixed(2),
+        cleaner.overtimeHours.toFixed(2),
+        cleaner.averageHourlyRate.toFixed(2),
+        regularPay.toFixed(2),
+        overtimePay.toFixed(2),
+        cleaner.totalFlatRatePay.toFixed(2),
+        cleaner.totalPay.toFixed(2),
+        approvalStatus[cleaner.cleanerId] || 'draft',
+      ]);
+    }
+    const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+
+    if (Platform.OS === 'web') {
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `payroll_${periodLabel.replace(/\s/g, '_')}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('CSV downloaded', 'success');
+    } else {
+      showToast('CSV export is available on web', 'info');
+    }
+  }, [filteredAndSortedHours, hoursSource, approvalStatus, formatDateRange, showToast]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -962,8 +1356,8 @@ export default function PayrollScreen() {
 
         {/* Generate Payroll Button */}
         <AnimatedCard index={1}>
-          <TouchableOpacity 
-            style={styles.generatePayrollButton} 
+          <TouchableOpacity
+            style={styles.generatePayrollButton}
             onPress={generatePayrollRecords}
             disabled={isGeneratingPayroll}
           >
@@ -972,6 +1366,28 @@ export default function PayrollScreen() {
               {isGeneratingPayroll ? 'Generating...' : 'Generate Payroll Records'}
             </Text>
           </TouchableOpacity>
+
+          {/* #1 — Hours source toggle */}
+          <View style={styles.sourceToggleRow}>
+            <TouchableOpacity
+              style={[styles.sourceToggleBtn, hoursSource === 'scheduled' && styles.sourceToggleBtnActive]}
+              onPress={() => setHoursSource('scheduled')}
+            >
+              <Icon name="calendar" size={14} style={{ color: hoursSource === 'scheduled' ? colors.background : colors.text }} />
+              <Text style={[styles.sourceToggleBtnText, hoursSource === 'scheduled' && styles.sourceToggleBtnTextActive]}>
+                Scheduled Hours
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.sourceToggleBtn, hoursSource === 'actual' && styles.sourceToggleBtnActive]}
+              onPress={() => setHoursSource('actual')}
+            >
+              <Icon name="time" size={14} style={{ color: hoursSource === 'actual' ? colors.background : colors.text }} />
+              <Text style={[styles.sourceToggleBtnText, hoursSource === 'actual' && styles.sourceToggleBtnTextActive]}>
+                {isLoadingClock ? 'Loading…' : `Actual (${clockRecords.length} records)`}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </AnimatedCard>
 
         {/* Search and Filters */}
@@ -1157,8 +1573,98 @@ export default function PayrollScreen() {
           </View>
         </AnimatedCard>
 
+        {/* #3 — View tabs */}
+        <AnimatedCard index={3}>
+          <View style={styles.tabRow}>
+            {(['cleaner', 'jobsite'] as const).map(tab => (
+              <TouchableOpacity
+                key={tab}
+                style={[styles.tabBtn, activeView === tab && styles.tabBtnActive]}
+                onPress={() => setActiveView(tab)}
+              >
+                <Text style={[styles.tabBtnText, activeView === tab && styles.tabBtnTextActive]}>
+                  {tab === 'cleaner' ? `By Cleaner (${filteredAndSortedHours.length})` : `By Jobsite (${jobsiteBreakdown.length})`}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </AnimatedCard>
+
+        {/* #2/#5 — Anomaly alerts summary */}
+        {Object.keys(anomalyFlags).length > 0 && (
+          <AnimatedCard index={4}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm }}>
+              <Icon name="warning" size={18} style={{ color: colors.warning }} />
+              <Text style={[typography.body, { fontWeight: '700', color: colors.text }]}>
+                {Object.keys(anomalyFlags).length} Payroll Alert{Object.keys(anomalyFlags).length > 1 ? 's' : ''} — Review Before Approving
+              </Text>
+            </View>
+            {Object.values(anomalyFlags).flat().map((flag, i) => (
+              <View
+                key={i}
+                style={[styles.anomalyBanner, {
+                  backgroundColor: flag.severity === 'error' ? colors.danger + '15' : colors.warning + '15',
+                }]}
+              >
+                <Icon
+                  name={flag.severity === 'error' ? 'alert-circle' : 'warning'}
+                  size={14}
+                  style={{ color: flag.severity === 'error' ? colors.danger : colors.warning }}
+                />
+                <Text style={[styles.anomalyText, { color: flag.severity === 'error' ? colors.danger : colors.warning }]}>
+                  <Text style={{ fontWeight: '700' }}>{flag.cleanerName}: </Text>
+                  {flag.message}
+                </Text>
+              </View>
+            ))}
+          </AnimatedCard>
+        )}
+
+        {/* #3 — Jobsite view */}
+        {activeView === 'jobsite' && (
+          jobsiteBreakdown.length === 0 ? (
+            <AnimatedCard index={5}>
+              <View style={{ alignItems: 'center', padding: spacing.xl }}>
+                <Icon name="business" size={48} style={{ color: colors.textSecondary, marginBottom: spacing.md }} />
+                <Text style={[typography.h3, { color: colors.text, textAlign: 'center' }]}>No Jobsite Data</Text>
+              </View>
+            </AnimatedCard>
+          ) : (
+            jobsiteBreakdown.map((site, index) => (
+              <AnimatedCard key={site.key} index={index + 5}>
+                <View style={styles.jobsiteCard}>
+                  <View style={styles.jobsiteHeader}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.jobsiteName}>{site.buildingName}</Text>
+                      <Text style={styles.jobsiteClient}>{site.clientName}</Text>
+                    </View>
+                    <Text style={[styles.jobsiteStatValue, { color: colors.success, fontSize: 18 }]}>
+                      ${site.totalPay.toFixed(2)}
+                    </Text>
+                  </View>
+                  <View style={styles.jobsiteStats}>
+                    <View style={styles.jobsiteStatItem}>
+                      <Text style={styles.jobsiteStatValue}>{site.totalHours.toFixed(1)}h</Text>
+                      <Text style={styles.jobsiteStatLabel}>Hours</Text>
+                    </View>
+                    <View style={styles.jobsiteStatItem}>
+                      <Text style={styles.jobsiteStatValue}>{site.cleanerCount}</Text>
+                      <Text style={styles.jobsiteStatLabel}>Cleaners</Text>
+                    </View>
+                    <View style={[styles.jobsiteStatItem, { flex: 1 }]}>
+                      <Text style={[styles.jobsiteStatLabel, { color: colors.textSecondary }]} numberOfLines={2}>
+                        {site.cleaners.join(', ')}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              </AnimatedCard>
+            ))
+          )
+        )}
+
         {/* Enhanced Cleaner Hours List with Payment Information */}
-        {filteredAndSortedHours.length === 0 ? (
+        {activeView === 'cleaner' && filteredAndSortedHours.length === 0 ? (
           <AnimatedCard index={4}>
             <View style={{ alignItems: 'center', padding: spacing.xl }}>
               <Icon name="time" size={48} style={{ color: colors.textSecondary, marginBottom: spacing.md }} />
@@ -1171,9 +1677,28 @@ export default function PayrollScreen() {
             </View>
           </AnimatedCard>
         ) : (
-          filteredAndSortedHours.map((cleaner, index) => (
+          activeView === 'cleaner' && filteredAndSortedHours.map((cleaner, index) => {
+            const flags = anomalyFlags[cleaner.cleanerId] || [];
+            const status = approvalStatus[cleaner.cleanerId] || 'draft';
+            const statusColor = status === 'paid' ? colors.success : status === 'approved' ? colors.primary : colors.textSecondary;
+            return (
             <AnimatedCard key={cleaner.cleanerId} index={index + 4}>
-              <View style={styles.hoursCard}>
+              <View style={[styles.hoursCard, flags.some(f => f.severity === 'error') && { borderLeftColor: colors.danger }]}>
+
+                {/* #2/#5 Per-card anomaly flags */}
+                {flags.map((flag, fi) => (
+                  <View key={fi} style={[styles.anomalyBanner, {
+                    backgroundColor: flag.severity === 'error' ? colors.danger + '15' : colors.warning + '15',
+                    marginBottom: spacing.xs,
+                  }]}>
+                    <Icon name={flag.severity === 'error' ? 'alert-circle' : 'warning'} size={13}
+                      style={{ color: flag.severity === 'error' ? colors.danger : colors.warning }} />
+                    <Text style={[styles.anomalyText, { color: flag.severity === 'error' ? colors.danger : colors.warning }]}>
+                      {flag.message}
+                    </Text>
+                  </View>
+                ))}
+
                 <TouchableOpacity
                   style={styles.hoursHeader}
                   onPress={() => toggleDailyBreakdown(cleaner.cleanerId)}
@@ -1181,65 +1706,56 @@ export default function PayrollScreen() {
                   <View style={{ flex: 1 }}>
                     <Text style={styles.cleanerName}>{cleaner.cleanerName}</Text>
                     <Text style={styles.totalPay}>${cleaner.totalPay.toFixed(2)}</Text>
+                    {/* #1 clock source badge */}
+                    <View style={[styles.clockBadge, { backgroundColor: hoursSource === 'actual' ? colors.success + '20' : colors.primary + '15' }]}>
+                      <Icon name={hoursSource === 'actual' ? 'time' : 'calendar'} size={11}
+                        style={{ color: hoursSource === 'actual' ? colors.success : colors.primary }} />
+                      <Text style={[styles.clockBadgeText, { color: hoursSource === 'actual' ? colors.success : colors.primary }]}>
+                        {hoursSource === 'actual' ? 'Actual Clock-In' : 'Scheduled'}
+                      </Text>
+                    </View>
+                    {/* #6 approval status badge */}
+                    <View style={[styles.approvalStatusBadge, { backgroundColor: statusColor + '20' }]}>
+                      <Icon name={status === 'paid' ? 'checkmark-circle' : status === 'approved' ? 'checkmark' : 'ellipsis-horizontal'} size={11} style={{ color: statusColor }} />
+                      <Text style={[styles.approvalStatusText, { color: statusColor }]}>
+                        {status.toUpperCase()}
+                      </Text>
+                    </View>
                   </View>
                   <View style={{ alignItems: 'flex-end' }}>
                     <Text style={styles.totalHours}>{cleaner.totalHours.toFixed(1)}h</Text>
                     {cleaner.overtimeHours > 0 && (
                       <View style={styles.overtimeIndicator}>
-                        <Text style={styles.overtimeText}>
-                          +{cleaner.overtimeHours.toFixed(1)}h OT
-                        </Text>
+                        <Text style={styles.overtimeText}>+{cleaner.overtimeHours.toFixed(1)}h OT</Text>
                       </View>
                     )}
                     <View style={styles.paymentTypeIndicator}>
-                      <Icon 
-                        name={cleaner.flatRateJobs.length > 0 ? 'cash' : 'time'} 
-                        size={12} 
-                        style={{ color: colors.primary }} 
-                      />
+                      <Icon name={cleaner.flatRateJobs.length > 0 ? 'cash' : 'time'} size={12} style={{ color: colors.primary }} />
                       <Text style={styles.paymentTypeText}>
-                        {cleaner.flatRateJobs.length > 0 && cleaner.hourlyJobs.length > 0 
-                          ? 'Mixed' 
-                          : cleaner.flatRateJobs.length > 0 
-                            ? 'Flat Rate' 
-                            : 'Hourly'
-                        }
+                        {cleaner.flatRateJobs.length > 0 && cleaner.hourlyJobs.length > 0
+                          ? 'Mixed' : cleaner.flatRateJobs.length > 0 ? 'Flat Rate' : 'Hourly'}
                       </Text>
                     </View>
                   </View>
-                  <Icon 
-                    name={showDailyBreakdown.has(cleaner.cleanerId) ? 'chevron-up' : 'chevron-down'} 
-                    size={20} 
-                    style={{ color: colors.textSecondary, marginLeft: spacing.sm }} 
-                  />
+                  <Icon name={showDailyBreakdown.has(cleaner.cleanerId) ? 'chevron-up' : 'chevron-down'}
+                    size={20} style={{ color: colors.textSecondary, marginLeft: spacing.sm }} />
                 </TouchableOpacity>
 
                 <View style={styles.hoursBreakdown}>
                   <View style={styles.hoursItem}>
-                    <Text style={[styles.hoursValue, { color: colors.success }]}>
-                      {cleaner.completedHours.toFixed(1)}h
-                    </Text>
+                    <Text style={[styles.hoursValue, { color: colors.success }]}>{cleaner.completedHours.toFixed(1)}h</Text>
                     <Text style={styles.hoursLabel}>Completed</Text>
                   </View>
-                  
                   <View style={styles.hoursItem}>
-                    <Text style={[styles.hoursValue, { color: colors.primary }]}>
-                      {cleaner.regularHours.toFixed(1)}h
-                    </Text>
+                    <Text style={[styles.hoursValue, { color: colors.primary }]}>{cleaner.regularHours.toFixed(1)}h</Text>
                     <Text style={styles.hoursLabel}>Regular</Text>
                   </View>
-                  
                   <View style={styles.hoursItem}>
-                    <Text style={[styles.hoursValue, { color: colors.warning }]}>
-                      {cleaner.overtimeHours.toFixed(1)}h
-                    </Text>
+                    <Text style={[styles.hoursValue, { color: colors.warning }]}>{cleaner.overtimeHours.toFixed(1)}h</Text>
                     <Text style={styles.hoursLabel}>Overtime</Text>
                   </View>
-                  
                   <View style={styles.hoursItem}>
-                    <Text style={[styles.hoursValue, { color: colors.success }]}>
-                      ${cleaner.averageHourlyRate.toFixed(2)}
-                    </Text>
+                    <Text style={[styles.hoursValue, { color: colors.success }]}>${cleaner.averageHourlyRate.toFixed(2)}</Text>
                     <Text style={styles.hoursLabel}>Avg Rate</Text>
                   </View>
                 </View>
@@ -1247,17 +1763,14 @@ export default function PayrollScreen() {
                 {/* Payment Breakdown */}
                 <View style={styles.paymentBreakdown}>
                   <Text style={styles.paymentBreakdownTitle}>Payment Breakdown</Text>
-                  
                   <View style={styles.paymentRow}>
                     <Text style={styles.paymentLabel}>Hourly Jobs ({cleaner.hourlyJobs.length})</Text>
                     <Text style={styles.paymentValue}>${cleaner.totalHourlyPay.toFixed(2)}</Text>
                   </View>
-                  
                   <View style={styles.paymentRow}>
                     <Text style={styles.paymentLabel}>Flat Rate Jobs ({cleaner.flatRateJobs.length})</Text>
                     <Text style={styles.paymentValue}>${cleaner.totalFlatRatePay.toFixed(2)}</Text>
                   </View>
-                  
                   <View style={[styles.paymentRow, { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.xs }]}>
                     <Text style={[styles.paymentLabel, { fontWeight: '600', color: colors.text }]}>Total Pay</Text>
                     <Text style={[styles.paymentValue, { fontWeight: '600', color: colors.success }]}>
@@ -1296,9 +1809,38 @@ export default function PayrollScreen() {
                       ))}
                   </View>
                 )}
+
+                {/* #6 — Approval workflow buttons */}
+                <View style={styles.approvalRow}>
+                  {status !== 'approved' && status !== 'paid' && (
+                    <TouchableOpacity
+                      style={[styles.approvalBtn, { borderColor: colors.primary, backgroundColor: colors.primary + '10' }]}
+                      onPress={() => handleApproval(cleaner.cleanerId, cleaner.cleanerName, 'approved')}
+                    >
+                      <Icon name="checkmark" size={14} style={{ color: colors.primary }} />
+                      <Text style={[styles.approvalBtnText, { color: colors.primary }]}>Approve</Text>
+                    </TouchableOpacity>
+                  )}
+                  {status === 'approved' && (
+                    <TouchableOpacity
+                      style={[styles.approvalBtn, { borderColor: colors.success, backgroundColor: colors.success + '10' }]}
+                      onPress={() => handleApproval(cleaner.cleanerId, cleaner.cleanerName, 'paid')}
+                    >
+                      <Icon name="cash" size={14} style={{ color: colors.success }} />
+                      <Text style={[styles.approvalBtnText, { color: colors.success }]}>Mark Paid</Text>
+                    </TouchableOpacity>
+                  )}
+                  {status === 'paid' && (
+                    <View style={[styles.approvalBtn, { borderColor: colors.success, backgroundColor: colors.success + '10', flex: 1 }]}>
+                      <Icon name="checkmark-circle" size={14} style={{ color: colors.success }} />
+                      <Text style={[styles.approvalBtnText, { color: colors.success }]}>Paid ✓</Text>
+                    </View>
+                  )}
+                </View>
               </View>
             </AnimatedCard>
-          ))
+            );
+          })
         )}
 
         {/* Export Button */}
@@ -1306,7 +1848,7 @@ export default function PayrollScreen() {
           <AnimatedCard index={filteredAndSortedHours.length + 4}>
             <TouchableOpacity style={styles.exportButton} onPress={exportPayrollData}>
               <Icon name="download" size={20} style={{ color: colors.background }} />
-              <Text style={styles.exportButtonText}>Export Payroll Data</Text>
+              <Text style={styles.exportButtonText}>Export CSV for QuickBooks</Text>
             </TouchableOpacity>
           </AnimatedCard>
         )}
