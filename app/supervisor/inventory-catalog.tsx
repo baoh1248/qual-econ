@@ -116,6 +116,7 @@ async function uploadItemImage(localUri: string): Promise<string> {
 
 export default function InventoryCatalog() {
   const { toastVisible, toastMessage, toastType, showToast, hideToast } = useToast();
+  const [hoveredImage, setHoveredImage] = useState<{ url: string; x: number; y: number } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -707,7 +708,13 @@ export default function InventoryCatalog() {
                   {/* Picture */}
                   <View style={[styles.cell, { width: colW('image'), alignItems: 'center' }]}>
                     {entry.image_url ? (
-                      <Image source={{ uri: entry.image_url }} style={styles.cellThumb} resizeMode="cover" />
+                      <View
+                        // @ts-ignore — web-only hover events
+                        onMouseEnter={(e: any) => setHoveredImage({ url: entry.image_url, x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
+                        onMouseLeave={() => setHoveredImage(null)}
+                      >
+                        <Image source={{ uri: entry.image_url }} style={styles.cellThumb} resizeMode="cover" />
+                      </View>
                     ) : (
                       <View style={styles.cellThumbPlaceholder}>
                         <Icon name="cube-outline" size={20} style={{ color: colors.textSecondary }} />
@@ -1122,6 +1129,36 @@ export default function InventoryCatalog() {
           </View>
         </View>
       </Modal>
+
+      {/* Image hover tooltip */}
+      {hoveredImage && (
+        <View
+          pointerEvents="none"
+          // @ts-ignore — position: fixed is web-only
+          style={{
+            position: 'fixed',
+            top: hoveredImage.y - 90,
+            left: hoveredImage.x + 16,
+            zIndex: 9999,
+            backgroundColor: colors.surface,
+            borderRadius: 10,
+            padding: 8,
+            shadowColor: '#000',
+            shadowOpacity: 0.18,
+            shadowRadius: 12,
+            shadowOffset: { width: 0, height: 4 },
+            elevation: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+          }}
+        >
+          <Image
+            source={{ uri: hoveredImage.url }}
+            style={{ width: 180, height: 180, borderRadius: 6 }}
+            resizeMode="contain"
+          />
+        </View>
+      )}
     </View>
   );
 }
