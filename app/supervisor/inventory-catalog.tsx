@@ -198,12 +198,9 @@ export default function InventoryCatalog() {
           new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime()
         )[0];
 
-        const nameKey = master.name.toLowerCase().trim();
-        const destCounts = buildingMap[nameKey] || {};
-        const buildingsServiced = Object.entries(destCounts)
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 4)
-          .map(([dest]) => dest);
+        const buildingsServiced: string[] = Array.isArray(master.associated_buildings)
+          ? master.associated_buildings
+          : [];
 
         return {
           name: master.name,
