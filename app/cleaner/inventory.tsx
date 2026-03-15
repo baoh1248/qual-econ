@@ -220,6 +220,7 @@ export default function InventoryScreen() {
       try {
         setIsSaving(true);
 
+        const failedItems: string[] = [];
         for (const change of changes) {
           const { error } = await supabase
             .from('inventory_items')
@@ -231,8 +232,8 @@ export default function InventoryScreen() {
 
           if (error) {
             console.error('Error saving stock change:', error);
-            showToast('Failed to save changes', 'error');
-            return;
+            failedItems.push(change.itemName);
+            continue;
           }
 
           // Log the adjustment to inventory_transactions
@@ -254,6 +255,10 @@ export default function InventoryScreen() {
           }
         }
 
+        if (failedItems.length > 0) {
+          showToast(`Failed to save: ${failedItems.join(', ')}`, 'error');
+          return;
+        }
         showToast('Inventory updated', 'success');
       } catch (err) {
         console.error('Error saving inventory changes:', err);

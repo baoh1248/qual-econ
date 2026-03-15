@@ -316,7 +316,7 @@ export default function ScheduleView() {
       // Validate pattern
       const validation = validateRecurringPattern(pattern);
       if (!validation.valid) {
-        console.warn(`⚠️ Invalid pattern ${pattern.id}:`, validation.errors);
+        showToast(`Invalid shift pattern: ${validation.errors.join(', ')}`, 'error');
         return 0;
       }
 
@@ -390,10 +390,11 @@ export default function ScheduleView() {
       let totalGenerated = 0;
       const updatePromises: Promise<any>[] = [];
 
+      const skippedPatterns: string[] = [];
       for (const pattern of activePatterns) {
         const validation = validateRecurringPattern(pattern);
         if (!validation.valid) {
-          console.warn(`⚠️ Invalid pattern ${pattern.id}:`, validation.errors);
+          skippedPatterns.push(pattern.building_name || pattern.id);
           continue;
         }
 
@@ -446,6 +447,10 @@ export default function ScheduleView() {
       await Promise.all(updatePromises);
 
 
+      if (skippedPatterns.length > 0) {
+        showToast(`Skipped invalid patterns: ${skippedPatterns.join(', ')}`, 'error');
+      }
+
       if (totalGenerated > 0) {
         showToast(`Generated ${totalGenerated} recurring shift${totalGenerated > 1 ? 's' : ''}`, 'success');
 
@@ -455,7 +460,6 @@ export default function ScheduleView() {
         setCurrentWeekSchedule(freshEntries);
         setScheduleKey(prev => prev + 1);
       }
-
 
       return totalGenerated;
     } catch (error) {

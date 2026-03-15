@@ -101,6 +101,7 @@ export function useGeofenceClockInOut({
         const lng = parseFloat(data.longitude);
         console.log('✅ Found coordinates in DB:', lat, lng);
         setResolvedCoords({ latitude: lat, longitude: lng });
+        setState(prev => ({ ...prev, error: null }));
         return;
       }
 
@@ -112,6 +113,7 @@ export function useGeofenceClockInOut({
         if (result.success && isValidCoordinates(result.latitude, result.longitude)) {
           console.log('✅ Geocoded successfully:', result.latitude, result.longitude);
           setResolvedCoords({ latitude: result.latitude, longitude: result.longitude });
+          setState(prev => ({ ...prev, error: null }));
 
           // Save to DB so we don't have to geocode again
           await supabase
@@ -128,8 +130,16 @@ export function useGeofenceClockInOut({
       }
 
       console.warn('⚠️ Could not resolve coordinates for:', shiftInfo.buildingName);
+      setState(prev => ({
+        ...prev,
+        error: `Could not resolve location for ${shiftInfo.buildingName}. Tap refresh to retry.`,
+      }));
     } catch (error) {
       console.error('❌ Error resolving coordinates:', error);
+      setState(prev => ({
+        ...prev,
+        error: `Error resolving location for ${shiftInfo.buildingName}. Tap refresh to retry.`,
+      }));
     }
   }, []);
 

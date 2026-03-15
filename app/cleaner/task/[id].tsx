@@ -1,7 +1,7 @@
 
 import { Text, View, ScrollView, TouchableOpacity, Alert, TextInput, Image, Modal, StyleSheet, Platform, Linking } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { commonStyles, colors, spacing, typography, statusColors } from '../../../styles/commonStyles';
 import CompanyLogo from '../../../components/CompanyLogo';
 import Icon from '../../../components/Icon';
@@ -76,6 +76,9 @@ export default function TaskDetail() {
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [photoDescription, setPhotoDescription] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<PhotoDoc['category']>('before');
+  const [isCompleting, setIsCompleting] = useState(false);
+  const notesTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const checklistTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const loadTask = useCallback(async () => {
     if (!id) return;
@@ -113,6 +116,20 @@ export default function TaskDetail() {
           : undefined,
       }));
 
+      // Restore checklist state from DB if available
+      const savedChecklist = data.checklist_state;
+      const checklistItems = DEFAULT_CHECKLIST.map((text, i) => {
+        const itemId = String(i + 1);
+        const savedItem = Array.isArray(savedChecklist)
+          ? savedChecklist.find((s: any) => s.id === itemId)
+          : null;
+        return {
+          id: itemId,
+          text,
+          completed: savedItem?.completed || false,
+        };
+      });
+
       setTask({
         id: data.id,
         title: data.client_name || data.clientName || 'Cleaning Task',
@@ -122,13 +139,9 @@ export default function TaskDetail() {
         priority: data.priority || 'medium',
         estimatedTime: data.estimated_duration || data.hours * 60 || 60,
         description: data.notes || 'Complete all cleaning tasks as scheduled.',
-        checklistItems: DEFAULT_CHECKLIST.map((text, i) => ({
-          id: String(i + 1),
-          text,
-          completed: false,
-        })),
+        checklistItems,
         photos: persistedPhotos,
-        notes: '',
+        notes: data.cleaner_notes || '',
         _clientName: data.client_name || '',
         _buildingName: data.building_name || '',
         _cleanerName: data.cleaner_name || '',
@@ -158,6 +171,41 @@ export default function TaskDetail() {
     }
     return () => clearInterval(interval);
   }, [isTimerRunning]);
+
+  // Debounced save for cleaner notes
+  const saveNotesToDb = useCallback((notes: string) => {
+    if (!id) return;
+    if (notesTimerRef.current) clearTimeout(notesTimerRef.current);
+    notesTimerRef.current = setTimeout(async () => {
+      await supabase
+        .from('schedule_entries')
+        .update({ cleaner_notes: notes, updated_at: new Date().toISOString() })
+        .eq('id', id);
+    }, 1000);
+  }, [id]);
+
+  // Debounced save for checklist state
+  const saveChecklistToDb = useCallback((items: { id: string; completed: boolean }[]) => {
+    if (!id) return;
+    if (checklistTimerRef.current) clearTimeout(checklistTimerRef.current);
+    checklistTimerRef.current = setTimeout(async () => {
+      await supabase
+        .from('schedule_entries')
+        .update({
+          checklist_state: items.map(i => ({ id: i.id, completed: i.completed })),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id);
+    }, 500);
+  }, [id]);
+
+  // Cleanup timers
+  useEffect(() => {
+    return () => {
+      if (notesTimerRef.current) clearTimeout(notesTimerRef.current);
+      if (checklistTimerRef.current) clearTimeout(checklistTimerRef.current);
+    };
+  }, []);
 
   const formatTime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
@@ -282,35 +330,44 @@ export default function TaskDetail() {
   };
 
   const finishTask = async () => {
-    const { error } = await supabase
-      .from('schedule_entries')
-      .update({
-        status: 'completed',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', id);
+    if (isCompleting) return;
+    setIsCompleting(true);
 
-    if (error) {
-      console.error('Error completing task:', error);
-      showToast('Failed to save completion', 'error');
-      return;
+    try {
+      const { error } = await supabase
+        .from('schedule_entries')
+        .update({
+          status: 'completed',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id);
+
+      if (error) {
+        console.error('Error completing task:', error);
+        showToast('Failed to save completion', 'error');
+        return;
+      }
+
+      setTask(prev => prev ? ({ ...prev, status: 'completed', endTime: new Date() }) : null);
+      setIsTimerRunning(false);
+
+      Alert.alert('Task Completed', 'Great job! Task has been marked as completed.', [
+        { text: 'OK', onPress: () => router.back() },
+      ]);
+    } finally {
+      setIsCompleting(false);
     }
-
-    setTask(prev => prev ? ({ ...prev, status: 'completed', endTime: new Date() }) : null);
-    setIsTimerRunning(false);
-
-    Alert.alert('Task Completed', 'Great job! Task has been marked as completed.', [
-      { text: 'OK', onPress: () => router.back() },
-    ]);
   };
 
   const toggleChecklistItem = (itemId: string) => {
-    setTask(prev => prev ? ({
-      ...prev,
-      checklistItems: prev.checklistItems.map(item =>
+    setTask(prev => {
+      if (!prev) return null;
+      const updated = prev.checklistItems.map(item =>
         item.id === itemId ? { ...item, completed: !item.completed } : item
-      ),
-    }) : null);
+      );
+      saveChecklistToDb(updated);
+      return { ...prev, checklistItems: updated };
+    });
   };
 
   const takePhoto = async (category: PhotoDoc['category'] = 'before') => {
@@ -343,7 +400,7 @@ export default function TaskDetail() {
           } : undefined,
         };
 
-        // Persist photo to database
+        // Persist photo to database — only add to state if DB save succeeds
         if (task?.id) {
           const taskAny = task as any;
           const { data: insertedPhoto, error: photoError } = await supabase
@@ -363,11 +420,13 @@ export default function TaskDetail() {
             .select('id')
             .single();
 
-          if (!photoError && insertedPhoto) {
-            newPhoto.id = insertedPhoto.id;
-          } else if (photoError) {
+          if (photoError) {
             console.error('Failed to persist photo:', photoError);
+            showToast('Failed to save photo. Please try again.', 'error');
+            return;
           }
+
+          newPhoto.id = insertedPhoto.id;
         }
 
         setTask(prev => prev ? ({
@@ -376,6 +435,7 @@ export default function TaskDetail() {
         }) : null);
 
         setPhotoDescription('');
+        setSelectedCategory('before');
         setShowCategoryModal(false);
       }
     } catch (error) {
@@ -393,7 +453,19 @@ export default function TaskDetail() {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: () => {
+          onPress: async () => {
+            // Delete from database first
+            const { error } = await supabase
+              .from('task_photos')
+              .delete()
+              .eq('id', photoId);
+
+            if (error) {
+              console.error('Failed to delete photo from DB:', error);
+              showToast('Failed to delete photo', 'error');
+              return;
+            }
+
             setTask(prev => prev ? ({
               ...prev,
               photos: prev.photos.filter(photo => photo.id !== photoId),
@@ -535,7 +607,7 @@ export default function TaskDetail() {
           )}
 
           {task.status === 'in-progress' && (
-            <Button title="Complete Task" onPress={completeTask} style={{ backgroundColor: colors.primary }} />
+            <Button title={isCompleting ? "Completing..." : "Complete Task"} onPress={completeTask} style={{ backgroundColor: colors.primary }} disabled={isCompleting} />
           )}
         </View>
 
@@ -701,7 +773,10 @@ export default function TaskDetail() {
             placeholder="Add notes about this task..."
             placeholderTextColor={colors.textSecondary}
             value={task.notes}
-            onChangeText={(text) => setTask(prev => prev ? ({ ...prev, notes: text }) : null)}
+            onChangeText={(text) => {
+              setTask(prev => prev ? ({ ...prev, notes: text }) : null);
+              saveNotesToDb(text);
+            }}
             multiline
             editable={task.status !== 'completed'}
           />

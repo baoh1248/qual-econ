@@ -236,7 +236,7 @@ export default function CleanerTimeOffScreen() {
         console.error('Error message:', error.message);
         console.error('Error stack:', error.stack);
       }
-      throw error;
+      showToast('Failed to submit time off request. Please try again.', 'error');
     }
   };
 

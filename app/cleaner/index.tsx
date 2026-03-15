@@ -9,6 +9,7 @@ import { useToast } from '../../hooks/useToast';
 import { Text, View, ScrollView, TouchableOpacity, Alert, RefreshControl, StyleSheet, Linking, Modal, ActivityIndicator } from 'react-native';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import { useState, useEffect, useCallback } from 'react';
+import { useFocusEffect } from 'expo-router';
 import Icon from '../../components/Icon';
 import Button from '../../components/Button';
 import { supabase } from '../integrations/supabase/client';
@@ -686,6 +687,16 @@ export default function CleanerDashboard() {
       loadShifts();
     }
   }, [profile.name, loadShifts]);
+
+  // Refresh data when screen comes into focus (e.g. returning from task detail)
+  useFocusEffect(
+    useCallback(() => {
+      if (profile.name && profile.name !== 'Loading...') {
+        loadShifts();
+        loadProfile();
+      }
+    }, [profile.name, loadShifts, loadProfile])
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
