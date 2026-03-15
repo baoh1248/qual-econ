@@ -1219,14 +1219,6 @@ export default function ScheduleView() {
 
           // Log the shift creation
           try {
-              client: savedEntry.clientName,
-              building: savedEntry.buildingName,
-              cleaners: savedEntry.cleanerNames || [savedEntry.cleanerName],
-              date: savedEntry.date,
-              hours: savedEntry.hours,
-              id: savedEntry.id
-            });
-
             await logShiftCreated({
               clientName: savedEntry.clientName,
               buildingName: savedEntry.buildingName,
