@@ -177,10 +177,15 @@ export default function TaskDetail() {
     if (!id) return;
     if (notesTimerRef.current) clearTimeout(notesTimerRef.current);
     notesTimerRef.current = setTimeout(async () => {
-      await supabase
-        .from('schedule_entries')
-        .update({ cleaner_notes: notes, updated_at: new Date().toISOString() })
-        .eq('id', id);
+      try {
+        const { error } = await supabase
+          .from('schedule_entries')
+          .update({ cleaner_notes: notes, updated_at: new Date().toISOString() })
+          .eq('id', id);
+        if (error) throw error;
+      } catch (err) {
+        console.error('Failed to save notes:', err);
+      }
     }, 1000);
   }, [id]);
 
@@ -189,13 +194,18 @@ export default function TaskDetail() {
     if (!id) return;
     if (checklistTimerRef.current) clearTimeout(checklistTimerRef.current);
     checklistTimerRef.current = setTimeout(async () => {
-      await supabase
-        .from('schedule_entries')
-        .update({
-          checklist_state: items.map(i => ({ id: i.id, completed: i.completed })),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', id);
+      try {
+        const { error } = await supabase
+          .from('schedule_entries')
+          .update({
+            checklist_state: items.map(i => ({ id: i.id, completed: i.completed })),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', id);
+        if (error) throw error;
+      } catch (err) {
+        console.error('Failed to save checklist:', err);
+      }
     }, 500);
   }, [id]);
 

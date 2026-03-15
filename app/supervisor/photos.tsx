@@ -71,6 +71,7 @@ export default function PhotosScreen() {
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<'all' | PhotoDoc['category']>('all');
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoDoc | null>(null);
+  const [updatingPhotoId, setUpdatingPhotoId] = useState<string | null>(null);
 
   const loadPhotos = useCallback(async () => {
     setLoading(true);
@@ -145,6 +146,9 @@ export default function PhotosScreen() {
   };
 
   const updatePhotoStatus = async (photoId: string, newStatus: 'approved' | 'flagged') => {
+    if (updatingPhotoId) return;
+    setUpdatingPhotoId(photoId);
+
     // Optimistic update
     setPhotos(prev => {
       const updated = prev.map(p =>
@@ -169,6 +173,8 @@ export default function PhotosScreen() {
       await loadPhotos();
       showToast('Failed to update photo status', 'error');
     }
+
+    setUpdatingPhotoId(null);
   };
 
   const handleApprovePhoto = (photoId: string) => {
