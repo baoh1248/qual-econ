@@ -42,12 +42,6 @@ export default function SupervisorChatScreen() {
   const scrollViewRef = useRef<ScrollView>(null);
   const messageInputRef = useRef<TextInput>(null);
 
-  console.log('SupervisorChatScreen rendered');
-  console.log('Is authenticated:', isAuthenticated);
-  console.log('Current user ID:', currentUserId);
-  console.log('Total cleaners:', cleaners.length);
-  console.log('Cleaners with user_id:', cleaners.filter(c => c.user_id).length);
-  console.log('Cleaners without user_id:', cleaners.filter(c => !c.user_id).length);
 
   const currentRoomMessages = selectedRoom ? messages[selectedRoom] || [] : [];
   const currentRoom = chatRooms.find(room => room.id === selectedRoom);
@@ -245,7 +239,6 @@ export default function SupervisorChatScreen() {
                 key={room.id}
                 style={enhancedStyles.modernCard}
                 onPress={() => {
-                  console.log('Selected chat room:', room.id, room.name);
                   setSelectedRoom(room.id);
                 }}
               >
@@ -459,7 +452,6 @@ export default function SupervisorChatScreen() {
       <View style={[enhancedStyles.modernHeader, { backgroundColor: themeColor }]}>
         <View style={enhancedStyles.headerTop}>
           <IconButton icon="arrow-back" onPress={() => {
-            console.log('Going back to chat room list');
             setSelectedRoom(null);
           }} variant="white" />
           <View style={enhancedStyles.headerTitleContainer}>

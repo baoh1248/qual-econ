@@ -324,9 +324,44 @@ export default function InvoiceCreateScreen() {
       return;
     }
 
+    if (customerEmail.trim()) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(customerEmail.trim())) {
+        showToast('Please enter a valid email address', 'error');
+        return;
+      }
+    }
+
+    const taxRateNum = parseFloat(taxRate);
+    if (isNaN(taxRateNum) || taxRateNum < 0) {
+      showToast('Tax rate must be 0 or greater', 'error');
+      return;
+    }
+
+    const discountNum = parseFloat(discountAmount);
+    if (isNaN(discountNum) || discountNum < 0) {
+      showToast('Discount amount must be 0 or greater', 'error');
+      return;
+    }
+
     if (lineItems.length === 0) {
       showToast('Please add at least one line item', 'error');
       return;
+    }
+
+    for (const item of lineItems) {
+      if (!item.itemName.trim()) {
+        showToast('All line items must have a name', 'error');
+        return;
+      }
+      if (item.quantity <= 0) {
+        showToast(`Quantity for "${item.itemName}" must be greater than 0`, 'error');
+        return;
+      }
+      if (item.unit_price < 0) {
+        showToast(`Unit price for "${item.itemName}" cannot be negative`, 'error');
+        return;
+      }
     }
 
     try {

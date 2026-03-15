@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Image, Alert, StyleSheet, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { commonStyles, colors, spacing, typography } from '../../styles/commonStyles';
@@ -10,6 +10,7 @@ import Icon from '../../components/Icon';
 import AnimatedCard from '../../components/AnimatedCard';
 import Toast from '../../components/Toast';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import { supabase } from '../integrations/supabase/client';
 
 interface PhotoDoc {
   id: string;
@@ -22,6 +23,7 @@ interface PhotoDoc {
   clientName: string;
   buildingName: string;
   taskId?: string;
+  status: 'pending' | 'approved' | 'flagged';
 }
 
 interface PhotoStats {
@@ -39,116 +41,76 @@ interface PhotoStats {
   };
 }
 
+function computeStats(photos: PhotoDoc[]): PhotoStats {
+  const today = new Date().toDateString();
+  const weekAgo = new Date();
+  weekAgo.setDate(weekAgo.getDate() - 7);
+
+  return {
+    totalPhotos: photos.length,
+    todayPhotos: photos.filter(p => new Date(p.timestamp).toDateString() === today).length,
+    weekPhotos: photos.filter(p => new Date(p.timestamp) >= weekAgo).length,
+    byCategory: {
+      before: photos.filter(p => p.category === 'before').length,
+      after: photos.filter(p => p.category === 'after').length,
+    },
+    byStatus: {
+      pending: photos.filter(p => p.status === 'pending').length,
+      approved: photos.filter(p => p.status === 'approved').length,
+      flagged: photos.filter(p => p.status === 'flagged').length,
+    },
+  };
+}
+
 export default function PhotosScreen() {
-  console.log('PhotosScreen rendered');
-  
   const { toast, showToast, hideToast } = useToast();
   const { themeColor } = useTheme();
-  
+
   const [photos, setPhotos] = useState<PhotoDoc[]>([]);
   const [stats, setStats] = useState<PhotoStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<'all' | PhotoDoc['category']>('all');
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoDoc | null>(null);
 
-  // Mock data initialization
-  useEffect(() => {
-    const initializePhotos = () => {
-      const mockPhotos: PhotoDoc[] = [
-        {
-          id: '1',
-          uri: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=400',
-          timestamp: new Date(),
-          category: 'before',
-          description: 'Office area before cleaning',
-          cleanerName: 'John Doe',
-          clientName: 'TechCorp Inc.',
-          buildingName: 'Main Office',
-          taskId: 'task-1'
-        },
-        {
-          id: '2',
-          uri: 'https://images.unsplash.com/photo-1527515637462-cff94eecc1ac?w=400',
-          timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000),
-          category: 'after',
-          description: 'Office area after cleaning',
-          cleanerName: 'John Doe',
-          clientName: 'TechCorp Inc.',
-          buildingName: 'Main Office',
-          taskId: 'task-1'
-        },
-        {
-          id: '3',
-          uri: 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=400',
-          timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000),
-          category: 'before',
-          description: 'Restroom before cleaning',
-          cleanerName: 'Jane Smith',
-          clientName: 'MedCenter Hospital',
-          buildingName: 'Emergency Wing'
-        },
-        {
-          id: '4',
-          uri: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400',
-          timestamp: new Date(Date.now() - 6 * 60 * 60 * 1000),
-          category: 'after',
-          description: 'Food court after cleaning',
-          cleanerName: 'Mike Johnson',
-          clientName: 'Downtown Mall',
-          buildingName: 'Food Court'
-        },
-        {
-          id: '5',
-          uri: 'https://images.unsplash.com/photo-1563013544-824ae1b704d3?w=400',
-          timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000),
-          category: 'before',
-          description: 'Warehouse before deep cleaning',
-          cleanerName: 'John Doe',
-          clientName: 'TechCorp Inc.',
-          buildingName: 'Warehouse'
-        },
-        {
-          id: '6',
-          uri: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=400',
-          timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000),
-          category: 'after',
-          description: 'Warehouse after deep cleaning',
-          cleanerName: 'John Doe',
-          clientName: 'TechCorp Inc.',
-          buildingName: 'Warehouse'
-        }
-      ];
+  const loadPhotos = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('task_photos')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-      const mockStats: PhotoStats = {
-        totalPhotos: mockPhotos.length,
-        todayPhotos: mockPhotos.filter(p => 
-          new Date(p.timestamp).toDateString() === new Date().toDateString()
-        ).length,
-        weekPhotos: mockPhotos.filter(p => {
-          const photoDate = new Date(p.timestamp);
-          const weekAgo = new Date();
-          weekAgo.setDate(weekAgo.getDate() - 7);
-          return photoDate >= weekAgo;
-        }).length,
-        byCategory: {
-          before: mockPhotos.filter(p => p.category === 'before').length,
-          after: mockPhotos.filter(p => p.category === 'after').length,
-        },
-        byStatus: {
-          pending: Math.floor(mockPhotos.length * 0.3),
-          approved: Math.floor(mockPhotos.length * 0.6),
-          flagged: Math.floor(mockPhotos.length * 0.1),
-        }
-      };
+      if (error) throw error;
 
-      setPhotos(mockPhotos);
-      setStats(mockStats);
+      const mapped: PhotoDoc[] = (data || []).map((row: any) => ({
+        id: row.id,
+        uri: row.uri,
+        timestamp: new Date(row.created_at),
+        category: row.category as 'before' | 'after',
+        description: row.description || '',
+        location: row.latitude && row.longitude
+          ? { latitude: row.latitude, longitude: row.longitude }
+          : undefined,
+        cleanerName: row.cleaner_name || 'Unknown',
+        clientName: row.client_name || 'Unknown',
+        buildingName: row.building_name || 'Unknown',
+        taskId: row.schedule_entry_id,
+        status: (row.status as 'pending' | 'approved' | 'flagged') || 'pending',
+      }));
+
+      setPhotos(mapped);
+      setStats(computeStats(mapped));
+    } catch (err) {
+      console.error('Error loading photos:', err);
+      showToast('Failed to load photos', 'error');
+    } finally {
       setLoading(false);
-    };
+    }
+  }, [showToast]);
 
-    // Simulate loading delay
-    setTimeout(initializePhotos, 1000);
-  }, []);
+  useEffect(() => {
+    loadPhotos();
+  }, [loadPhotos]);
 
   const getCategoryIcon = (category: PhotoDoc['category']) => {
     switch (category) {
@@ -166,12 +128,47 @@ export default function PhotosScreen() {
     }
   };
 
-  const filteredPhotos = selectedCategory === 'all' 
-    ? photos 
+  const getStatusColor = (status: PhotoDoc['status']) => {
+    switch (status) {
+      case 'approved': return colors.success;
+      case 'flagged': return colors.danger;
+      default: return colors.warning;
+    }
+  };
+
+  const filteredPhotos = selectedCategory === 'all'
+    ? photos
     : photos.filter(photo => photo.category === selectedCategory);
 
   const handlePhotoPress = (photo: PhotoDoc) => {
     setSelectedPhoto(photo);
+  };
+
+  const updatePhotoStatus = async (photoId: string, newStatus: 'approved' | 'flagged') => {
+    // Optimistic update
+    setPhotos(prev => {
+      const updated = prev.map(p =>
+        p.id === photoId ? { ...p, status: newStatus } : p
+      );
+      setStats(computeStats(updated));
+      return updated;
+    });
+
+    const { error } = await supabase
+      .from('task_photos')
+      .update({
+        status: newStatus,
+        reviewed_by: 'Supervisor',
+        reviewed_at: new Date().toISOString(),
+      })
+      .eq('id', photoId);
+
+    if (error) {
+      console.error('Error updating photo status:', error);
+      // Revert optimistic update on failure
+      await loadPhotos();
+      showToast('Failed to update photo status', 'error');
+    }
   };
 
   const handleApprovePhoto = (photoId: string) => {
@@ -182,10 +179,12 @@ export default function PhotosScreen() {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Approve',
-          onPress: () => {
+          onPress: async () => {
+            await updatePhotoStatus(photoId, 'approved');
             showToast('Photo approved', 'success');
-          }
-        }
+            setSelectedPhoto(null);
+          },
+        },
       ]
     );
   };
@@ -199,10 +198,12 @@ export default function PhotosScreen() {
         {
           text: 'Flag',
           style: 'destructive',
-          onPress: () => {
+          onPress: async () => {
+            await updatePhotoStatus(photoId, 'flagged');
             showToast('Photo flagged for review', 'warning');
-          }
-        }
+            setSelectedPhoto(null);
+          },
+        },
       ]
     );
   };
@@ -221,7 +222,7 @@ export default function PhotosScreen() {
   return (
     <View style={commonStyles.container}>
       <Toast {...toast} onHide={hideToast} />
-      
+
       {/* Header */}
       <View style={[commonStyles.header, { backgroundColor: themeColor }]}>
         <TouchableOpacity onPress={() => router.back()}>
@@ -231,8 +232,8 @@ export default function PhotosScreen() {
           <CompanyLogo size="small" showText={false} variant="light" />
           <Text style={commonStyles.headerTitle}>Photo Documentation</Text>
         </View>
-        <TouchableOpacity onPress={() => showToast('Export coming soon', 'info')}>
-          <Icon name="download" size={24} style={{ color: colors.background }} />
+        <TouchableOpacity onPress={loadPhotos}>
+          <Icon name="refresh" size={24} style={{ color: colors.background }} />
         </TouchableOpacity>
       </View>
 
@@ -275,20 +276,20 @@ export default function PhotosScreen() {
                 All ({photos.length})
               </Text>
             </TouchableOpacity>
-            
+
             {(['before', 'after'] as PhotoDoc['category'][]).map(category => (
               <TouchableOpacity
                 key={category}
                 style={[styles.categoryButton, selectedCategory === category && { backgroundColor: themeColor }]}
                 onPress={() => setSelectedCategory(category)}
               >
-                <Icon 
-                  name={getCategoryIcon(category)} 
-                  size={16} 
-                  style={{ color: selectedCategory === category ? colors.background : getCategoryColor(category) }} 
+                <Icon
+                  name={getCategoryIcon(category)}
+                  size={16}
+                  style={{ color: selectedCategory === category ? colors.background : getCategoryColor(category) }}
                 />
                 <Text style={[
-                  styles.categoryButtonText, 
+                  styles.categoryButtonText,
                   selectedCategory === category && styles.categoryButtonTextActive,
                   { color: selectedCategory === category ? colors.background : getCategoryColor(category) }
                 ]}>
@@ -315,7 +316,7 @@ export default function PhotosScreen() {
               <Icon name="image-outline" size={48} style={{ color: colors.textSecondary }} />
               <Text style={styles.emptyStateTitle}>No photos found</Text>
               <Text style={styles.emptyStateText}>
-                {selectedCategory === 'all' 
+                {selectedCategory === 'all'
                   ? 'No photos have been uploaded yet'
                   : `No ${selectedCategory} photos available`
                 }
@@ -323,7 +324,7 @@ export default function PhotosScreen() {
             </View>
           ) : (
             <View style={styles.photosGrid}>
-              {filteredPhotos.map((photo, index) => (
+              {filteredPhotos.map((photo) => (
                 <TouchableOpacity
                   key={photo.id}
                   style={styles.photoCard}
@@ -332,16 +333,25 @@ export default function PhotosScreen() {
                   <Image source={{ uri: photo.uri }} style={styles.photoImage} />
                   <View style={styles.photoOverlay}>
                     <View style={[styles.categoryBadge, { backgroundColor: getCategoryColor(photo.category) }]}>
-                      <Icon 
-                        name={getCategoryIcon(photo.category)} 
-                        size={12} 
-                        style={{ color: colors.background }} 
+                      <Icon
+                        name={getCategoryIcon(photo.category)}
+                        size={12}
+                        style={{ color: colors.background }}
                       />
                       <Text style={styles.categoryBadgeText}>
                         {photo.category.toUpperCase()}
                       </Text>
                     </View>
                   </View>
+                  {photo.status !== 'pending' && (
+                    <View style={[styles.statusBadge, { backgroundColor: getStatusColor(photo.status) }]}>
+                      <Icon
+                        name={photo.status === 'approved' ? 'checkmark' : 'flag'}
+                        size={10}
+                        style={{ color: colors.background }}
+                      />
+                    </View>
+                  )}
                   <View style={styles.photoInfo}>
                     <Text style={styles.photoDescription} numberOfLines={2}>
                       {photo.description}
@@ -370,63 +380,80 @@ export default function PhotosScreen() {
                 <Icon name="close" size={24} style={{ color: colors.text }} />
               </TouchableOpacity>
             </View>
-            
+
             <ScrollView showsVerticalScrollIndicator={false}>
               <Image source={{ uri: selectedPhoto.uri }} style={styles.modalImage} />
-              
+
               <View style={styles.modalContent}>
+                <View style={[styles.statusRow, { backgroundColor: getStatusColor(selectedPhoto.status) + '20' }]}>
+                  <Icon
+                    name={selectedPhoto.status === 'approved' ? 'checkmark-circle' : selectedPhoto.status === 'flagged' ? 'flag' : 'time'}
+                    size={16}
+                    style={{ color: getStatusColor(selectedPhoto.status) }}
+                  />
+                  <Text style={[styles.statusText, { color: getStatusColor(selectedPhoto.status) }]}>
+                    {selectedPhoto.status.charAt(0).toUpperCase() + selectedPhoto.status.slice(1)}
+                  </Text>
+                </View>
+
                 <View style={styles.modalInfoRow}>
                   <Icon name="person" size={16} style={{ color: colors.textSecondary }} />
                   <Text style={styles.modalInfoText}>Cleaner: {selectedPhoto.cleanerName}</Text>
                 </View>
-                
+
                 <View style={styles.modalInfoRow}>
                   <Icon name="business" size={16} style={{ color: colors.textSecondary }} />
                   <Text style={styles.modalInfoText}>
                     {selectedPhoto.clientName} - {selectedPhoto.buildingName}
                   </Text>
                 </View>
-                
+
                 <View style={styles.modalInfoRow}>
                   <Icon name={getCategoryIcon(selectedPhoto.category)} size={16} style={{ color: getCategoryColor(selectedPhoto.category) }} />
                   <Text style={styles.modalInfoText}>
                     Category: {selectedPhoto.category.charAt(0).toUpperCase() + selectedPhoto.category.slice(1)}
                   </Text>
                 </View>
-                
+
                 <View style={styles.modalInfoRow}>
                   <Icon name="time" size={16} style={{ color: colors.textSecondary }} />
                   <Text style={styles.modalInfoText}>
                     {selectedPhoto.timestamp.toLocaleString()}
                   </Text>
                 </View>
-                
+
                 <View style={styles.modalDescription}>
                   <Text style={styles.modalDescriptionTitle}>Description</Text>
                   <Text style={styles.modalDescriptionText}>{selectedPhoto.description}</Text>
                 </View>
-                
+
                 <View style={styles.modalActions}>
                   <TouchableOpacity
-                    style={[styles.modalActionButton, { backgroundColor: themeColor }]}
-                    onPress={() => {
-                      handleApprovePhoto(selectedPhoto.id);
-                      setSelectedPhoto(null);
-                    }}
+                    style={[
+                      styles.modalActionButton,
+                      { backgroundColor: selectedPhoto.status === 'approved' ? colors.textSecondary : themeColor },
+                    ]}
+                    onPress={() => handleApprovePhoto(selectedPhoto.id)}
+                    disabled={selectedPhoto.status === 'approved'}
                   >
                     <Icon name="checkmark" size={16} style={{ color: colors.background }} />
-                    <Text style={styles.modalActionButtonText}>Approve</Text>
+                    <Text style={styles.modalActionButtonText}>
+                      {selectedPhoto.status === 'approved' ? 'Approved' : 'Approve'}
+                    </Text>
                   </TouchableOpacity>
-                  
+
                   <TouchableOpacity
-                    style={[styles.modalActionButton, { backgroundColor: colors.danger }]}
-                    onPress={() => {
-                      handleFlagPhoto(selectedPhoto.id);
-                      setSelectedPhoto(null);
-                    }}
+                    style={[
+                      styles.modalActionButton,
+                      { backgroundColor: selectedPhoto.status === 'flagged' ? colors.textSecondary : colors.danger },
+                    ]}
+                    onPress={() => handleFlagPhoto(selectedPhoto.id)}
+                    disabled={selectedPhoto.status === 'flagged'}
                   >
                     <Icon name="flag" size={16} style={{ color: colors.background }} />
-                    <Text style={styles.modalActionButtonText}>Flag</Text>
+                    <Text style={styles.modalActionButtonText}>
+                      {selectedPhoto.status === 'flagged' ? 'Flagged' : 'Flag'}
+                    </Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -475,9 +502,6 @@ const styles = StyleSheet.create({
     marginRight: spacing.sm,
     gap: spacing.xs,
   },
-  categoryButtonActive: {
-    backgroundColor: colors.primary,
-  },
   categoryButtonText: {
     ...typography.caption,
     color: colors.textSecondary,
@@ -519,6 +543,16 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: spacing.sm,
     right: spacing.sm,
+  },
+  statusBadge: {
+    position: 'absolute',
+    top: spacing.sm,
+    left: spacing.sm,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   categoryBadge: {
     flexDirection: 'row',
@@ -606,6 +640,19 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     padding: spacing.lg,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 8,
+    marginBottom: spacing.md,
+  },
+  statusText: {
+    ...typography.body,
+    fontWeight: '600',
   },
   modalInfoRow: {
     flexDirection: 'row',

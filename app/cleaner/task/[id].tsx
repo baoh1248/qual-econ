@@ -95,6 +95,24 @@ export default function TaskDetail() {
         return;
       }
 
+      // Load photos for this task from the database
+      const { data: photosData } = await supabase
+        .from('task_photos')
+        .select('*')
+        .eq('schedule_entry_id', data.id)
+        .order('created_at', { ascending: true });
+
+      const persistedPhotos: PhotoDoc[] = (photosData || []).map((p: any) => ({
+        id: p.id,
+        uri: p.uri,
+        timestamp: new Date(p.created_at),
+        category: p.category as 'before' | 'after',
+        description: p.description || '',
+        location: p.latitude && p.longitude
+          ? { latitude: p.latitude, longitude: p.longitude }
+          : undefined,
+      }));
+
       setTask({
         id: data.id,
         title: data.client_name || data.clientName || 'Cleaning Task',
@@ -109,9 +127,12 @@ export default function TaskDetail() {
           text,
           completed: false,
         })),
-        photos: [],
+        photos: persistedPhotos,
         notes: '',
-      });
+        _clientName: data.client_name || '',
+        _buildingName: data.building_name || '',
+        _cleanerName: data.cleaner_name || '',
+      } as any);
 
       if (data.status === 'in-progress') {
         setIsTimerRunning(true);
@@ -321,6 +342,33 @@ export default function TaskDetail() {
             longitude: location.coords.longitude,
           } : undefined,
         };
+
+        // Persist photo to database
+        if (task?.id) {
+          const taskAny = task as any;
+          const { data: insertedPhoto, error: photoError } = await supabase
+            .from('task_photos')
+            .insert({
+              schedule_entry_id: task.id,
+              uri: newPhoto.uri,
+              category: newPhoto.category,
+              description: newPhoto.description,
+              cleaner_name: taskAny._cleanerName || '',
+              client_name: taskAny._clientName || task.title,
+              building_name: taskAny._buildingName || task.location,
+              latitude: newPhoto.location?.latitude ?? null,
+              longitude: newPhoto.location?.longitude ?? null,
+              status: 'pending',
+            })
+            .select('id')
+            .single();
+
+          if (!photoError && insertedPhoto) {
+            newPhoto.id = insertedPhoto.id;
+          } else if (photoError) {
+            console.error('Failed to persist photo:', photoError);
+          }
+        }
 
         setTask(prev => prev ? ({
           ...prev,

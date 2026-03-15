@@ -57,10 +57,8 @@ const ProjectsScreen = () => {
   const loadProjects = useCallback(async () => {
     try {
       setIsLoading(true);
-      console.log('Loading projects...');
 
       const result = await executeQuery<ClientProject>('select', 'client_projects');
-      console.log('✓ Loaded projects:', result.length);
       
       setProjects(result);
     } catch (error) {
@@ -109,9 +107,12 @@ const ProjectsScreen = () => {
   }, [applyFilters]);
 
   const handleDeleteProject = useCallback(async (projectId: string) => {
+    const project = projects.find(p => p.id === projectId);
+    const projectName = project?.project_name || 'this project';
+
     Alert.alert(
       'Delete Project',
-      'Are you sure you want to delete this project?',
+      `Delete "${projectName}"?\n\nThis will permanently remove:\n• Project record\n• All labor assignments\n• All equipment & vehicle records\n• All supply records\n• All completion history\n\nThis cannot be undone.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -119,8 +120,6 @@ const ProjectsScreen = () => {
           style: 'destructive',
           onPress: async () => {
             try {
-              console.log('Deleting project...');
-
               // Delete related resources
               await executeQuery('delete', 'project_labor', undefined, { project_id: projectId });
               await executeQuery('delete', 'project_equipment', undefined, { project_id: projectId });
@@ -135,7 +134,6 @@ const ProjectsScreen = () => {
                 { id: projectId }
               );
 
-              console.log('✓ Project deleted successfully');
               showToast('Project deleted successfully', 'success');
 
               await loadProjects();
@@ -147,7 +145,7 @@ const ProjectsScreen = () => {
         },
       ]
     );
-  }, [executeQuery, showToast, loadProjects]);
+  }, [projects, executeQuery, showToast, loadProjects]);
 
   const handleAddProject = useCallback(() => {
     setSelectedProject(undefined);
@@ -163,7 +161,6 @@ const ProjectsScreen = () => {
     try {
       if (selectedProject?.id) {
         // Update existing project
-        console.log('Updating project...');
         await executeQuery(
           'update',
           'client_projects',
@@ -185,11 +182,9 @@ const ProjectsScreen = () => {
           },
           { id: selectedProject.id }
         );
-        console.log('✓ Project updated successfully');
         showToast('Project updated successfully', 'success');
       } else {
         // Create new project
-        console.log('Creating new project...');
         const newProject = {
           id: uuid.v4() as string,
           client_name: project.client_name,
@@ -210,7 +205,6 @@ const ProjectsScreen = () => {
         };
 
         await executeQuery('insert', 'client_projects', newProject);
-        console.log('✓ Project created successfully');
         showToast('Project created successfully', 'success');
       }
 
@@ -235,7 +229,6 @@ const ProjectsScreen = () => {
           style: 'default',
           onPress: async () => {
             try {
-              console.log('Marking project as completed...');
 
               await executeQuery(
                 'update',
@@ -248,7 +241,6 @@ const ProjectsScreen = () => {
                 { id: project.id }
               );
 
-              console.log('✓ Project marked as completed');
               showToast('Project marked as completed', 'success');
 
               await loadProjects();

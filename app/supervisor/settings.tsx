@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Modal } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Modal, TextInput } from 'react-native';
 import { router } from 'expo-router';
 import { commonStyles, colors, spacing, typography, buttonStyles } from '../../styles/commonStyles';
 import Icon from '../../components/Icon';
@@ -35,11 +35,79 @@ export default function SettingsScreen() {
   const { config, syncStatus } = useDatabase();
   const [selectedColor, setSelectedColor] = useState(themeColor);
   const [showDatabaseSetup, setShowDatabaseSetup] = useState(false);
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordLoading, setPasswordLoading] = useState(false);
 
   const handleColorSelect = async (color: string) => {
     setSelectedColor(color);
     await setThemeColor(color);
     showToast('Theme color updated!', 'success');
+  };
+
+  const handleViewProfile = async () => {
+    try {
+      const { getSession } = await import('../utils/auth');
+      const session = await getSession();
+      if (session) {
+        Alert.alert(
+          'Profile',
+          `Name: ${session.name || 'Supervisor'}\nRole: ${session.role || 'supervisor'}\nID: ${session.id || 'N/A'}`,
+          [{ text: 'OK' }]
+        );
+      } else {
+        showToast('No active session found', 'error');
+      }
+    } catch (error) {
+      showToast('Failed to load profile', 'error');
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (!newPassword.trim()) {
+      showToast('Please enter a new password', 'error');
+      return;
+    }
+    if (newPassword.length < 6) {
+      showToast('Password must be at least 6 characters', 'error');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      showToast('Passwords do not match', 'error');
+      return;
+    }
+    try {
+      setPasswordLoading(true);
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      showToast('Password updated successfully', 'success');
+      setShowChangePasswordModal(false);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (error: any) {
+      showToast(error?.message || 'Failed to update password', 'error');
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
+
+  const handleNotifications = () => {
+    Alert.alert(
+      'Notifications',
+      'Push notification settings are managed through your device settings.\n\nGo to: Settings → Notifications → SpreadCleaner',
+      [{ text: 'OK' }]
+    );
+  };
+
+  const handleLanguage = () => {
+    Alert.alert(
+      'Language',
+      'Currently displaying in: English\n\nAdditional language support coming in a future update.',
+      [{ text: 'OK' }]
+    );
   };
 
   const handleLogout = async () => {
@@ -156,7 +224,7 @@ export default function SettingsScreen() {
               <Text style={styles.sectionTitle}>Account</Text>
             </View>
 
-            <TouchableOpacity style={styles.settingItem}>
+            <TouchableOpacity style={styles.settingItem} onPress={handleViewProfile}>
               <View style={styles.settingItemLeft}>
                 <Icon name="user" size={20} color={colors.textSecondary} />
                 <Text style={styles.settingItemText}>Profile</Text>
@@ -164,7 +232,7 @@ export default function SettingsScreen() {
               <Icon name="chevron-right" size={20} color={colors.textSecondary} />
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.settingItem}>
+            <TouchableOpacity style={styles.settingItem} onPress={() => setShowChangePasswordModal(true)}>
               <View style={styles.settingItemLeft}>
                 <Icon name="lock" size={20} color={colors.textSecondary} />
                 <Text style={styles.settingItemText}>Change Password</Text>
@@ -182,7 +250,7 @@ export default function SettingsScreen() {
               <Text style={styles.sectionTitle}>App Settings</Text>
             </View>
 
-            <TouchableOpacity style={styles.settingItem}>
+            <TouchableOpacity style={styles.settingItem} onPress={handleNotifications}>
               <View style={styles.settingItemLeft}>
                 <Icon name="bell" size={20} color={colors.textSecondary} />
                 <Text style={styles.settingItemText}>Notifications</Text>
@@ -190,7 +258,7 @@ export default function SettingsScreen() {
               <Icon name="chevron-right" size={20} color={colors.textSecondary} />
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.settingItem}>
+            <TouchableOpacity style={styles.settingItem} onPress={handleLanguage}>
               <View style={styles.settingItemLeft}>
                 <Icon name="globe" size={20} color={colors.textSecondary} />
                 <Text style={styles.settingItemText}>Language</Text>
@@ -222,6 +290,56 @@ export default function SettingsScreen() {
         presentationStyle="pageSheet"
       >
         <DatabaseSetup onClose={() => setShowDatabaseSetup(false)} />
+      </Modal>
+
+      {/* Change Password Modal */}
+      <Modal
+        visible={showChangePasswordModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowChangePasswordModal(false)}
+      >
+        <View style={[commonStyles.container, { padding: spacing.lg }]}>
+          <View style={[commonStyles.header, { backgroundColor: themeColor, marginHorizontal: -spacing.lg, paddingHorizontal: spacing.lg }]}>
+            <TouchableOpacity onPress={() => setShowChangePasswordModal(false)}>
+              <Icon name="close" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+            <Text style={[commonStyles.headerTitle, { color: '#FFFFFF' }]}>Change Password</Text>
+            <View style={{ width: 24 }} />
+          </View>
+          <ScrollView style={{ marginTop: spacing.lg }}>
+            <View style={styles.section}>
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>New Password</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  placeholder="Enter new password"
+                  secureTextEntry
+                  autoCapitalize="none"
+                />
+              </View>
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Confirm New Password</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  placeholder="Confirm new password"
+                  secureTextEntry
+                  autoCapitalize="none"
+                />
+              </View>
+              <Button
+                title={passwordLoading ? 'Updating...' : 'Update Password'}
+                onPress={handleChangePassword}
+                variant="primary"
+                disabled={passwordLoading}
+              />
+            </View>
+          </ScrollView>
+        </View>
       </Modal>
 
       <Toast
@@ -323,5 +441,23 @@ const styles = StyleSheet.create({
     ...typography.small,
     color: colors.textSecondary,
     fontStyle: 'italic',
+  },
+  formGroup: {
+    marginBottom: spacing.lg,
+  },
+  formLabel: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '600',
+    marginBottom: spacing.sm,
+  },
+  formInput: {
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 8,
+    padding: spacing.md,
+    ...typography.body,
+    color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
 });

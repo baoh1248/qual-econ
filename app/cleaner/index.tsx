@@ -539,16 +539,58 @@ export default function CleanerDashboard() {
         return;
       }
 
+      const today = new Date().toISOString().split('T')[0];
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 7);
+      const weekAgoStr = weekAgo.toISOString().split('T')[0];
+      const cleanerName = cleanerData.name || cleanerData.go_by || session.name;
+
+      // Count today's completed tasks
+      const { data: todayTasksData } = await supabase
+        .from('schedule_entries')
+        .select('id, hours')
+        .eq('date', today)
+        .eq('status', 'completed')
+        .ilike('cleaner_name', `%${cleanerName}%`);
+
+      const todayTasks = todayTasksData?.length || 0;
+      const todayHours = (todayTasksData || []).reduce((sum: number, entry: any) => sum + (entry.hours || 0), 0);
+
+      // Count photos taken today and this week
+      const { count: todayPhotoCount } = await supabase
+        .from('task_photos')
+        .select('id', { count: 'exact', head: true })
+        .eq('cleaner_name', cleanerName)
+        .gte('created_at', `${today}T00:00:00`);
+
+      const { count: weeklyPhotoCount } = await supabase
+        .from('task_photos')
+        .select('id', { count: 'exact', head: true })
+        .eq('cleaner_name', cleanerName)
+        .gte('created_at', `${weekAgoStr}T00:00:00`);
+
+      // Efficiency = completed tasks / total assigned tasks this week (as a %)
+      const { data: weekTasks } = await supabase
+        .from('schedule_entries')
+        .select('id, status')
+        .gte('date', weekAgoStr)
+        .lte('date', today)
+        .ilike('cleaner_name', `%${cleanerName}%`);
+
+      const totalWeekTasks = weekTasks?.length || 0;
+      const completedWeekTasks = (weekTasks || []).filter((t: any) => t.status === 'completed').length;
+      const efficiency = totalWeekTasks > 0 ? Math.round((completedWeekTasks / totalWeekTasks) * 100) : 0;
+
       setProfile({
         id: cleanerData.id,
-        name: cleanerData.name || cleanerData.go_by || session.name,
+        name: cleanerName,
         employeeId: cleanerData.employee_id || '',
         currentLocation: 'On Site',
-        todayHours: 0,
-        todayTasks: 0,
-        todayPhotos: 0,
-        weeklyPhotos: 0,
-        efficiency: 95,
+        todayHours: Math.round(todayHours * 10) / 10,
+        todayTasks,
+        todayPhotos: todayPhotoCount || 0,
+        weeklyPhotos: weeklyPhotoCount || 0,
+        efficiency,
       });
     } catch (error) {
       console.error('Error in loadProfile:', error);

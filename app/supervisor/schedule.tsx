@@ -197,7 +197,6 @@ export default function ScheduleView() {
   const { isConnected, lastSyncTime } = useRealtimeSync({
     enabled: true,
     onSyncComplete: useCallback(async () => {
-      console.log('✅ Realtime sync completed - refreshing from Supabase');
 
       try {
         // Simply refetch from Supabase - it's our single source of truth
@@ -205,7 +204,6 @@ export default function ScheduleView() {
         const freshEntries = await fetchWeekSchedule(weekId);
         setCurrentWeekSchedule(freshEntries);
         setScheduleKey(prev => prev + 1);
-        console.log('✅ UI refreshed with', freshEntries.length, 'entries after realtime sync');
       } catch (error) {
         console.error('❌ Error refreshing UI after sync:', error);
       }
@@ -218,7 +216,6 @@ export default function ScheduleView() {
 
   const syncProjectsToSchedule = useCallback(async () => {
     try {
-      console.log('=== AUTO-SYNCING PROJECTS TO SCHEDULE ===');
 
       const projects = await executeQuery<{
         id: string;
@@ -230,14 +227,12 @@ export default function ScheduleView() {
         status: string;
       }>('select', 'client_projects');
 
-      console.log('Loaded projects:', projects.length);
 
       const scheduledProjects = projects.filter(p =>
         p.next_scheduled_date &&
         p.status === 'active'
       );
 
-      console.log('Projects with scheduled dates:', scheduledProjects.length);
 
       // Use currentWeekSchedule which holds current entries
       const currentSchedule = currentWeekSchedule;
@@ -255,7 +250,6 @@ export default function ScheduleView() {
               weekId: currentWeekId,
             };
 
-            console.log('Adding schedule entry for project:', project.project_name);
             await addScheduleEntry(entryWithId as ScheduleEntry);
 
             addedCount++;
@@ -263,7 +257,6 @@ export default function ScheduleView() {
         }
       }
 
-      console.log('✓ Auto-synced', addedCount, 'projects to schedule');
 
       if (addedCount > 0) {
         showToast(`Auto-added ${addedCount} scheduled project${addedCount > 1 ? 's' : ''}`, 'success');
@@ -279,7 +272,6 @@ export default function ScheduleView() {
   // Generate shifts for a SINGLE specific pattern only
   const generateShiftsForPattern = useCallback(async (patternId: string) => {
     try {
-      console.log('=== GENERATING SHIFTS FOR PATTERN:', patternId, '===');
 
       // Fetch just this one pattern
       const { data: patternData, error: fetchError } = await supabase
@@ -320,7 +312,6 @@ export default function ScheduleView() {
         hourly_rate: patternData.hourly_rate,
       };
 
-      console.log('Pattern loaded:', pattern);
 
       // Validate pattern
       const validation = validateRecurringPattern(pattern);
@@ -337,10 +328,8 @@ export default function ScheduleView() {
 
       const startDate = pattern.start_date; // Always start from pattern start date for new patterns
       const occurrences = generateOccurrences(pattern, startDate, futureDateStr, 100);
-      console.log('Generated', occurrences.length, 'occurrences');
 
       const entries = patternToScheduleEntries(pattern, occurrences, getWeekIdFromDate);
-      console.log('Created', entries.length, 'schedule entries');
 
       let totalGenerated = 0;
 
@@ -379,7 +368,6 @@ export default function ScheduleView() {
         next_occurrence_date: occurrences.length > 0 ? occurrences[occurrences.length - 1].date : pattern.next_occurrence_date,
       });
 
-      console.log('✅ Generated', totalGenerated, 'new shift entries for pattern', pattern.id);
       return totalGenerated;
     } catch (error) {
       console.error('❌ Error generating shifts for pattern:', error);
@@ -389,13 +377,10 @@ export default function ScheduleView() {
 
   const generateRecurringShifts = useCallback(async () => {
     try {
-      console.log('=== GENERATING RECURRING SHIFTS ===');
 
       const patterns = await executeQuery<RecurringShiftPattern>('select', 'recurring_shifts');
-      console.log('Loaded recurring patterns:', patterns.length);
 
       const activePatterns = patterns.filter(p => p.is_active && isPatternActive(p));
-      console.log('Active patterns:', activePatterns.length);
 
       const today = new Date();
       const futureDate = new Date(today);
@@ -413,7 +398,6 @@ export default function ScheduleView() {
         }
 
         if (!needsGeneration(pattern, 4)) {
-          console.log('Pattern does not need generation:', pattern.id);
           continue;
         }
 
@@ -461,7 +445,6 @@ export default function ScheduleView() {
 
       await Promise.all(updatePromises);
 
-      console.log('✅ Generated', totalGenerated, 'recurring shift entries');
 
       if (totalGenerated > 0) {
         showToast(`Generated ${totalGenerated} recurring shift${totalGenerated > 1 ? 's' : ''}`, 'success');
@@ -473,7 +456,6 @@ export default function ScheduleView() {
         setScheduleKey(prev => prev + 1);
       }
 
-      console.log('=== RECURRING SHIFT GENERATION COMPLETED ===\n');
 
       return totalGenerated;
     } catch (error) {
@@ -485,20 +467,17 @@ export default function ScheduleView() {
   
   const loadCurrentWeekSchedule = useCallback(async () => {
     if (loadingInProgressRef.current) {
-      console.log('⏸️ Load already in progress, skipping...');
       return;
     }
 
     try {
       loadingInProgressRef.current = true;
-      console.log('🔄 Loading current week schedule...');
 
       const weekId = getWeekIdFromDate(currentDate);
 
       // Fetch directly from Supabase - it's our single source of truth
       const schedule = await fetchWeekSchedule(weekId);
       setCurrentWeekSchedule(schedule);
-      console.log('✅ Loaded schedule for week', weekId, ':', schedule.length, 'entries');
 
       if (!initialLoadCompleteRef.current) {
         // Run initial sync tasks after loading schedule
@@ -517,7 +496,6 @@ export default function ScheduleView() {
 
   const loadBuildingGroups = useCallback(async () => {
     try {
-      console.log('🔄 Loading building groups...');
       setIsLoadingGroups(true);
       
       const [groupsResult, membersResult] = await Promise.all([
@@ -543,10 +521,8 @@ export default function ScheduleView() {
       const groupsData = groupsResult.data || [];
       const membersData = membersResult.data || [];
 
-      console.log(`📦 Loaded ${groupsData.length} building groups and ${membersData.length} members`);
 
       if (groupsData.length === 0) {
-        console.log('ℹ️ No building groups found');
         setBuildingGroups([]);
         return;
       }
@@ -567,7 +543,6 @@ export default function ScheduleView() {
         highlight_color: group.highlight_color || '#3B82F6',
       }));
 
-      console.log(`✅ Successfully loaded ${groupsWithMembers.length} building groups with members`);
       setBuildingGroups(groupsWithMembers);
     } catch (error) {
       console.error('❌ Failed to load building groups:', error);
@@ -579,7 +554,6 @@ export default function ScheduleView() {
 
   const loadCleanerGroups = useCallback(async () => {
     try {
-      console.log('🔄 Loading cleaner groups...');
       
       const [groupsResult, membersResult] = await Promise.all([
         supabase
@@ -604,10 +578,8 @@ export default function ScheduleView() {
       const groupsData = groupsResult.data || [];
       const membersData = membersResult.data || [];
 
-      console.log(`📦 Loaded ${groupsData.length} cleaner groups and ${membersData.length} members`);
 
       if (groupsData.length === 0) {
-        console.log('ℹ️ No cleaner groups found');
         setCleanerGroups([]);
         return;
       }
@@ -627,7 +599,6 @@ export default function ScheduleView() {
         highlight_color: group.highlight_color || '#3B82F6',
       }));
 
-      console.log(`✅ Successfully loaded ${groupsWithMembers.length} cleaner groups with members`);
       setCleanerGroups(groupsWithMembers);
     } catch (error) {
       console.error('❌ Failed to load cleaner groups:', error);
@@ -720,7 +691,6 @@ export default function ScheduleView() {
   }, [currentWeekSchedule, timeOffRequests, getWeekIdFromDate]);
 
   const filteredSchedule = useMemo(() => {
-    console.log('🔍 Filtering schedule with filters:', filters);
 
     if (filters.shiftType === 'all' &&
         !filters.clientName.trim() &&
@@ -729,7 +699,6 @@ export default function ScheduleView() {
         !filters.buildingGroupName.trim() &&
         !filters.cleanerGroupName.trim() &&
         filters.status === 'all') {
-      console.log('✅ No filters applied, returning all schedule entries (including time off)');
       return scheduleWithTimeOff;
     }
 
@@ -739,7 +708,6 @@ export default function ScheduleView() {
       filtered = filtered.filter(entry => 
         filters.shiftType === 'project' ? entry.isProject === true : !entry.isProject
       );
-      console.log(`🔍 After shift type filter: ${filtered.length} entries`);
     }
 
     if (filters.clientName.trim()) {
@@ -747,7 +715,6 @@ export default function ScheduleView() {
       filtered = filtered.filter(entry => 
         entry.clientName.toLowerCase().includes(clientNameLower)
       );
-      console.log(`🔍 After client filter: ${filtered.length} entries`);
     }
 
     if (filters.buildingName.trim()) {
@@ -755,7 +722,6 @@ export default function ScheduleView() {
       filtered = filtered.filter(entry => 
         entry.buildingName.toLowerCase().includes(buildingNameLower)
       );
-      console.log(`🔍 After building filter: ${filtered.length} entries`);
     }
 
     if (filters.cleanerName.trim()) {
@@ -766,7 +732,6 @@ export default function ScheduleView() {
           name.toLowerCase().includes(cleanerNameLower)
         );
       });
-      console.log(`🔍 After cleaner filter: ${filtered.length} entries`);
     }
 
     if (filters.buildingGroupName.trim()) {
@@ -785,7 +750,6 @@ export default function ScheduleView() {
         filtered = filtered.filter(entry => 
           groupBuildingNames.has(entry.buildingName)
         );
-        console.log(`🔍 After building group filter: ${filtered.length} entries`);
       }
     }
 
@@ -806,21 +770,17 @@ export default function ScheduleView() {
           const entryCleanerNames = entry.cleanerNames || [entry.cleanerName];
           return entryCleanerNames.some(name => groupCleanerNames.has(name));
         });
-        console.log(`🔍 After cleaner group filter: ${filtered.length} entries`);
       }
     }
 
     if (filters.status !== 'all') {
       filtered = filtered.filter(entry => entry.status === filters.status);
-      console.log(`🔍 After status filter: ${filtered.length} entries`);
     }
 
-    console.log(`✅ Final filtered schedule: ${filtered.length} entries`);
     return filtered;
   }, [scheduleWithTimeOff, filters, buildingGroups, clientBuildings, cleanerGroups, cleaners]);
 
   const filteredClientBuildings = useMemo(() => {
-    console.log('🔍 Filtering client buildings based on schedule entries');
     
     if (filters.shiftType === 'all' &&
         !filters.clientName.trim() &&
@@ -829,7 +789,6 @@ export default function ScheduleView() {
         !filters.buildingGroupName.trim() &&
         !filters.cleanerGroupName.trim() &&
         filters.status === 'all') {
-      console.log('✅ No filters applied, returning all buildings');
       return clientBuildings;
     }
 
@@ -837,18 +796,15 @@ export default function ScheduleView() {
       filteredSchedule.map(entry => entry.buildingName)
     );
 
-    console.log(`🔍 Buildings with matching schedule entries: ${buildingNamesWithSchedule.size}`);
 
     const filtered = clientBuildings.filter(building => 
       buildingNamesWithSchedule.has(building.buildingName)
     );
 
-    console.log(`✅ Filtered buildings: ${filtered.length} out of ${clientBuildings.length}`);
     return filtered;
   }, [clientBuildings, filteredSchedule, filters]);
 
   const filteredClients = useMemo(() => {
-    console.log('🔍 Filtering clients based on filtered buildings');
     
     if (filters.shiftType === 'all' &&
         !filters.clientName.trim() &&
@@ -857,7 +813,6 @@ export default function ScheduleView() {
         !filters.buildingGroupName.trim() &&
         !filters.cleanerGroupName.trim() &&
         filters.status === 'all') {
-      console.log('✅ No filters applied, returning all clients');
       return clients;
     }
 
@@ -865,13 +820,11 @@ export default function ScheduleView() {
       filteredClientBuildings.map(building => building.clientName)
     );
 
-    console.log(`🔍 Clients with matching buildings: ${clientNamesWithBuildings.size}`);
 
     const filtered = clients.filter(client => 
       clientNamesWithBuildings.has(client.name)
     );
 
-    console.log(`✅ Filtered clients: ${filtered.length} out of ${clients.length}`);
     return filtered;
   }, [clients, filteredClientBuildings, filters]);
 
@@ -960,12 +913,10 @@ export default function ScheduleView() {
     const loadData = async () => {
       setIsLoading(true);
       try {
-        console.log('🔄 Initial data load starting...');
         await Promise.all([
           loadBuildingGroups(),
           loadCleanerGroups()
         ]);
-        console.log('✅ Initial data load completed, now loading schedule...');
         await loadCurrentWeekSchedule();
       } catch (error) {
         console.error('❌ Error loading initial data:', error);
@@ -980,22 +931,18 @@ export default function ScheduleView() {
 
   useEffect(() => {
     if (!isLoading && initialLoadCompleteRef.current) {
-      console.log('🔄 Date changed, reloading schedule for new week');
       loadCurrentWeekSchedule();
     }
   }, [currentDate, isLoading]);
 
   useFocusEffect(
     useCallback(() => {
-      console.log('📱 Schedule screen focused - refreshing data');
       
       if (initialLoadCompleteRef.current && !isLoading) {
-        console.log('🔄 Refreshing schedule on focus...');
         loadCurrentWeekSchedule();
       }
       
       return () => {
-        console.log('📱 Schedule screen unfocused');
       };
     }, [loadCurrentWeekSchedule, isLoading])
   );
@@ -1075,7 +1022,6 @@ export default function ScheduleView() {
   }, []);
 
   const handleCellPress = useCallback((building: ClientBuilding, day: string) => {
-    console.log('Cell pressed - Auto-filling client and building:', building.buildingName, building.clientName, day);
     setSelectedClientBuilding(building);
     setSelectedDay(day);
     setSelectedCleaners([]);
@@ -1087,11 +1033,9 @@ export default function ScheduleView() {
   }, []);
 
   const handleCellLongPress = useCallback((building: ClientBuilding, day: string) => {
-    console.log('Cell long pressed:', building.buildingName, day);
   }, []);
 
   const handleClientLongPress = useCallback((client: Client) => {
-    console.log('Client long pressed:', client.name);
     setSelectedClient(client);
     setNewClientName(client.name);
     setNewClientSecurity(client.securityInfo || '');
@@ -1101,7 +1045,6 @@ export default function ScheduleView() {
   }, []);
 
   const handleBuildingLongPress = useCallback((building: ClientBuilding) => {
-    console.log('Building long pressed:', building.buildingName);
     setSelectedClientBuilding(building);
     setNewBuildingName(building.buildingName);
     setNewBuildingSecurity(building.securityInfo || '');
@@ -1111,15 +1054,12 @@ export default function ScheduleView() {
   }, []);
 
   const handleMoveEntry = useCallback((entryId: string, newBuilding: ClientBuilding, newDay: string) => {
-    console.log('Move entry:', entryId, 'to', newBuilding.buildingName, newDay);
   }, []);
 
   const handleBulkSelect = useCallback((entries: ScheduleEntry[]) => {
-    console.log('Bulk select:', entries.length, 'entries');
   }, []);
 
   const handleAddShiftToCleaner = useCallback((cleaner: Cleaner, day: string) => {
-    console.log('Add shift to cleaner:', cleaner.name, day);
     setSelectedCleaners([cleaner.name]);
     setSelectedDay(day);
     setHours('');
@@ -1130,7 +1070,6 @@ export default function ScheduleView() {
   }, []);
 
   const handleTaskPress = useCallback((entry: ScheduleEntry) => {
-    console.log('Task pressed:', entry.id);
     setSelectedEntry(entry);
     setSelectedClientBuilding(clientBuildings.find(b => b.buildingName === entry.buildingName) || null);
     setSelectedCleaners(entry.cleanerNames || [entry.cleanerName]);
@@ -1146,7 +1085,6 @@ export default function ScheduleView() {
   }, [clientBuildings]);
 
   const handleModalClose = useCallback(() => {
-    console.log('Closing modal');
     setModalVisible(false);
     setModalType(null);
     setSelectedEntry(null);
@@ -1176,14 +1114,11 @@ export default function ScheduleView() {
   }, []);
 
   const handleOpenRecurringModal = useCallback(() => {
-    console.log('Opening recurring task modal from schedule modal');
     setModalVisible(false);
     setRecurringModalVisible(true);
   }, []);
 
   const handleModalSave = useCallback(async (editAllRecurring: boolean = false, scheduleDate?: string) => {
-    console.log('=== SCHEDULE MODAL SAVE HANDLER (SIMPLIFIED) ===');
-    console.log('Edit all recurring:', editAllRecurring, 'scheduleDate:', scheduleDate);
 
     try {
       if (modalType === 'add') {
@@ -1275,18 +1210,15 @@ export default function ScheduleView() {
           updated_at: new Date().toISOString(),
         };
 
-        console.log('📝 Adding new schedule entry:', newEntry.buildingName, newEntry.day);
 
         // Use the simplified hook - it handles Supabase save + refetch
         const savedEntry = await addScheduleEntry(newEntry);
 
         if (savedEntry) {
-          console.log('✅ Entry saved successfully');
           showToast('Shift added successfully', 'success');
 
           // Log the shift creation
           try {
-            console.log('📝 Attempting to log shift creation:', {
               client: savedEntry.clientName,
               building: savedEntry.buildingName,
               cleaners: savedEntry.cleanerNames || [savedEntry.cleanerName],
@@ -1304,7 +1236,6 @@ export default function ScheduleView() {
               shiftId: savedEntry.id,
             });
 
-            console.log('✅ Shift creation logged successfully');
           } catch (logError: any) {
             console.error('❌ Failed to log shift creation:', logError);
             console.error('Error details:', logError.message, logError.code);
@@ -1314,7 +1245,6 @@ export default function ScheduleView() {
           const freshEntries = await fetchWeekSchedule(currentWeekId);
           setCurrentWeekSchedule(freshEntries);
           setScheduleKey(prev => prev + 1);
-          console.log('✅ UI updated with', freshEntries.length, 'entries');
         } else {
           throw new Error('Failed to save entry');
         }
@@ -1468,7 +1398,6 @@ export default function ScheduleView() {
         const freshEntries = await fetchWeekSchedule(currentWeekId);
         setCurrentWeekSchedule(freshEntries);
         setScheduleKey(prev => prev + 1);
-        console.log('✅ UI updated with', freshEntries.length, 'entries');
 
         handleModalClose();
       }
@@ -1565,7 +1494,6 @@ export default function ScheduleView() {
   }, [selectedEntry, executeQuery, refreshAfterDelete, showToast]);
 
   const handleAddClient = useCallback(async () => {
-    console.log('Adding client:', newClientName);
     
     if (!newClientName.trim()) {
       showToast('Please enter a client name', 'error');
@@ -1590,7 +1518,6 @@ export default function ScheduleView() {
   }, [newClientName, newClientSecurityLevel, newClientSecurity, addClient, refreshData, handleModalClose, showToast]);
 
   const handleAddBuilding = useCallback(async () => {
-    console.log('Adding building:', newBuildingName);
     
     if (!selectedClientForBuilding) {
       showToast('Please select a client', 'error');
@@ -1621,7 +1548,6 @@ export default function ScheduleView() {
   }, [selectedClientForBuilding, newBuildingName, newBuildingSecurityLevel, newBuildingSecurity, addClientBuilding, refreshData, handleModalClose, showToast]);
 
   const handleAddCleaner = useCallback(async () => {
-    console.log('Adding cleaner:', newCleanerName);
     
     if (!newCleanerName.trim()) {
       showToast('Please enter a cleaner name', 'error');
@@ -1646,7 +1572,6 @@ export default function ScheduleView() {
   }, [newCleanerName, addCleaner, refreshData, handleModalClose, showToast]);
 
   const handleEditClient = useCallback(async () => {
-    console.log('Editing client:', selectedClient);
     
     if (!selectedClient) {
       showToast('No client selected', 'error');
@@ -1674,7 +1599,6 @@ export default function ScheduleView() {
   }, [selectedClient, newClientName, newClientSecurityLevel, newClientSecurity, updateClient, refreshData, handleModalClose, showToast]);
 
   const handleEditBuilding = useCallback(async () => {
-    console.log('Editing building:', selectedClientBuilding);
     
     if (!selectedClientBuilding) {
       showToast('No building selected', 'error');
@@ -1702,7 +1626,6 @@ export default function ScheduleView() {
   }, [selectedClientBuilding, newBuildingName, newBuildingSecurityLevel, newBuildingSecurity, updateClientBuilding, refreshData, handleModalClose, showToast]);
 
   const handleSwitchToEdit = useCallback(() => {
-    console.log('Switching to edit mode');
     if (selectedEntry) {
       const cleaners = selectedEntry.cleanerNames || [selectedEntry.cleanerName];
       setSelectedCleaners(cleaners);
@@ -1729,8 +1652,6 @@ export default function ScheduleView() {
   }, [selectedEntry]);
 
   const handleRecurringTaskSave = useCallback(async (taskData: any) => {
-    console.log('=== RECURRING TASK SAVE HANDLER ===');
-    console.log('Task data:', taskData);
 
     try {
       const patternId = `recurring-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -1757,16 +1678,12 @@ export default function ScheduleView() {
         hourly_rate: 15,
       };
 
-      console.log('📝 Inserting recurring pattern to database:', recurringPattern);
 
       // Insert the pattern directly
       await executeQuery('insert', 'recurring_shifts', recurringPattern);
-      console.log('✅ Recurring pattern saved to database');
 
       // Generate shifts for ONLY this new pattern (not all patterns)
-      console.log('🔄 Generating shifts from new pattern only...');
       const generatedCount = await generateShiftsForPattern(patternId);
-      console.log('✅ Generated', generatedCount, 'shifts from new pattern');
 
       if (generatedCount > 0) {
         showToast(`Recurring shift created! Generated ${generatedCount} shifts`, 'success');
@@ -1775,11 +1692,9 @@ export default function ScheduleView() {
       }
 
       // Refresh schedule display
-      console.log('🔄 Refreshing schedule display...');
       const freshEntries = await fetchWeekSchedule(currentWeekId);
       setCurrentWeekSchedule(freshEntries);
       setScheduleKey(prev => prev + 1);
-      console.log('✅ Schedule display refreshed with', freshEntries.length, 'entries');
 
       setRecurringModalVisible(false);
     } catch (error) {
@@ -2155,13 +2070,11 @@ export default function ScheduleView() {
             <UnassignedShiftNotifications
               themeColor={themeColor}
               onAssignShift={(notification) => {
-                console.log('Assign shift from notification:', notification);
                 if (notification.shift_date) {
                   setCurrentDate(new Date(notification.shift_date));
                 }
               }}
               onRemoveShift={(notification) => {
-                console.log('Remove shift from notification:', notification);
               }}
             />
 
@@ -2276,7 +2189,6 @@ export default function ScheduleView() {
       <ScheduleActionButton
         themeColor={themeColor}
         onAddShift={() => {
-          console.log('Add shift pressed from action button');
           setSelectedClientBuilding(null);
           setSelectedCleaners([]);
           setSelectedDay('');
@@ -2287,11 +2199,9 @@ export default function ScheduleView() {
           setModalVisible(true);
         }}
         onCreateRecurringTask={() => {
-          console.log('Create recurring task pressed');
           setRecurringModalVisible(true);
         }}
         onScheduleBuildingGroup={() => {
-          console.log('Schedule building group pressed');
           setBuildingGroupModalVisible(true);
         }}
       />

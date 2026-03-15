@@ -6,9 +6,15 @@ interface ClientProject {
   client_name: string;
   building_name?: string;
   project_name: string;
+  description?: string;
   frequency: 'one-time' | 'weekly' | 'bi-weekly' | 'monthly' | 'quarterly' | 'yearly';
   next_scheduled_date?: string;
   status: 'active' | 'completed' | 'cancelled' | 'on-hold';
+  notes?: string;
+  billing_amount?: number;
+  is_included_in_contract?: boolean;
+  work_order_number?: string;
+  invoice_number?: string;
 }
 
 /**
@@ -51,6 +57,17 @@ export function projectToScheduleEntry(project: ClientProject): Omit<ScheduleEnt
   const day = getDayOfWeek(date);
   const weekId = getWeekIdFromDate(date);
 
+  // Build notes: project name header + any project notes
+  const noteParts = [`Project: ${project.project_name}`];
+  if (project.description) noteParts.push(project.description);
+  if (project.notes) noteParts.push(project.notes);
+  if (project.work_order_number) noteParts.push(`WO#: ${project.work_order_number}`);
+  if (project.invoice_number) noteParts.push(`INV#: ${project.invoice_number}`);
+
+  // Use flat rate if billing_amount is set and not contract-included
+  const hasBillingAmount = typeof project.billing_amount === 'number' && project.billing_amount > 0;
+  const isBillable = hasBillingAmount && !project.is_included_in_contract;
+
   return {
     clientName: project.client_name,
     buildingName: project.building_name || project.client_name,
@@ -63,9 +80,10 @@ export function projectToScheduleEntry(project: ClientProject): Omit<ScheduleEnt
     endTime: '13:00',
     status: 'scheduled',
     weekId,
-    notes: `Project: ${project.project_name}`,
+    notes: noteParts.join('\n'),
     priority: 'medium',
-    paymentType: 'hourly',
+    paymentType: isBillable ? 'flat_rate' : 'hourly',
+    flatRateAmount: isBillable ? project.billing_amount : undefined,
     hourlyRate: 15,
     // Mark this as a project-based shift
     isProject: true,
