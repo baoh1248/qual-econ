@@ -1665,15 +1665,17 @@ export default function SupervisorInventoryScreen() {
                                 <Text style={{ fontSize: 9, color: colors.textSecondary, fontWeight: '600', flex: 1 }}>
                                   {whItem.location}
                                 </Text>
-                                <View style={[styles.stockBadge, { backgroundColor: whStatus.color + '20' }]}>
-                                  <Text style={[styles.stockBadgeText, { color: whStatus.color }]}>
-                                    {whItem.current_stock} {whItem.unit}
-                                  </Text>
+                                <View style={{ alignItems: 'flex-end' }}>
+                                  <View style={[styles.stockBadge, { backgroundColor: whStatus.color + '20' }]}>
+                                    <Text style={[styles.stockBadgeText, { color: whStatus.color }]}>
+                                      {whItem.current_stock} {whItem.unit}
+                                    </Text>
+                                  </View>
+                                  <Text style={[styles.infoText, { fontSize: 9 }]}>${whItem.cost.toFixed(2)}</Text>
                                 </View>
                               </View>
                             );
                           })}
-                          <Text style={styles.infoText}>${primary.cost.toFixed(2)}</Text>
                         </>
                       ) : (
                         /* Single warehouse: original display */
@@ -1698,20 +1700,22 @@ export default function SupervisorInventoryScreen() {
                       )}
                     </View>
 
-                    <View style={styles.itemActions}>
-                      {group.map((item, idx) => (
-                        <View key={item.id} style={isMultiWarehouse ? { flexDirection: 'row', alignItems: 'center', gap: 4 } : { flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <View style={[styles.itemActions, isMultiWarehouse && { justifyContent: 'space-between' }]}>
+                      {group.map((item) => (
+                        <View key={item.id} style={{ flexDirection: 'column', alignItems: 'center', gap: 2 }}>
                           {isMultiWarehouse && (
                             <Text style={{ fontSize: 8, color: colors.textSecondary, fontWeight: '600' }}>
-                              {item.location === 'Sparks Warehouse' ? 'S' : 'R'}
+                              {item.location === 'Sparks Warehouse' ? 'Sparks' : 'Regular'}
                             </Text>
                           )}
-                          <TouchableOpacity onPress={() => openEditModal(item)}>
-                            <Icon name="create" size={16} color={themeColor} />
-                          </TouchableOpacity>
-                          <TouchableOpacity onPress={() => handleDeleteItem(item.id, item.name)}>
-                            <Icon name="trash" size={16} color={colors.error} />
-                          </TouchableOpacity>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                            <TouchableOpacity onPress={() => openEditModal(item)}>
+                              <Icon name="create" size={16} color={themeColor} />
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => handleDeleteItem(item.id, item.name)}>
+                              <Icon name="trash" size={16} color={colors.error} />
+                            </TouchableOpacity>
+                          </View>
                         </View>
                       ))}
                     </View>
