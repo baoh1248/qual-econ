@@ -16,6 +16,7 @@ import IconButton from '../../components/IconButton';
 import SendItemsModal from '../../components/inventory/SendItemsModal';
 import TransferHistoryModal from '../../components/inventory/TransferHistoryModal';
 import ReceiveSupplyModal from '../../components/inventory/ReceiveSupplyModal';
+import SupplierPicker from '../../components/inventory/SupplierPicker';
 import uuid from 'react-native-uuid';
 import { formatCurrency } from '../../utils/inventoryTracking';
 import { commonStyles, colors, spacing, typography, buttonStyles, getContrastColor } from '../../styles/commonStyles';
@@ -1655,15 +1656,14 @@ export default function SupervisorInventoryScreen() {
 
                     <View style={styles.itemInfo}>
                       {isMultiWarehouse ? (
-                        /* Both warehouses: show per-warehouse stock rows */
+                        /* Both warehouses: show warehouse name + stock on one row each */
                         <>
                           {group.map((whItem) => {
                             const whStatus = getStockStatus(whItem);
-                            const shortName = whItem.location === 'Sparks Warehouse' ? 'Sparks' : 'Regular';
                             return (
-                              <View key={whItem.id} style={{ marginBottom: 3 }}>
-                                <Text style={{ fontSize: 9, color: colors.textSecondary, fontWeight: '600', marginBottom: 1 }}>
-                                  {shortName}
+                              <View key={whItem.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
+                                <Text style={{ fontSize: 9, color: colors.textSecondary, fontWeight: '600', flex: 1 }}>
+                                  {whItem.location}
                                 </Text>
                                 <View style={[styles.stockBadge, { backgroundColor: whStatus.color + '20' }]}>
                                   <Text style={[styles.stockBadgeText, { color: whStatus.color }]}>
@@ -2241,16 +2241,12 @@ export default function SupervisorInventoryScreen() {
                 </>
               )}
 
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Supplier</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Enter supplier name"
-                  placeholderTextColor={colors.textSecondary}
-                  value={newItemForm.supplier}
-                  onChangeText={(text) => setNewItemForm({ ...newItemForm, supplier: text })}
-                />
-              </View>
+              <SupplierPicker
+                label="Supplier"
+                value={newItemForm.supplier}
+                onChange={(text) => setNewItemForm({ ...newItemForm, supplier: text })}
+                inputStyle={styles.input}
+              />
             </ScrollView>
 
             <View style={styles.modalActions}>
