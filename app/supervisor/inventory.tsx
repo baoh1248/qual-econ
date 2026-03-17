@@ -63,11 +63,18 @@ interface NewItemForm {
   name: string;
   item_number: string;
   category: 'cleaning-supplies' | 'equipment' | 'safety';
+  warehouseMode: 'single' | 'both';
+  location: string; // used when warehouseMode === 'single'
+  // Sparks Warehouse (or single warehouse) fields
   current_stock: string;
   min_stock: string;
   unit: string;
-  location: string;
   cost: string;
+  // Regular Warehouse fields (only used when warehouseMode === 'both')
+  regular_current_stock: string;
+  regular_min_stock: string;
+  regular_unit: string;
+  regular_cost: string;
   supplier: string;
   auto_reorder_enabled: boolean;
   reorder_quantity: string;
@@ -638,11 +645,16 @@ export default function SupervisorInventoryScreen() {
     name: '',
     item_number: '',
     category: 'cleaning-supplies',
+    warehouseMode: 'single',
+    location: 'Sparks Warehouse',
     current_stock: '0',
     min_stock: '10',
     unit: 'units',
-    location: 'Sparks Warehouse',
     cost: '0',
+    regular_current_stock: '0',
+    regular_min_stock: '10',
+    regular_unit: 'units',
+    regular_cost: '0',
     supplier: '',
     auto_reorder_enabled: false,
     reorder_quantity: '50',
@@ -767,66 +779,114 @@ export default function SupervisorInventoryScreen() {
       return;
     }
 
-    try {
-      console.log('🔄 Adding new inventory item:', newItemForm.name);
-
-      const newItem: InventoryItem = {
-        id: uuid.v4() as string,
-        name: newItemForm.name.trim(),
-        item_number: newItemForm.item_number.trim() || generateItemNumber(),
-        category: newItemForm.category,
-        current_stock: parseInt(newItemForm.current_stock) || 0,
-        min_stock: parseInt(newItemForm.min_stock) || 10,
-        max_stock: 999999,
-        unit: newItemForm.unit.trim(),
-        location: newItemForm.location.trim(),
-        cost: parseFloat(newItemForm.cost) || 0,
-        supplier: newItemForm.supplier.trim(),
-        auto_reorder_enabled: newItemForm.auto_reorder_enabled,
-        reorder_quantity: parseInt(newItemForm.reorder_quantity) || 50,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-
-      let { error } = await supabase
-        .from('inventory_items')
-        .insert(newItem);
-
-      // If the item_number column doesn't exist yet (migration pending), retry without it
-      if (error && (error.code === '42703' || error.message?.includes('item_number'))) {
-        console.warn('⚠️ item_number column not found — retrying without it (apply migration to enable)');
-        const { item_number: _itemNum, ...newItemFallback } = newItem;
-        const { error: fallbackError } = await supabase
-          .from('inventory_items')
-          .insert(newItemFallback);
-        error = fallbackError;
-      }
-
-      if (error) {
-        console.error('❌ Error adding inventory item:', error);
-        throw error;
-      }
-
-      console.log('✅ Inventory item added successfully');
-      showToast('Item added successfully', 'success');
-
-      // Refresh data to show the new item
-      await loadInventoryData();
-
-      setShowAddModal(false);
+    const resetForm = () => {
       setNewItemForm({
         name: '',
         item_number: '',
         category: 'cleaning-supplies',
+        warehouseMode: 'single',
+        location: 'Sparks Warehouse',
         current_stock: '0',
         min_stock: '10',
         unit: 'units',
-        location: 'Sparks Warehouse',
         cost: '0',
+        regular_current_stock: '0',
+        regular_min_stock: '10',
+        regular_unit: 'units',
+        regular_cost: '0',
         supplier: '',
         auto_reorder_enabled: false,
         reorder_quantity: '50',
       });
+    };
+
+    const insertItem = async (item: InventoryItem) => {
+      let { error } = await supabase.from('inventory_items').insert(item);
+      if (error && (error.code === '42703' || error.message?.includes('item_number'))) {
+        console.warn('⚠️ item_number column not found — retrying without it');
+        const { item_number: _itemNum, ...fallback } = item;
+        const { error: fallbackError } = await supabase.from('inventory_items').insert(fallback);
+        error = fallbackError;
+      }
+      if (error) throw error;
+    };
+
+    try {
+      const sharedItemNumber = newItemForm.item_number.trim() || generateItemNumber();
+      const now = new Date().toISOString();
+
+      if (newItemForm.warehouseMode === 'both') {
+        console.log('🔄 Adding item to both warehouses:', newItemForm.name);
+
+        const sparksItem: InventoryItem = {
+          id: uuid.v4() as string,
+          name: newItemForm.name.trim(),
+          item_number: sharedItemNumber,
+          category: newItemForm.category,
+          current_stock: parseInt(newItemForm.current_stock) || 0,
+          min_stock: parseInt(newItemForm.min_stock) || 10,
+          max_stock: 999999,
+          unit: newItemForm.unit.trim() || 'units',
+          location: 'Sparks Warehouse',
+          cost: parseFloat(newItemForm.cost) || 0,
+          supplier: newItemForm.supplier.trim(),
+          auto_reorder_enabled: newItemForm.auto_reorder_enabled,
+          reorder_quantity: parseInt(newItemForm.reorder_quantity) || 50,
+          created_at: now,
+          updated_at: now,
+        };
+
+        const regularItem: InventoryItem = {
+          id: uuid.v4() as string,
+          name: newItemForm.name.trim(),
+          item_number: sharedItemNumber,
+          category: newItemForm.category,
+          current_stock: parseInt(newItemForm.regular_current_stock) || 0,
+          min_stock: parseInt(newItemForm.regular_min_stock) || 10,
+          max_stock: 999999,
+          unit: newItemForm.regular_unit.trim() || 'units',
+          location: 'Regular Warehouse',
+          cost: parseFloat(newItemForm.regular_cost) || 0,
+          supplier: newItemForm.supplier.trim(),
+          auto_reorder_enabled: newItemForm.auto_reorder_enabled,
+          reorder_quantity: parseInt(newItemForm.reorder_quantity) || 50,
+          created_at: now,
+          updated_at: now,
+        };
+
+        await insertItem(sparksItem);
+        await insertItem(regularItem);
+        console.log('✅ Item added to both warehouses');
+        showToast('Item added to both warehouses', 'success');
+      } else {
+        console.log('🔄 Adding new inventory item:', newItemForm.name);
+
+        const newItem: InventoryItem = {
+          id: uuid.v4() as string,
+          name: newItemForm.name.trim(),
+          item_number: sharedItemNumber,
+          category: newItemForm.category,
+          current_stock: parseInt(newItemForm.current_stock) || 0,
+          min_stock: parseInt(newItemForm.min_stock) || 10,
+          max_stock: 999999,
+          unit: newItemForm.unit.trim(),
+          location: newItemForm.location.trim(),
+          cost: parseFloat(newItemForm.cost) || 0,
+          supplier: newItemForm.supplier.trim(),
+          auto_reorder_enabled: newItemForm.auto_reorder_enabled,
+          reorder_quantity: parseInt(newItemForm.reorder_quantity) || 50,
+          created_at: now,
+          updated_at: now,
+        };
+
+        await insertItem(newItem);
+        console.log('✅ Inventory item added successfully');
+        showToast('Item added successfully', 'success');
+      }
+
+      await loadInventoryData();
+      setShowAddModal(false);
+      resetForm();
     } catch (error) {
       console.error('❌ Failed to add inventory item:', error);
       showToast('Failed to add item', 'error');
@@ -1292,6 +1352,22 @@ export default function SupervisorInventoryScreen() {
     return matchesSearch && matchesCategory && matchesWarehouse;
   });
 
+  // Group filteredItems by name so items that exist in both warehouses appear as one card
+  // when viewing "All Warehouses". Each group is an array of InventoryItem rows for that item.
+  const groupedFilteredItems = useMemo(() => {
+    const groups = new Map<string, InventoryItem[]>();
+    for (const item of filteredItems) {
+      const key = item.name.toLowerCase().trim();
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(item);
+    }
+    // Sort within each group so Sparks Warehouse always comes first
+    for (const [, group] of groups) {
+      group.sort((a, b) => a.location.localeCompare(b.location));
+    }
+    return Array.from(groups.values());
+  }, [filteredItems]);
+
   // By Building view: group buildings by client, find associated items for each
   const buildingViewData = useMemo(() => {
     const grouped: Record<string, Array<{ building: { clientName: string; buildingName: string; destination: string }; buildingItems: InventoryItem[] }>> = {};
@@ -1541,7 +1617,7 @@ export default function SupervisorInventoryScreen() {
       <ScrollView>
         {viewMode === 'items' ? (
           /* ── Items grid view ── */
-          filteredItems.length === 0 ? (
+          groupedFilteredItems.length === 0 ? (
             <View style={styles.emptyState}>
               <Icon name="cube-outline" size={64} color={colors.textSecondary} />
               <Text style={styles.emptyStateText}>
@@ -1550,57 +1626,94 @@ export default function SupervisorInventoryScreen() {
             </View>
           ) : (
             <View style={styles.gridContainer}>
-              {filteredItems.map((item) => {
-                const stockStatus = getStockStatus(item);
+              {groupedFilteredItems.map((group) => {
+                const primary = group[0];
+                const isMultiWarehouse = group.length > 1;
+                const cardKey = group.map(i => i.id).join('-');
                 return (
-                  <AnimatedCard key={item.id} style={styles.itemCard}>
+                  <AnimatedCard key={cardKey} style={styles.itemCard}>
                     <View style={styles.itemHeader}>
-                      {item.image_url ? (
+                      {primary.image_url ? (
                         <View
                           // @ts-ignore — web-only hover events
-                          onMouseEnter={(e: any) => setHoveredImage({ url: item.image_url, x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
+                          onMouseEnter={(e: any) => setHoveredImage({ url: primary.image_url, x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
                           onMouseLeave={() => setHoveredImage(null)}
                         >
-                          <Image source={{ uri: item.image_url }} style={{ width: 36, height: 36, borderRadius: 6 }} resizeMode="cover" />
+                          <Image source={{ uri: primary.image_url }} style={{ width: 36, height: 36, borderRadius: 6 }} resizeMode="cover" />
                         </View>
                       ) : (
-                        <Icon name={getCategoryIcon(item.category)} size={32} color={themeColor} />
+                        <Icon name={getCategoryIcon(primary.category)} size={32} color={themeColor} />
                       )}
-                      <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
-                      {item.item_number && (
-                        <Text style={styles.itemProductNumber}>{item.item_number}</Text>
+                      <Text style={styles.itemName} numberOfLines={2}>{primary.name}</Text>
+                      {primary.item_number && (
+                        <Text style={styles.itemProductNumber}>{primary.item_number}</Text>
                       )}
-                      {item.supply_type ? (
-                        <Text style={[styles.itemProductNumber, { color: '#8B5CF6', marginTop: 2 }]}>{item.supply_type}</Text>
+                      {primary.supply_type ? (
+                        <Text style={[styles.itemProductNumber, { color: '#8B5CF6', marginTop: 2 }]}>{primary.supply_type}</Text>
                       ) : null}
                     </View>
 
                     <View style={styles.itemInfo}>
-                      <View style={[styles.stockBadge, { backgroundColor: stockStatus.color + '20' }]}>
-                        <Text style={[styles.stockBadgeText, { color: stockStatus.color }]}>
-                          {item.current_stock} {item.unit}
-                        </Text>
-                      </View>
-                      <Text style={styles.infoText} numberOfLines={1}>{item.location}</Text>
-                      {item.tax_per_unit && item.tax_per_unit > 0 ? (
-                        <View>
-                          <Text style={styles.infoText}>${item.cost.toFixed(2)}</Text>
-                          <Text style={styles.costBreakdownText}>
-                            ${(item.cost - item.tax_per_unit).toFixed(2)} + ${item.tax_per_unit.toFixed(2)} tax
-                          </Text>
-                        </View>
+                      {isMultiWarehouse ? (
+                        /* Both warehouses: show per-warehouse stock rows */
+                        <>
+                          {group.map((whItem) => {
+                            const whStatus = getStockStatus(whItem);
+                            const shortName = whItem.location === 'Sparks Warehouse' ? 'Sparks' : 'Regular';
+                            return (
+                              <View key={whItem.id} style={{ marginBottom: 3 }}>
+                                <Text style={{ fontSize: 9, color: colors.textSecondary, fontWeight: '600', marginBottom: 1 }}>
+                                  {shortName}
+                                </Text>
+                                <View style={[styles.stockBadge, { backgroundColor: whStatus.color + '20' }]}>
+                                  <Text style={[styles.stockBadgeText, { color: whStatus.color }]}>
+                                    {whItem.current_stock} {whItem.unit}
+                                  </Text>
+                                </View>
+                              </View>
+                            );
+                          })}
+                          <Text style={styles.infoText}>${primary.cost.toFixed(2)}</Text>
+                        </>
                       ) : (
-                        <Text style={styles.infoText}>${item.cost.toFixed(2)}</Text>
+                        /* Single warehouse: original display */
+                        <>
+                          <View style={[styles.stockBadge, { backgroundColor: getStockStatus(primary).color + '20' }]}>
+                            <Text style={[styles.stockBadgeText, { color: getStockStatus(primary).color }]}>
+                              {primary.current_stock} {primary.unit}
+                            </Text>
+                          </View>
+                          <Text style={styles.infoText} numberOfLines={1}>{primary.location}</Text>
+                          {primary.tax_per_unit && primary.tax_per_unit > 0 ? (
+                            <View>
+                              <Text style={styles.infoText}>${primary.cost.toFixed(2)}</Text>
+                              <Text style={styles.costBreakdownText}>
+                                ${(primary.cost - primary.tax_per_unit).toFixed(2)} + ${primary.tax_per_unit.toFixed(2)} tax
+                              </Text>
+                            </View>
+                          ) : (
+                            <Text style={styles.infoText}>${primary.cost.toFixed(2)}</Text>
+                          )}
+                        </>
                       )}
                     </View>
 
                     <View style={styles.itemActions}>
-                      <TouchableOpacity onPress={() => openEditModal(item)}>
-                        <Icon name="create" size={18} color={themeColor} />
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={() => handleDeleteItem(item.id, item.name)}>
-                        <Icon name="trash" size={18} color={colors.error} />
-                      </TouchableOpacity>
+                      {group.map((item, idx) => (
+                        <View key={item.id} style={isMultiWarehouse ? { flexDirection: 'row', alignItems: 'center', gap: 4 } : { flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          {isMultiWarehouse && (
+                            <Text style={{ fontSize: 8, color: colors.textSecondary, fontWeight: '600' }}>
+                              {item.location === 'Sparks Warehouse' ? 'S' : 'R'}
+                            </Text>
+                          )}
+                          <TouchableOpacity onPress={() => openEditModal(item)}>
+                            <Icon name="create" size={16} color={themeColor} />
+                          </TouchableOpacity>
+                          <TouchableOpacity onPress={() => handleDeleteItem(item.id, item.name)}>
+                            <Icon name="trash" size={16} color={colors.error} />
+                          </TouchableOpacity>
+                        </View>
+                      ))}
                     </View>
                   </AnimatedCard>
                 );
@@ -1932,77 +2045,201 @@ export default function SupervisorInventoryScreen() {
                 </View>
               </View>
 
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Current Stock</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="0"
-                  placeholderTextColor={colors.textSecondary}
-                  value={newItemForm.current_stock}
-                  onChangeText={(text) => setNewItemForm({ ...newItemForm, current_stock: text })}
-                  keyboardType="numeric"
-                />
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Min Stock</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="10"
-                  placeholderTextColor={colors.textSecondary}
-                  value={newItemForm.min_stock}
-                  onChangeText={(text) => setNewItemForm({ ...newItemForm, min_stock: text })}
-                  keyboardType="numeric"
-                />
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Unit</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="units, boxes, etc."
-                  placeholderTextColor={colors.textSecondary}
-                  value={newItemForm.unit}
-                  onChangeText={(text) => setNewItemForm({ ...newItemForm, unit: text })}
-                />
-              </View>
-
+              {/* Warehouse selector */}
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Warehouse *</Text>
-                <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                <View style={{ flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' }}>
                   {WAREHOUSES.map((wh) => (
                     <TouchableOpacity
                       key={wh}
                       style={[
                         styles.filterChip,
-                        newItemForm.location === wh && styles.filterChipActive,
+                        newItemForm.warehouseMode === 'single' && newItemForm.location === wh && styles.filterChipActive,
                       ]}
-                      onPress={() => setNewItemForm({ ...newItemForm, location: wh })}
+                      onPress={() => setNewItemForm({ ...newItemForm, warehouseMode: 'single', location: wh })}
                     >
                       <Text
                         style={[
                           styles.filterChipText,
-                          newItemForm.location === wh && styles.filterChipTextActive,
+                          newItemForm.warehouseMode === 'single' && newItemForm.location === wh && styles.filterChipTextActive,
                         ]}
                       >
                         {wh}
                       </Text>
                     </TouchableOpacity>
                   ))}
+                  <TouchableOpacity
+                    style={[
+                      styles.filterChip,
+                      newItemForm.warehouseMode === 'both' && styles.filterChipActive,
+                    ]}
+                    onPress={() => setNewItemForm({ ...newItemForm, warehouseMode: 'both' })}
+                  >
+                    <Text
+                      style={[
+                        styles.filterChipText,
+                        newItemForm.warehouseMode === 'both' && styles.filterChipTextActive,
+                      ]}
+                    >
+                      Both Warehouses
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               </View>
 
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Cost per Unit ($)</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="0.00"
-                  placeholderTextColor={colors.textSecondary}
-                  value={newItemForm.cost}
-                  onChangeText={(text) => setNewItemForm({ ...newItemForm, cost: text })}
-                  keyboardType="decimal-pad"
-                />
-              </View>
+              {/* Single warehouse stock fields */}
+              {newItemForm.warehouseMode === 'single' && (
+                <>
+                  <View style={styles.formGroup}>
+                    <Text style={styles.label}>Current Stock</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="0"
+                      placeholderTextColor={colors.textSecondary}
+                      value={newItemForm.current_stock}
+                      onChangeText={(text) => setNewItemForm({ ...newItemForm, current_stock: text })}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                  <View style={styles.formGroup}>
+                    <Text style={styles.label}>Min Stock</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="10"
+                      placeholderTextColor={colors.textSecondary}
+                      value={newItemForm.min_stock}
+                      onChangeText={(text) => setNewItemForm({ ...newItemForm, min_stock: text })}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                  <View style={styles.formGroup}>
+                    <Text style={styles.label}>Unit</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="units, boxes, etc."
+                      placeholderTextColor={colors.textSecondary}
+                      value={newItemForm.unit}
+                      onChangeText={(text) => setNewItemForm({ ...newItemForm, unit: text })}
+                    />
+                  </View>
+                  <View style={styles.formGroup}>
+                    <Text style={styles.label}>Cost per Unit ($)</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="0.00"
+                      placeholderTextColor={colors.textSecondary}
+                      value={newItemForm.cost}
+                      onChangeText={(text) => setNewItemForm({ ...newItemForm, cost: text })}
+                      keyboardType="decimal-pad"
+                    />
+                  </View>
+                </>
+              )}
+
+              {/* Both warehouses stock fields */}
+              {newItemForm.warehouseMode === 'both' && (
+                <>
+                  {/* Sparks Warehouse */}
+                  <View style={{ backgroundColor: '#EEF2FF', borderRadius: 10, padding: spacing.md, marginBottom: spacing.sm }}>
+                    <Text style={[styles.label, { fontSize: 13, fontWeight: '700', marginBottom: spacing.sm, color: colors.primary }]}>
+                      Sparks Warehouse
+                    </Text>
+                    <View style={styles.formGroup}>
+                      <Text style={styles.label}>Current Stock</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="0"
+                        placeholderTextColor={colors.textSecondary}
+                        value={newItemForm.current_stock}
+                        onChangeText={(text) => setNewItemForm({ ...newItemForm, current_stock: text })}
+                        keyboardType="numeric"
+                      />
+                    </View>
+                    <View style={styles.formGroup}>
+                      <Text style={styles.label}>Min Stock</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="10"
+                        placeholderTextColor={colors.textSecondary}
+                        value={newItemForm.min_stock}
+                        onChangeText={(text) => setNewItemForm({ ...newItemForm, min_stock: text })}
+                        keyboardType="numeric"
+                      />
+                    </View>
+                    <View style={styles.formGroup}>
+                      <Text style={styles.label}>Unit</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="units, boxes, etc."
+                        placeholderTextColor={colors.textSecondary}
+                        value={newItemForm.unit}
+                        onChangeText={(text) => setNewItemForm({ ...newItemForm, unit: text })}
+                      />
+                    </View>
+                    <View style={styles.formGroup}>
+                      <Text style={styles.label}>Cost per Unit ($)</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="0.00"
+                        placeholderTextColor={colors.textSecondary}
+                        value={newItemForm.cost}
+                        onChangeText={(text) => setNewItemForm({ ...newItemForm, cost: text })}
+                        keyboardType="decimal-pad"
+                      />
+                    </View>
+                  </View>
+
+                  {/* Regular Warehouse */}
+                  <View style={{ backgroundColor: '#F5F0FF', borderRadius: 10, padding: spacing.md, marginBottom: spacing.sm }}>
+                    <Text style={[styles.label, { fontSize: 13, fontWeight: '700', marginBottom: spacing.sm, color: '#7C3AED' }]}>
+                      Regular Warehouse
+                    </Text>
+                    <View style={styles.formGroup}>
+                      <Text style={styles.label}>Current Stock</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="0"
+                        placeholderTextColor={colors.textSecondary}
+                        value={newItemForm.regular_current_stock}
+                        onChangeText={(text) => setNewItemForm({ ...newItemForm, regular_current_stock: text })}
+                        keyboardType="numeric"
+                      />
+                    </View>
+                    <View style={styles.formGroup}>
+                      <Text style={styles.label}>Min Stock</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="10"
+                        placeholderTextColor={colors.textSecondary}
+                        value={newItemForm.regular_min_stock}
+                        onChangeText={(text) => setNewItemForm({ ...newItemForm, regular_min_stock: text })}
+                        keyboardType="numeric"
+                      />
+                    </View>
+                    <View style={styles.formGroup}>
+                      <Text style={styles.label}>Unit</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="units, boxes, etc."
+                        placeholderTextColor={colors.textSecondary}
+                        value={newItemForm.regular_unit}
+                        onChangeText={(text) => setNewItemForm({ ...newItemForm, regular_unit: text })}
+                      />
+                    </View>
+                    <View style={styles.formGroup}>
+                      <Text style={styles.label}>Cost per Unit ($)</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="0.00"
+                        placeholderTextColor={colors.textSecondary}
+                        value={newItemForm.regular_cost}
+                        onChangeText={(text) => setNewItemForm({ ...newItemForm, regular_cost: text })}
+                        keyboardType="decimal-pad"
+                      />
+                    </View>
+                  </View>
+                </>
+              )}
 
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Supplier</Text>
