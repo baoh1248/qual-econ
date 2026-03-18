@@ -130,6 +130,12 @@ export default function InventoryCatalog() {
   const [editForm, setEditForm] = useState(BLANK_FORM);
   const [saving, setSaving] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [editBuildings, setEditBuildings] = useState<string[]>([]);
+  const [availableBuildings, setAvailableBuildings] = useState<Array<{ clientName: string; buildingName: string; destination: string }>>([]);
+  const [buildingSearchQuery, setBuildingSearchQuery] = useState('');
+
+  // Buildings popup (for +N more in table cells)
+  const [buildingsPopup, setBuildingsPopup] = useState<{ title: string; items: string[] } | null>(null);
 
   // Add modal
   const [showAddModal, setShowAddModal] = useState(false);
@@ -323,6 +329,24 @@ export default function InventoryCatalog() {
 
   // ── Edit ──────────────────────────────────────────────────────────────────
 
+  const loadAvailableBuildings = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('client_buildings')
+        .select('client_name, building_name')
+        .order('client_name', { ascending: true });
+      if (!error && data) {
+        setAvailableBuildings(data.map((b: { client_name: string; building_name: string }) => ({
+          clientName: b.client_name,
+          buildingName: b.building_name,
+          destination: b.client_name + ' - ' + b.building_name,
+        })));
+      }
+    } catch (e) {
+      console.error('Failed to load buildings:', e);
+    }
+  };
+
   const openEdit = (entry: CatalogEntry) => {
     setEditingEntry(entry);
     setEditForm({
@@ -334,6 +358,9 @@ export default function InventoryCatalog() {
       unit: entry.unit,
       supplier: entry.supplier,
     });
+    setEditBuildings(entry.buildings_serviced);
+    setBuildingSearchQuery('');
+    if (availableBuildings.length === 0) loadAvailableBuildings();
     setShowEditModal(true);
   };
 
@@ -354,6 +381,7 @@ export default function InventoryCatalog() {
           image_url: editForm.image_url.trim() || null,
           unit: editForm.unit.trim(),
           supplier: editForm.supplier.trim(),
+          associated_buildings: editBuildings,
           updated_at: new Date().toISOString(),
         })
         .ilike('name', editingEntry.name);
@@ -813,51 +841,88 @@ export default function InventoryCatalog() {
 
                   {/* Associated Buildings */}
                   <View style={[styles.cell, { width: colW('buildings') }]}>
-                    {entry.by_warehouse.length > 1 ? (
-                      entry.by_warehouse.map(ws => {
-                        const label = ws.warehouse === 'Sparks Warehouse' ? 'Sparks' : 'Regular';
-                        return ws.associated_buildings.length > 0 ? (
-                          <Text key={ws.warehouse} style={styles.cellText} numberOfLines={2}>
-                            <Text style={{ fontWeight: '700' }}>{label}: </Text>
-                            {ws.associated_buildings.slice(0, 2).join(', ')}
-                            {ws.associated_buildings.length > 2 ? ` +${ws.associated_buildings.length - 2}` : ''}
-                          </Text>
-                        ) : (
-                          <Text key={ws.warehouse} style={styles.cellMuted}>{label}: —</Text>
-                        );
-                      })
-                    ) : entry.buildings_serviced.length > 0 ? (
-                      <Text style={styles.cellText} numberOfLines={3}>
-                        {entry.buildings_serviced.slice(0, 3).join(', ')}
-                        {entry.buildings_serviced.length > 3 ? ` +${entry.buildings_serviced.length - 3}` : ''}
-                      </Text>
-                    ) : (
-                      <Text style={styles.cellMuted}>—</Text>
-                    )}
+                    {(() => {
+                      const isMulti = entry.by_warehouse.length > 1;
+                      if (isMulti) {
+                        return entry.by_warehouse.map(ws => {
+                          const label = ws.warehouse === 'Sparks Warehouse' ? 'Sparks' : 'Regular';
+                          const list = ws.associated_buildings;
+                          if (list.length === 0) return <Text key={ws.warehouse} style={styles.cellMuted}>{label}: —</Text>;
+                          return (
+                            <View key={ws.warehouse} style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', marginBottom: 2 }}>
+                              <Text style={[styles.cellText, { fontWeight: '700' }]}>{label}: </Text>
+                              <Text style={styles.cellText} numberOfLines={1}>{list[0]}</Text>
+                              {list.length > 1 && (
+                                <TouchableOpacity
+                                  style={styles.moreChip}
+                                  onPress={() => setBuildingsPopup({ title: `${label} — Associated Buildings`, items: list })}
+                                >
+                                  <Text style={styles.moreChipText}>+{list.length - 1}</Text>
+                                </TouchableOpacity>
+                              )}
+                            </View>
+                          );
+                        });
+                      }
+                      const list = entry.buildings_serviced;
+                      if (list.length === 0) return <Text style={styles.cellMuted}>—</Text>;
+                      return (
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' }}>
+                          <Text style={styles.cellText} numberOfLines={1}>{list[0]}</Text>
+                          {list.length > 1 && (
+                            <TouchableOpacity
+                              style={styles.moreChip}
+                              onPress={() => setBuildingsPopup({ title: 'Associated Buildings', items: list })}
+                            >
+                              <Text style={styles.moreChipText}>+{list.length - 1}</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      );
+                    })()}
                   </View>
 
                   {/* Sent To */}
                   <View style={[styles.cell, { width: colW('sent_to') }]}>
-                    {entry.by_warehouse.length > 1 ? (
-                      entry.by_warehouse.map(ws => {
-                        const label = ws.warehouse === 'Sparks Warehouse' ? 'Sparks' : 'Regular';
-                        return ws.sent_to.length > 0 ? (
-                          <Text key={ws.warehouse} style={styles.cellText} numberOfLines={2}>
-                            <Text style={{ fontWeight: '700' }}>{label}: </Text>
-                            {ws.sent_to.slice(0, 2).join(', ')}
-                            {ws.sent_to.length > 2 ? ` +${ws.sent_to.length - 2}` : ''}
-                          </Text>
-                        ) : (
-                          <Text key={ws.warehouse} style={styles.cellMuted}>{label}: —</Text>
-                        );
-                      })
-                    ) : entry.buildings_serviced.length > 0 ? (
-                      entry.buildings_serviced.map(b => (
-                        <Text key={b} style={styles.cellText} numberOfLines={1}>{b}</Text>
-                      ))
-                    ) : (
-                      <Text style={styles.cellMuted}>—</Text>
-                    )}
+                    {(() => {
+                      const isMulti = entry.by_warehouse.length > 1;
+                      if (isMulti) {
+                        return entry.by_warehouse.map(ws => {
+                          const label = ws.warehouse === 'Sparks Warehouse' ? 'Sparks' : 'Regular';
+                          const list = ws.sent_to;
+                          if (list.length === 0) return <Text key={ws.warehouse} style={styles.cellMuted}>{label}: —</Text>;
+                          return (
+                            <View key={ws.warehouse} style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', marginBottom: 2 }}>
+                              <Text style={[styles.cellText, { fontWeight: '700' }]}>{label}: </Text>
+                              <Text style={styles.cellText} numberOfLines={1}>{list[0]}</Text>
+                              {list.length > 1 && (
+                                <TouchableOpacity
+                                  style={styles.moreChip}
+                                  onPress={() => setBuildingsPopup({ title: `${label} — Sent To`, items: list })}
+                                >
+                                  <Text style={styles.moreChipText}>+{list.length - 1}</Text>
+                                </TouchableOpacity>
+                              )}
+                            </View>
+                          );
+                        });
+                      }
+                      const list = entry.buildings_serviced;
+                      if (list.length === 0) return <Text style={styles.cellMuted}>—</Text>;
+                      return (
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' }}>
+                          <Text style={styles.cellText} numberOfLines={1}>{list[0]}</Text>
+                          {list.length > 1 && (
+                            <TouchableOpacity
+                              style={styles.moreChip}
+                              onPress={() => setBuildingsPopup({ title: 'Sent To', items: list })}
+                            >
+                              <Text style={styles.moreChipText}>+{list.length - 1}</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      );
+                    })()}
                   </View>
 
                   {/* Edit */}
@@ -875,6 +940,33 @@ export default function InventoryCatalog() {
           <View style={{ height: 80 }} />
         </ScrollView>
       )}
+
+      {/* ── Buildings Popup ──────────────────────────────────────────────────── */}
+      <Modal
+        visible={!!buildingsPopup}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setBuildingsPopup(null)}
+      >
+        <TouchableOpacity style={styles.popupOverlay} activeOpacity={1} onPress={() => setBuildingsPopup(null)}>
+          <View style={styles.popupSheet} onStartShouldSetResponder={() => true}>
+            <View style={styles.popupHeader}>
+              <Text style={styles.popupTitle}>{buildingsPopup?.title}</Text>
+              <TouchableOpacity onPress={() => setBuildingsPopup(null)}>
+                <Icon name="close" size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ maxHeight: 320 }}>
+              {(buildingsPopup?.items || []).map((item, idx) => (
+                <View key={idx} style={styles.popupItem}>
+                  <Icon name="business-outline" size={14} color={colors.textSecondary} />
+                  <Text style={styles.popupItemText}>{item}</Text>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* ── Filter Modal ─────────────────────────────────────────────────────── */}
       <Modal
@@ -1046,6 +1138,56 @@ export default function InventoryCatalog() {
                 placeholder="Supplier name"
                 placeholderTextColor={colors.textSecondary}
               />
+
+              {/* Associated Buildings */}
+              <Text style={styles.fieldLabel}>Associated Buildings</Text>
+              <Text style={[typography.caption, { color: colors.textSecondary, marginBottom: spacing.sm }]}>
+                Select buildings that regularly use this item
+              </Text>
+              {editBuildings.length > 0 && (
+                <View style={styles.editBuildingChips}>
+                  {editBuildings.map(dest => (
+                    <TouchableOpacity
+                      key={dest}
+                      style={styles.editBuildingChip}
+                      onPress={() => setEditBuildings(editBuildings.filter(b => b !== dest))}
+                    >
+                      <Text style={styles.editBuildingChipText}>{dest}</Text>
+                      <Icon name="close-circle" size={15} color={colors.primary} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+              <TextInput
+                style={commonStyles.textInput}
+                placeholder="Search buildings…"
+                placeholderTextColor={colors.textSecondary}
+                value={buildingSearchQuery}
+                onChangeText={setBuildingSearchQuery}
+              />
+              <View style={styles.editBuildingList}>
+                <ScrollView nestedScrollEnabled>
+                  {availableBuildings
+                    .filter(b => !editBuildings.includes(b.destination))
+                    .filter(b => !buildingSearchQuery || b.destination.toLowerCase().includes(buildingSearchQuery.toLowerCase()))
+                    .map(b => (
+                      <TouchableOpacity
+                        key={b.destination}
+                        style={styles.editBuildingListItem}
+                        onPress={() => {
+                          setEditBuildings([...editBuildings, b.destination]);
+                          setBuildingSearchQuery('');
+                        }}
+                      >
+                        <Icon name="add-circle-outline" size={18} color={colors.primary} />
+                        <View style={{ flex: 1, marginLeft: spacing.xs }}>
+                          <Text style={styles.editBuildingName}>{b.buildingName}</Text>
+                          <Text style={styles.editBuildingClient}>{b.clientName}</Text>
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                </ScrollView>
+              </View>
 
               <Button
                 title={saving ? 'Saving…' : 'Save Changes'}
@@ -1416,4 +1558,68 @@ const styles = StyleSheet.create({
   segBtnActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   segBtnText: { fontSize: 13, color: colors.textSecondary, fontWeight: '500' },
   segBtnTextActive: { color: colors.background, fontWeight: '700' },
+
+  // +N more chip in table cells
+  moreChip: {
+    backgroundColor: colors.primary + '18',
+    borderRadius: 10,
+    paddingHorizontal: 6, paddingVertical: 1,
+    marginLeft: 4,
+  },
+  moreChipText: { fontSize: 10, fontWeight: '700', color: colors.primary },
+
+  // Buildings popup modal
+  popupOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.xl,
+  },
+  popupSheet: {
+    backgroundColor: colors.background,
+    borderRadius: 14,
+    width: '100%',
+    maxWidth: 400,
+    overflow: 'hidden',
+  },
+  popupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  popupTitle: { fontSize: 14, fontWeight: '700', color: colors.text, flex: 1, marginRight: spacing.sm },
+  popupItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border + '40',
+    gap: spacing.xs,
+  },
+  popupItemText: { fontSize: 13, color: colors.text, flex: 1 },
+
+  // Edit modal — buildings section
+  editBuildingChips: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: spacing.sm },
+  editBuildingChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: colors.primary + '15',
+    borderRadius: 20,
+    paddingHorizontal: spacing.sm, paddingVertical: spacing.xs,
+    marginRight: spacing.xs, marginBottom: spacing.xs,
+  },
+  editBuildingChipText: { fontSize: 12, color: colors.primary, fontWeight: '600' },
+  editBuildingList: { maxHeight: 180, marginTop: spacing.xs, borderWidth: 1, borderColor: colors.border, borderRadius: 8, overflow: 'hidden' },
+  editBuildingListItem: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: spacing.sm, paddingHorizontal: spacing.sm,
+    borderBottomWidth: 1, borderBottomColor: colors.border + '40',
+  },
+  editBuildingName: { fontSize: 13, color: colors.text, fontWeight: '600' },
+  editBuildingClient: { fontSize: 11, color: colors.textSecondary },
 });
