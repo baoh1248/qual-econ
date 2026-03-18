@@ -130,7 +130,9 @@ export default function InventoryCatalog() {
   const [editForm, setEditForm] = useState(BLANK_FORM);
   const [saving, setSaving] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
-  const [editBuildings, setEditBuildings] = useState<string[]>([]);
+  // key = item_id (one per warehouse row), value = that warehouse's buildings
+  const [editBuildingsByWarehouse, setEditBuildingsByWarehouse] = useState<Record<string, string[]>>({});
+  const [editWarehouseTab, setEditWarehouseTab] = useState<string>('');
   const [availableBuildings, setAvailableBuildings] = useState<Array<{ clientName: string; buildingName: string; destination: string }>>([]);
   const [buildingSearchQuery, setBuildingSearchQuery] = useState('');
 
@@ -358,7 +360,12 @@ export default function InventoryCatalog() {
       unit: entry.unit,
       supplier: entry.supplier,
     });
-    setEditBuildings(entry.buildings_serviced);
+    const byWh: Record<string, string[]> = {};
+    for (const ws of entry.by_warehouse) {
+      byWh[ws.item_id] = [...ws.associated_buildings];
+    }
+    setEditBuildingsByWarehouse(byWh);
+    setEditWarehouseTab(entry.by_warehouse[0]?.item_id || '');
     setBuildingSearchQuery('');
     if (availableBuildings.length === 0) loadAvailableBuildings();
     setShowEditModal(true);
@@ -371,6 +378,7 @@ export default function InventoryCatalog() {
     }
     try {
       setSaving(true);
+      // Update shared fields (name, unit, etc.) across all warehouse rows
       const { error } = await supabase
         .from('inventory_items')
         .update({
@@ -381,12 +389,21 @@ export default function InventoryCatalog() {
           image_url: editForm.image_url.trim() || null,
           unit: editForm.unit.trim(),
           supplier: editForm.supplier.trim(),
-          associated_buildings: editBuildings,
           updated_at: new Date().toISOString(),
         })
         .ilike('name', editingEntry.name);
 
       if (error) throw error;
+
+      // Update associated_buildings per warehouse row individually
+      for (const [itemId, buildings] of Object.entries(editBuildingsByWarehouse)) {
+        const { error: bErr } = await supabase
+          .from('inventory_items')
+          .update({ associated_buildings: buildings })
+          .eq('id', itemId);
+        if (bErr) throw bErr;
+      }
+
       showToast('Item updated across all warehouses', 'success');
       setShowEditModal(false);
       loadCatalog();
@@ -1144,50 +1161,86 @@ export default function InventoryCatalog() {
               <Text style={[typography.caption, { color: colors.textSecondary, marginBottom: spacing.sm }]}>
                 Select buildings that regularly use this item
               </Text>
-              {editBuildings.length > 0 && (
-                <View style={styles.editBuildingChips}>
-                  {editBuildings.map(dest => (
-                    <TouchableOpacity
-                      key={dest}
-                      style={styles.editBuildingChip}
-                      onPress={() => setEditBuildings(editBuildings.filter(b => b !== dest))}
-                    >
-                      <Text style={styles.editBuildingChipText}>{dest}</Text>
-                      <Icon name="close-circle" size={15} color={colors.primary} />
-                    </TouchableOpacity>
-                  ))}
+
+              {/* Warehouse tab selector — shown only when item is in multiple warehouses */}
+              {editingEntry && editingEntry.by_warehouse.length > 1 && (
+                <View style={styles.whTabRow}>
+                  {editingEntry.by_warehouse.map(ws => {
+                    const label = ws.warehouse === 'Sparks Warehouse' ? 'Sparks Warehouse' : 'Regular Warehouse';
+                    const count = (editBuildingsByWarehouse[ws.item_id] || []).length;
+                    const active = editWarehouseTab === ws.item_id;
+                    return (
+                      <TouchableOpacity
+                        key={ws.item_id}
+                        style={[styles.whTab, active && styles.whTabActive]}
+                        onPress={() => { setEditWarehouseTab(ws.item_id); setBuildingSearchQuery(''); }}
+                      >
+                        <Text style={[styles.whTabText, active && styles.whTabTextActive]}>{label}</Text>
+                        {count > 0 && (
+                          <View style={[styles.whTabBadge, active && styles.whTabBadgeActive]}>
+                            <Text style={[styles.whTabBadgeText, active && styles.whTabBadgeTextActive]}>{count}</Text>
+                          </View>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
               )}
-              <TextInput
-                style={commonStyles.textInput}
-                placeholder="Search buildings…"
-                placeholderTextColor={colors.textSecondary}
-                value={buildingSearchQuery}
-                onChangeText={setBuildingSearchQuery}
-              />
-              <View style={styles.editBuildingList}>
-                <ScrollView nestedScrollEnabled>
-                  {availableBuildings
-                    .filter(b => !editBuildings.includes(b.destination))
-                    .filter(b => !buildingSearchQuery || b.destination.toLowerCase().includes(buildingSearchQuery.toLowerCase()))
-                    .map(b => (
-                      <TouchableOpacity
-                        key={b.destination}
-                        style={styles.editBuildingListItem}
-                        onPress={() => {
-                          setEditBuildings([...editBuildings, b.destination]);
-                          setBuildingSearchQuery('');
-                        }}
-                      >
-                        <Icon name="add-circle-outline" size={18} color={colors.primary} />
-                        <View style={{ flex: 1, marginLeft: spacing.xs }}>
-                          <Text style={styles.editBuildingName}>{b.buildingName}</Text>
-                          <Text style={styles.editBuildingClient}>{b.clientName}</Text>
-                        </View>
-                      </TouchableOpacity>
-                    ))}
-                </ScrollView>
-              </View>
+
+              {/* Buildings for the active warehouse tab */}
+              {(() => {
+                const activeBuildings = editBuildingsByWarehouse[editWarehouseTab] || [];
+                const setActiveBuildings = (list: string[]) =>
+                  setEditBuildingsByWarehouse(prev => ({ ...prev, [editWarehouseTab]: list }));
+                return (
+                  <>
+                    {activeBuildings.length > 0 && (
+                      <View style={styles.editBuildingChips}>
+                        {activeBuildings.map(dest => (
+                          <TouchableOpacity
+                            key={dest}
+                            style={styles.editBuildingChip}
+                            onPress={() => setActiveBuildings(activeBuildings.filter(b => b !== dest))}
+                          >
+                            <Text style={styles.editBuildingChipText}>{dest}</Text>
+                            <Icon name="close-circle" size={15} color={colors.primary} />
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    )}
+                    <TextInput
+                      style={commonStyles.textInput}
+                      placeholder="Search buildings…"
+                      placeholderTextColor={colors.textSecondary}
+                      value={buildingSearchQuery}
+                      onChangeText={setBuildingSearchQuery}
+                    />
+                    <View style={styles.editBuildingList}>
+                      <ScrollView nestedScrollEnabled>
+                        {availableBuildings
+                          .filter(b => !activeBuildings.includes(b.destination))
+                          .filter(b => !buildingSearchQuery || b.destination.toLowerCase().includes(buildingSearchQuery.toLowerCase()))
+                          .map(b => (
+                            <TouchableOpacity
+                              key={b.destination}
+                              style={styles.editBuildingListItem}
+                              onPress={() => {
+                                setActiveBuildings([...activeBuildings, b.destination]);
+                                setBuildingSearchQuery('');
+                              }}
+                            >
+                              <Icon name="add-circle-outline" size={18} color={colors.primary} />
+                              <View style={{ flex: 1, marginLeft: spacing.xs }}>
+                                <Text style={styles.editBuildingName}>{b.buildingName}</Text>
+                                <Text style={styles.editBuildingClient}>{b.clientName}</Text>
+                              </View>
+                            </TouchableOpacity>
+                          ))}
+                      </ScrollView>
+                    </View>
+                  </>
+                );
+              })()}
 
               <Button
                 title={saving ? 'Saving…' : 'Save Changes'}
@@ -1603,6 +1656,40 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   popupItemText: { fontSize: 13, color: colors.text, flex: 1 },
+
+  // Warehouse tab switcher (inside edit modal buildings section)
+  whTabRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  whTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  whTabActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary + '12',
+  },
+  whTabText: { fontSize: 13, fontWeight: '600', color: colors.textSecondary },
+  whTabTextActive: { color: colors.primary },
+  whTabBadge: {
+    backgroundColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  whTabBadgeActive: { backgroundColor: colors.primary },
+  whTabBadgeText: { fontSize: 10, fontWeight: '700', color: colors.textSecondary },
+  whTabBadgeTextActive: { color: '#fff' },
 
   // Edit modal — buildings section
   editBuildingChips: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: spacing.sm },
