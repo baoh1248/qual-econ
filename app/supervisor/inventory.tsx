@@ -299,15 +299,35 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.xs,
   },
-  itemActions: {
-    flexDirection: 'row',
-    gap: spacing.xs,
-    marginTop: spacing.xs,
-    justifyContent: 'center',
-  },
   itemInfo: {
-    alignItems: 'center',
     marginTop: spacing.xs,
+    width: '100%',
+  },
+  // Per-warehouse block inside itemInfo
+  whBlock: {
+    marginBottom: 4,
+  },
+  whBlockHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  whBlockLabel: {
+    fontSize: 9,
+    color: colors.textSecondary,
+    fontWeight: '600',
+    flex: 1,
+  },
+  whBlockActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  whBlockStock: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 2,
   },
   infoItem: {
     flexDirection: 'row',
@@ -1655,69 +1675,43 @@ export default function SupervisorInventoryScreen() {
                     </View>
 
                     <View style={styles.itemInfo}>
-                      {isMultiWarehouse ? (
-                        /* Both warehouses: show warehouse name + stock on one row each */
-                        <>
-                          {group.map((whItem) => {
-                            const whStatus = getStockStatus(whItem);
-                            return (
-                              <View key={whItem.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
-                                <Text style={{ fontSize: 9, color: colors.textSecondary, fontWeight: '600', flex: 1 }}>
-                                  {whItem.location}
-                                </Text>
-                                <View style={{ alignItems: 'flex-end' }}>
-                                  <View style={[styles.stockBadge, { backgroundColor: whStatus.color + '20' }]}>
-                                    <Text style={[styles.stockBadgeText, { color: whStatus.color }]}>
-                                      {whItem.current_stock} {whItem.unit}
-                                    </Text>
-                                  </View>
-                                  <Text style={[styles.infoText, { fontSize: 9 }]}>${whItem.cost.toFixed(2)}</Text>
-                                </View>
+                      {group.map((whItem) => {
+                        const whStatus = getStockStatus(whItem);
+                        return (
+                          <View key={whItem.id} style={styles.whBlock}>
+                            {/* Warehouse label + edit/delete inline */}
+                            <View style={styles.whBlockHeader}>
+                              <Text style={styles.whBlockLabel}>{whItem.location}</Text>
+                              <View style={styles.whBlockActions}>
+                                <TouchableOpacity onPress={() => openEditModal(whItem)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                                  <Icon name="create" size={14} color={themeColor} />
+                                </TouchableOpacity>
+                                <TouchableOpacity onPress={() => handleDeleteItem(whItem.id, whItem.name)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                                  <Icon name="trash" size={14} color={colors.error} />
+                                </TouchableOpacity>
                               </View>
-                            );
-                          })}
-                        </>
-                      ) : (
-                        /* Single warehouse: original display */
-                        <>
-                          <View style={[styles.stockBadge, { backgroundColor: getStockStatus(primary).color + '20' }]}>
-                            <Text style={[styles.stockBadgeText, { color: getStockStatus(primary).color }]}>
-                              {primary.current_stock} {primary.unit}
-                            </Text>
-                          </View>
-                          <Text style={styles.infoText} numberOfLines={1}>{primary.location}</Text>
-                          {primary.tax_per_unit && primary.tax_per_unit > 0 ? (
-                            <View>
-                              <Text style={styles.infoText}>${primary.cost.toFixed(2)}</Text>
-                              <Text style={styles.costBreakdownText}>
-                                ${(primary.cost - primary.tax_per_unit).toFixed(2)} + ${primary.tax_per_unit.toFixed(2)} tax
-                              </Text>
                             </View>
-                          ) : (
-                            <Text style={styles.infoText}>${primary.cost.toFixed(2)}</Text>
-                          )}
-                        </>
-                      )}
-                    </View>
-
-                    <View style={[styles.itemActions, isMultiWarehouse && { justifyContent: 'space-between' }]}>
-                      {group.map((item) => (
-                        <View key={item.id} style={{ flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-                          {isMultiWarehouse && (
-                            <Text style={{ fontSize: 8, color: colors.textSecondary, fontWeight: '600' }}>
-                              {item.location === 'Sparks Warehouse' ? 'Sparks' : 'Regular'}
-                            </Text>
-                          )}
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                            <TouchableOpacity onPress={() => openEditModal(item)}>
-                              <Icon name="create" size={16} color={themeColor} />
-                            </TouchableOpacity>
-                            <TouchableOpacity onPress={() => handleDeleteItem(item.id, item.name)}>
-                              <Icon name="trash" size={16} color={colors.error} />
-                            </TouchableOpacity>
+                            {/* Stock badge + cost */}
+                            <View style={styles.whBlockStock}>
+                              <View style={[styles.stockBadge, { backgroundColor: whStatus.color + '20', marginTop: 0 }]}>
+                                <Text style={[styles.stockBadgeText, { color: whStatus.color }]}>
+                                  {whItem.current_stock} {whItem.unit}
+                                </Text>
+                              </View>
+                              {whItem.tax_per_unit && whItem.tax_per_unit > 0 ? (
+                                <View style={{ alignItems: 'flex-end' }}>
+                                  <Text style={[styles.infoText, { fontSize: 9 }]}>${whItem.cost.toFixed(2)}</Text>
+                                  <Text style={[styles.costBreakdownText, { fontSize: 8 }]}>
+                                    ${(whItem.cost - whItem.tax_per_unit).toFixed(2)} + ${whItem.tax_per_unit.toFixed(2)} tax
+                                  </Text>
+                                </View>
+                              ) : (
+                                <Text style={[styles.infoText, { fontSize: 9 }]}>${whItem.cost.toFixed(2)}</Text>
+                              )}
+                            </View>
                           </View>
-                        </View>
-                      ))}
+                        );
+                      })}
                     </View>
                   </AnimatedCard>
                 );
