@@ -26,12 +26,12 @@ const COLUMNS = [
   { key: 'image',       label: 'Picture',              flex: 4.0,  sort: null },
   { key: 'item_number', label: 'Product Number',       flex: 7.5,  sort: 'alpha' as const },
   { key: 'name',        label: 'Item Name',            flex: 14.0, sort: 'alpha' as const },
-  { key: 'supply_type', label: 'Type of Supply',       flex: 9.0,  sort: 'alpha' as const },
-  { key: 'supplier',    label: 'Supplier',             flex: 8.0,  sort: 'alpha' as const },
-  { key: 'unit',        label: 'Type of Unit',         flex: 5.5,  sort: 'alpha' as const },
-  { key: 'avg_cost',    label: 'Cost per Unit/WAC',    flex: 9.0,  sort: 'value' as const },
+  { key: 'supply_type', label: 'Type of Supply',       flex: 7.5,  sort: 'alpha' as const },
+  { key: 'supplier',    label: 'Supplier',             flex: 7.0,  sort: 'alpha' as const },
+  { key: 'unit',        label: 'Unit',                 flex: 3.5,  sort: 'alpha' as const },
+  { key: 'avg_cost',    label: 'Cost per Unit/WAC',    flex: 14.5, sort: 'value' as const },
   { key: 'warehouse',   label: 'Warehouse',            flex: 13.0, sort: 'alpha' as const },
-  { key: 'total_stock', label: 'Total',                flex: 6.5,  sort: 'value' as const },
+  { key: 'total_stock', label: 'Total',                flex: 5.5,  sort: 'value' as const },
   { key: 'buildings',   label: 'Associated Buildings', flex: 9.5,  sort: 'alpha' as const },
   { key: 'sent_to',     label: 'Sent To',              flex: 9.5,  sort: 'alpha' as const },
   { key: 'edit',        label: '',                     flex: 4.5,  sort: null },
@@ -780,7 +780,7 @@ export default function InventoryCatalog() {
                   <View style={[styles.cell, { width: colW('avg_cost') }]}>
                     {entry.by_warehouse.length > 1 ? (
                       entry.by_warehouse.map(ws => (
-                        <Text key={ws.warehouse} style={styles.cellCost} numberOfLines={1}>
+                        <Text key={ws.warehouse} style={styles.cellCost}>
                           {ws.warehouse === 'Sparks Warehouse' ? 'Sparks' : 'Regular'}: {formatCurrency(ws.cost)}/{entry.unit}
                         </Text>
                       ))
