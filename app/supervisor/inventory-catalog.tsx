@@ -64,6 +64,9 @@ interface WarehouseStock {
   current_stock: number;
   min_stock: number;
   item_id: string;
+  cost: number;
+  associated_buildings: string[];
+  sent_to: string[];
 }
 
 interface CatalogEntry {
@@ -160,24 +163,32 @@ export default function InventoryCatalog() {
         supabase.from('inventory_items').select('*').order('name'),
         supabase
           .from('inventory_transfers')
-          .select('destination, items')
+          .select('destination, items, sent_from')
           .eq('type', 'outgoing')
           .gte('created_at', ninetyDaysAgo),
       ]);
 
       if (itemsRes.error) throw itemsRes.error;
 
-      // Build buildings-served map: itemNameLower → { destination: count }
-      const buildingMap: Record<string, Record<string, number>> = {};
+      // Build per-warehouse sent-to map: itemNameLower → warehouseName → Set<destination>
+      const warehouseSentToMap: Record<string, Record<string, Set<string>>> = {};
+      // Also build a global sent-to map for items with no warehouse source info
+      const globalSentToMap: Record<string, Set<string>> = {};
       for (const t of transfersRes.data || []) {
         const dest = t.destination?.trim();
         if (!dest) continue;
+        const fromWh = t.sent_from?.trim() || null;
         const items = Array.isArray(t.items) ? t.items : [];
         for (const itm of items) {
           const key = (itm.item_name || '').toLowerCase().trim();
           if (!key) continue;
-          if (!buildingMap[key]) buildingMap[key] = {};
-          buildingMap[key][dest] = (buildingMap[key][dest] || 0) + 1;
+          if (fromWh) {
+            if (!warehouseSentToMap[key]) warehouseSentToMap[key] = {};
+            if (!warehouseSentToMap[key][fromWh]) warehouseSentToMap[key][fromWh] = new Set();
+            warehouseSentToMap[key][fromWh].add(dest);
+          }
+          if (!globalSentToMap[key]) globalSentToMap[key] = new Set();
+          globalSentToMap[key].add(dest);
         }
       }
 
@@ -198,9 +209,19 @@ export default function InventoryCatalog() {
           new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime()
         )[0];
 
-        const buildingsServiced: string[] = Array.isArray(master.associated_buildings)
-          ? master.associated_buildings
+        const nameKey = master.name.toLowerCase().trim();
+        // Aggregate all sent-to destinations across warehouses for the top-level field
+        const allSentTo: string[] = globalSentToMap[nameKey]
+          ? Array.from(globalSentToMap[nameKey]).sort()
           : [];
+
+        // Union all associated_buildings across warehouse rows for top-level field
+        const allBuildings = new Set<string>();
+        for (const i of items) {
+          if (Array.isArray(i.associated_buildings)) {
+            i.associated_buildings.forEach((b: string) => allBuildings.add(b));
+          }
+        }
 
         return {
           name: master.name,
@@ -213,12 +234,17 @@ export default function InventoryCatalog() {
           avg_cost: avgCost,
           total_stock: totalStock,
           is_low_stock: isLowStock,
-          buildings_serviced: buildingsServiced,
+          buildings_serviced: Array.from(allBuildings).sort(),
           by_warehouse: items.map(i => ({
             warehouse: i.location || 'Unknown',
             current_stock: i.current_stock || 0,
             min_stock: i.min_stock || 0,
             item_id: i.id,
+            cost: i.cost || 0,
+            associated_buildings: Array.isArray(i.associated_buildings) ? i.associated_buildings : [],
+            sent_to: warehouseSentToMap[nameKey]?.[i.location]
+              ? Array.from(warehouseSentToMap[nameKey][i.location]).sort()
+              : allSentTo,
           })),
         };
       });
@@ -752,7 +778,15 @@ export default function InventoryCatalog() {
 
                   {/* Cost per Unit/WAC */}
                   <View style={[styles.cell, { width: colW('avg_cost') }]}>
-                    <Text style={styles.cellCost}>{formatCurrency(entry.avg_cost)}/{entry.unit}</Text>
+                    {entry.by_warehouse.length > 1 ? (
+                      entry.by_warehouse.map(ws => (
+                        <Text key={ws.warehouse} style={styles.cellCost} numberOfLines={1}>
+                          {ws.warehouse === 'Sparks Warehouse' ? 'Sparks' : 'Regular'}: {formatCurrency(ws.cost)}/{entry.unit}
+                        </Text>
+                      ))
+                    ) : (
+                      <Text style={styles.cellCost}>{formatCurrency(entry.avg_cost)}/{entry.unit}</Text>
+                    )}
                   </View>
 
                   {/* Warehouse */}
@@ -779,21 +813,51 @@ export default function InventoryCatalog() {
 
                   {/* Associated Buildings */}
                   <View style={[styles.cell, { width: colW('buildings') }]}>
-                    {entry.buildings_serviced.length > 0
-                      ? <Text style={styles.cellText} numberOfLines={3}>
-                          {entry.buildings_serviced.slice(0, 3).join(', ')}
-                          {entry.buildings_serviced.length > 3 ? ` +${entry.buildings_serviced.length - 3}` : ''}
-                        </Text>
-                      : <Text style={styles.cellMuted}>—</Text>}
+                    {entry.by_warehouse.length > 1 ? (
+                      entry.by_warehouse.map(ws => {
+                        const label = ws.warehouse === 'Sparks Warehouse' ? 'Sparks' : 'Regular';
+                        return ws.associated_buildings.length > 0 ? (
+                          <Text key={ws.warehouse} style={styles.cellText} numberOfLines={2}>
+                            <Text style={{ fontWeight: '700' }}>{label}: </Text>
+                            {ws.associated_buildings.slice(0, 2).join(', ')}
+                            {ws.associated_buildings.length > 2 ? ` +${ws.associated_buildings.length - 2}` : ''}
+                          </Text>
+                        ) : (
+                          <Text key={ws.warehouse} style={styles.cellMuted}>{label}: —</Text>
+                        );
+                      })
+                    ) : entry.buildings_serviced.length > 0 ? (
+                      <Text style={styles.cellText} numberOfLines={3}>
+                        {entry.buildings_serviced.slice(0, 3).join(', ')}
+                        {entry.buildings_serviced.length > 3 ? ` +${entry.buildings_serviced.length - 3}` : ''}
+                      </Text>
+                    ) : (
+                      <Text style={styles.cellMuted}>—</Text>
+                    )}
                   </View>
 
                   {/* Sent To */}
                   <View style={[styles.cell, { width: colW('sent_to') }]}>
-                    {entry.buildings_serviced.length > 0
-                      ? entry.buildings_serviced.map(b => (
-                          <Text key={b} style={styles.cellText} numberOfLines={1}>{b}</Text>
-                        ))
-                      : <Text style={styles.cellMuted}>—</Text>}
+                    {entry.by_warehouse.length > 1 ? (
+                      entry.by_warehouse.map(ws => {
+                        const label = ws.warehouse === 'Sparks Warehouse' ? 'Sparks' : 'Regular';
+                        return ws.sent_to.length > 0 ? (
+                          <Text key={ws.warehouse} style={styles.cellText} numberOfLines={2}>
+                            <Text style={{ fontWeight: '700' }}>{label}: </Text>
+                            {ws.sent_to.slice(0, 2).join(', ')}
+                            {ws.sent_to.length > 2 ? ` +${ws.sent_to.length - 2}` : ''}
+                          </Text>
+                        ) : (
+                          <Text key={ws.warehouse} style={styles.cellMuted}>{label}: —</Text>
+                        );
+                      })
+                    ) : entry.buildings_serviced.length > 0 ? (
+                      entry.buildings_serviced.map(b => (
+                        <Text key={b} style={styles.cellText} numberOfLines={1}>{b}</Text>
+                      ))
+                    ) : (
+                      <Text style={styles.cellMuted}>—</Text>
+                    )}
                   </View>
 
                   {/* Edit */}
