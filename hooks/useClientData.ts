@@ -664,9 +664,8 @@ export const useClientData = () => {
       
       await refreshData();
     } catch (error) {
-      console.error('❌ Failed to delete cleaner from Supabase, deleting locally:', error);
-      const updatedCleaners = cleaners.filter(cleaner => cleaner.id !== cleanerId);
-      await saveCleaners(updatedCleaners);
+      console.error('❌ Failed to delete cleaner from Supabase:', error);
+      throw error;
     }
   }, [cleaners, saveCleaners, refreshData]);
 
