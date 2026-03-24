@@ -328,13 +328,13 @@ export const useChatData = () => {
         (messagesData || []).map(async (msg) => {
           const { data: userData } = await supabase
             .from('cleaners')
-            .select('name')
+            .select('legal_name')
             .eq('user_id', msg.sender_id)
             .single();
 
           return {
             ...msg,
-            sender_name: userData?.name || 'Test User',
+            sender_name: userData?.legal_name || 'Test User',
             delivery_status: 'delivered' as const,
           };
         })
@@ -666,13 +666,13 @@ export const useChatData = () => {
           
           const { data: userData } = await supabase
             .from('cleaners')
-            .select('name')
+            .select('legal_name')
             .eq('user_id', payload.new.sender_id)
             .single();
 
           const newMessage = {
             ...payload.new,
-            sender_name: userData?.name || 'Test User',
+            sender_name: userData?.legal_name || 'Test User',
             delivery_status: 'delivered' as const,
           } as Message;
 

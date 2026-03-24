@@ -60,7 +60,7 @@ export default function ForgotPasswordScreen() {
       // Look up user by phone number and employee ID
       const { data: userData, error: lookupError } = await supabase
         .from('cleaners')
-        .select('id, name, phone_number, employee_id, is_active, employment_status')
+        .select('id, legal_name, phone_number, employee_id, is_active, employment_status')
         .eq('phone_number', cleanedPhone)
         .eq('employee_id', employeeId.trim())
         .maybeSingle();
@@ -84,7 +84,7 @@ export default function ForgotPasswordScreen() {
 
       // Verification successful
       setUserId(userData.id);
-      setUserName(userData.name);
+      setUserName(userData.legal_name);
       setStep('reset');
       showToast('Verification successful! Please set your new password.', 'success');
 

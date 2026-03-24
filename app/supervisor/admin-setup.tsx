@@ -63,8 +63,8 @@ export default function AdminSetupScreen() {
       // Load all cleaners
       const { data: cleanersData, error: cleanersError } = await supabase
         .from('cleaners')
-        .select('id, name, phone_number, employee_id, password_hash, role_id, roles(name, display_name)')
-        .order('name');
+        .select('id, legal_name, phone_number, employee_id, password_hash, role_id, roles(name, display_name)')
+        .order('legal_name');
 
       if (cleanersError) throw cleanersError;
 
@@ -193,7 +193,7 @@ export default function AdminSetupScreen() {
                 onPress={() => handleSelectCleaner(cleaner)}
               >
                 <View style={styles.cleanerInfo}>
-                  <Text style={styles.cleanerName}>{cleaner.name}</Text>
+                  <Text style={styles.cleanerName}>{cleaner.legal_name}</Text>
                   <Text style={styles.cleanerPhone}>{cleaner.phone_number}</Text>
                   <View style={styles.cleanerStatus}>
                     <View style={[styles.statusBadge, cleaner.password_hash ? styles.statusActive : styles.statusInactive]}>
@@ -220,7 +220,7 @@ export default function AdminSetupScreen() {
           {/* Edit Form */}
           {selectedCleaner && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Configure: {selectedCleaner.name}</Text>
+              <Text style={styles.sectionTitle}>Configure: {selectedCleaner.legal_name}</Text>
 
               {/* Role Selection */}
               <View style={styles.formGroup}>
