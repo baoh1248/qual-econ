@@ -552,7 +552,6 @@ export const useClientData = () => {
       const { data, error } = await supabase
         .from('cleaners')
         .insert({
-          name: cleaner.legal_name || cleaner.name || '',
           legal_name: cleaner.legal_name || cleaner.name || null,
           go_by: cleaner.go_by || null,
           dob: cleaner.dob || null,
@@ -599,11 +598,8 @@ export const useClientData = () => {
       console.log('🔄 Updating cleaner in Supabase:', cleanerId);
       
       const updateData: any = {};
-      if (updates.legal_name !== undefined || updates.name !== undefined) {
-        const nameVal = updates.legal_name || updates.name || null;
-        updateData.name = nameVal || '';
-        updateData.legal_name = nameVal;
-      }
+      if (updates.legal_name !== undefined || updates.name !== undefined)
+        updateData.legal_name = updates.legal_name || updates.name || null;
       if (updates.go_by !== undefined) updateData.go_by = updates.go_by || null;
       if (updates.dob !== undefined) updateData.dob = updates.dob || null;
       if (updates.employeeId !== undefined) updateData.employee_id = updates.employeeId;

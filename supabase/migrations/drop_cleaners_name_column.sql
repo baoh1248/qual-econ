@@ -1,10 +1,3 @@
--- Consolidate cleaners.name into legal_name.
--- legal_name now serves as the single name column.
--- Backfill legal_name from name where it was NULL, then drop name.
-
-UPDATE cleaners
-SET legal_name = name
-WHERE legal_name IS NULL AND name IS NOT NULL;
-
-ALTER TABLE cleaners
-  DROP COLUMN IF EXISTS name;
+-- The name column has already been dropped; this is a no-op kept for reference.
+-- legal_name is the single name column going forward.
+ALTER TABLE cleaners DROP COLUMN IF EXISTS name;
