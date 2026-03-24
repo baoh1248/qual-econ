@@ -638,11 +638,8 @@ export const useClientData = () => {
       
       await refreshData();
     } catch (error) {
-      console.error('❌ Failed to update cleaner in Supabase, updating locally:', error);
-      const updatedCleaners = cleaners.map(cleaner =>
-        cleaner.id === cleanerId ? { ...cleaner, ...updates, updatedAt: new Date() } : cleaner
-      );
-      await saveCleaners(updatedCleaners);
+      console.error('❌ Failed to update cleaner in Supabase:', error);
+      throw error;
     }
   }, [cleaners, saveCleaners, refreshData]);
 
