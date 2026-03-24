@@ -289,31 +289,32 @@ export default function CleanersScreen() {
   }, [selectedCleaner, formData, updateCleaner, showToast, resetForm]);
 
   const handleDeleteCleaner = useCallback(async (cleanerId: string) => {
-    Alert.alert(
-      'Delete Cleaner',
-      'Are you sure you want to delete this cleaner? This action cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              console.log('Deleting cleaner...');
-              
-              await deleteCleaner(cleanerId);
-              
-              console.log('✓ Cleaner deleted successfully');
-              showToast('Cleaner deleted successfully', 'success');
-            } catch (error: any) {
-              console.error('Error deleting cleaner:', error);
-              showToast(`Failed to delete cleaner: ${error?.message || 'Unknown error'}`, 'error');
-            }
-          },
-        },
-      ],
-      { cancelable: true }
-    );
+    const doDelete = async () => {
+      try {
+        console.log('Deleting cleaner...');
+        await deleteCleaner(cleanerId);
+        console.log('✓ Cleaner deleted successfully');
+        showToast('Cleaner deleted successfully', 'success');
+      } catch (error: any) {
+        console.error('Error deleting cleaner:', error);
+        showToast(`Failed to delete cleaner: ${error?.message || 'Unknown error'}`, 'error');
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm('Are you sure you want to delete this cleaner? This action cannot be undone.');
+      if (confirmed) await doDelete();
+    } else {
+      Alert.alert(
+        'Delete Cleaner',
+        'Are you sure you want to delete this cleaner? This action cannot be undone.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Delete', style: 'destructive', onPress: doDelete },
+        ],
+        { cancelable: true }
+      );
+    }
   }, [deleteCleaner, showToast]);
 
   const openEditModal = useCallback((cleaner: Cleaner) => {
