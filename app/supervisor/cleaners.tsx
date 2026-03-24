@@ -55,7 +55,6 @@ export default function CleanersScreen() {
   const [cleanerGroups, setCleanerGroups] = useState<CleanerGroup[]>([]);
 
   const [formData, setFormData] = useState({
-    name: '',
     legal_name: '',
     go_by: '',
     dob: '',
@@ -166,7 +165,6 @@ export default function CleanersScreen() {
 
   const resetForm = useCallback(() => {
     setFormData({
-      name: '',
       legal_name: '',
       go_by: '',
       dob: '',
@@ -192,7 +190,7 @@ export default function CleanersScreen() {
 
   const handleAddCleaner = useCallback(async () => {
     try {
-      if (!formData.name.trim()) {
+      if (!formData.legal_name.trim()) {
         showToast('Please enter a name', 'error');
         return;
       }
@@ -200,8 +198,8 @@ export default function CleanersScreen() {
       console.log('Adding cleaner...');
 
       const newCleaner: Omit<Cleaner, 'id'> = {
-        name: formData.name.trim(),
-        legal_name: formData.legal_name.trim() || undefined,
+        name: formData.legal_name.trim(),
+        legal_name: formData.legal_name.trim(),
         go_by: formData.go_by.trim() || undefined,
         dob: formData.dob || undefined,
         employeeId: formData.employeeId.trim() || `EMP-${Date.now()}`,
@@ -242,7 +240,7 @@ export default function CleanersScreen() {
 
   const handleUpdateCleaner = useCallback(async () => {
     try {
-      if (!selectedCleaner || !formData.name.trim()) {
+      if (!selectedCleaner || !formData.legal_name.trim()) {
         showToast('Please enter a name', 'error');
         return;
       }
@@ -250,8 +248,8 @@ export default function CleanersScreen() {
       console.log('Updating cleaner...');
 
       const updates: Partial<Cleaner> = {
-        name: formData.name.trim(),
-        legal_name: formData.legal_name.trim() || undefined,
+        name: formData.legal_name.trim(),
+        legal_name: formData.legal_name.trim(),
         go_by: formData.go_by.trim() || undefined,
         dob: formData.dob || undefined,
         employeeId: formData.employeeId.trim(),
@@ -323,8 +321,7 @@ export default function CleanersScreen() {
     setSelectedCleaner(cleaner);
     
     setFormData({
-      name: cleaner.name,
-      legal_name: cleaner.legal_name || '',
+      legal_name: cleaner.legal_name || cleaner.name || '',
       go_by: cleaner.go_by || '',
       dob: cleaner.dob || '',
       employeeId: cleaner.employeeId,
@@ -961,9 +958,6 @@ export default function CleanersScreen() {
                     )}
                     <View style={{ flex: 1 }}>
                       <Text style={styles.cleanerName}>{cleaner.name}</Text>
-                      {cleaner.legal_name && cleaner.legal_name !== cleaner.name && (
-                        <Text style={styles.detailText}>Legal: {cleaner.legal_name}</Text>
-                      )}
                       {cleaner.go_by && cleaner.go_by !== cleaner.name && (
                         <Text style={styles.detailText}>Goes by: {cleaner.go_by}</Text>
                       )}
@@ -1129,7 +1123,7 @@ export default function CleanersScreen() {
             <ScrollView showsVerticalScrollIndicator={false}>
               <Text style={styles.sectionHeader}>Employee Data Info</Text>
 
-              <Text style={styles.inputLabel}>Legal Name</Text>
+              <Text style={styles.inputLabel}>Legal Name *</Text>
               <TextInput
                 style={styles.input}
                 value={formData.legal_name}
@@ -1138,13 +1132,11 @@ export default function CleanersScreen() {
                 placeholderTextColor={colors.textSecondary}
               />
 
-              <Text style={styles.inputLabel}>Go-By (Preferred Name) *</Text>
+              <Text style={styles.inputLabel}>Go-By (Preferred Name)</Text>
               <TextInput
                 style={styles.input}
-                value={formData.go_by || formData.name}
-                onChangeText={(text) => {
-                  setFormData({ ...formData, go_by: text, name: text });
-                }}
+                value={formData.go_by}
+                onChangeText={(text) => setFormData({ ...formData, go_by: text })}
                 placeholder="Enter preferred name"
                 placeholderTextColor={colors.textSecondary}
               />

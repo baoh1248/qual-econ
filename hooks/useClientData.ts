@@ -255,8 +255,8 @@ export const useClientData = () => {
 
       const cleaners: Cleaner[] = data.map(row => ({
         id: row.id,
-        name: row.name,
-        legal_name: row.legal_name || undefined,
+        name: row.legal_name || row.name || '',
+        legal_name: row.legal_name || row.name || undefined,
         go_by: row.go_by || undefined,
         dob: row.dob || undefined,
         employeeId: row.employee_id || `EMP-${row.id.slice(-6)}`,
@@ -552,8 +552,7 @@ export const useClientData = () => {
       const { data, error } = await supabase
         .from('cleaners')
         .insert({
-          name: cleaner.name,
-          legal_name: cleaner.legal_name || null,
+          legal_name: cleaner.legal_name || cleaner.name || null,
           go_by: cleaner.go_by || null,
           dob: cleaner.dob || null,
           employee_id: cleaner.employeeId,
@@ -599,8 +598,8 @@ export const useClientData = () => {
       console.log('🔄 Updating cleaner in Supabase:', cleanerId);
       
       const updateData: any = {};
-      if (updates.name !== undefined) updateData.name = updates.name;
-      if (updates.legal_name !== undefined) updateData.legal_name = updates.legal_name || null;
+      if (updates.legal_name !== undefined || updates.name !== undefined)
+        updateData.legal_name = updates.legal_name || updates.name || null;
       if (updates.go_by !== undefined) updateData.go_by = updates.go_by || null;
       if (updates.dob !== undefined) updateData.dob = updates.dob || null;
       if (updates.employeeId !== undefined) updateData.employee_id = updates.employeeId;
