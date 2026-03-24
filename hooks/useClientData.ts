@@ -546,38 +546,37 @@ export const useClientData = () => {
   }, [clientBuildings, saveBuildings]);
 
   const addCleaner = useCallback(async (cleaner: Omit<Cleaner, 'id'> | Cleaner) => {
-    const newCleaner = 'id' in cleaner ? cleaner : { ...cleaner, id: `cleaner-${Date.now()}` };
-    
     try {
-      console.log('🔄 Adding cleaner to Supabase:', newCleaner.name);
-      
-      const { error } = await supabase
+      console.log('🔄 Adding cleaner to Supabase:', cleaner.name);
+
+      const { data, error } = await supabase
         .from('cleaners')
         .insert({
-          id: newCleaner.id,
-          name: newCleaner.name,
-          legal_name: newCleaner.legal_name || null,
-          go_by: newCleaner.go_by || null,
-          dob: newCleaner.dob || null,
-          employee_id: newCleaner.employeeId,
-          security_level: newCleaner.securityLevel,
-          phone_number: newCleaner.phoneNumber,
-          email: newCleaner.email || null,
-          specialties: newCleaner.specialties || [],
-          hire_date: newCleaner.hireDate || null,
-          term_date: newCleaner.term_date || null,
-          rehire_date: newCleaner.rehire_date || null,
-          employment_status: newCleaner.employment_status || 'active',
-          notes: newCleaner.notes || null,
-          photo_url: newCleaner.photo_url || null,
-          pay_type: newCleaner.pay_type || 'hourly',
-          default_hourly_rate: newCleaner.defaultHourlyRate || 15.00,
-          emergency_contact_name: newCleaner.emergencyContact?.name || null,
-          emergency_contact_phone: newCleaner.emergencyContact?.phone || null,
-          emergency_contact_relationship: newCleaner.emergencyContact?.relationship || null,
-          is_active: newCleaner.isActive !== false,
-          user_id: newCleaner.user_id || null,
-        });
+          name: cleaner.name,
+          legal_name: cleaner.legal_name || null,
+          go_by: cleaner.go_by || null,
+          dob: cleaner.dob || null,
+          employee_id: cleaner.employeeId,
+          security_level: cleaner.securityLevel,
+          phone_number: cleaner.phoneNumber,
+          email: cleaner.email || null,
+          specialties: cleaner.specialties || [],
+          hire_date: cleaner.hireDate || null,
+          term_date: cleaner.term_date || null,
+          rehire_date: cleaner.rehire_date || null,
+          employment_status: cleaner.employment_status || 'active',
+          notes: cleaner.notes || null,
+          photo_url: cleaner.photo_url || null,
+          pay_type: cleaner.pay_type || 'hourly',
+          default_hourly_rate: cleaner.defaultHourlyRate || 15.00,
+          emergency_contact_name: cleaner.emergencyContact?.name || null,
+          emergency_contact_phone: cleaner.emergencyContact?.phone || null,
+          emergency_contact_relationship: cleaner.emergencyContact?.relationship || null,
+          is_active: cleaner.isActive !== false,
+          user_id: ('user_id' in cleaner ? cleaner.user_id : null) || null,
+        })
+        .select()
+        .single();
 
       if (error) {
         console.error('❌ Error adding cleaner to Supabase:', error);
@@ -585,10 +584,11 @@ export const useClientData = () => {
       }
 
       console.log('✅ Cleaner added to Supabase successfully');
-      
+
       await refreshData();
     } catch (error) {
       console.error('❌ Failed to add cleaner to Supabase, saving locally:', error);
+      const newCleaner = 'id' in cleaner ? cleaner : { ...cleaner, id: `cleaner-${Date.now()}` };
       const updatedCleaners = [...cleaners, newCleaner];
       await saveCleaners(updatedCleaners);
     }
