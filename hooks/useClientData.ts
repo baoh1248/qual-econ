@@ -586,10 +586,8 @@ export const useClientData = () => {
 
       await refreshData();
     } catch (error) {
-      console.error('❌ Failed to add cleaner to Supabase, saving locally:', error);
-      const newCleaner = 'id' in cleaner ? cleaner : { ...cleaner, id: `cleaner-${Date.now()}` };
-      const updatedCleaners = [...cleaners, newCleaner];
-      await saveCleaners(updatedCleaners);
+      console.error('❌ Failed to add cleaner to Supabase:', error);
+      throw error;
     }
   }, [cleaners, saveCleaners, refreshData]);
 
