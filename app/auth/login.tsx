@@ -45,7 +45,7 @@ export default function LoginScreen() {
       // First try with cleaned phone
       let { data: userData, error: lookupError } = await supabase
         .from('cleaners')
-        .select('id, name, phone_number, is_active, employment_status, password_hash, role_id')
+        .select('id, legal_name, phone_number, is_active, employment_status, password_hash, role_id')
         .eq('phone_number', cleanedPhone)
         .maybeSingle();
 
@@ -53,7 +53,7 @@ export default function LoginScreen() {
       if (!userData && !lookupError) {
         const result = await supabase
           .from('cleaners')
-          .select('id, name, phone_number, is_active, employment_status, password_hash, role_id')
+          .select('id, legal_name, phone_number, is_active, employment_status, password_hash, role_id')
           .eq('phone_number', phoneNumber.trim())
           .maybeSingle();
 
@@ -66,7 +66,7 @@ export default function LoginScreen() {
         const phoneDigits = phoneNumber.replace(/\D/g, '');
         const result = await supabase
           .from('cleaners')
-          .select('id, name, phone_number, is_active, employment_status, password_hash, role_id')
+          .select('id, legal_name, phone_number, is_active, employment_status, password_hash, role_id')
           .like('phone_number', `%${phoneDigits.slice(-10)}%`)
           .maybeSingle();
 
@@ -134,7 +134,7 @@ export default function LoginScreen() {
       // Save session
       await saveSession({
         id: userData.id,
-        name: userData.name,
+        name: userData.legal_name,
         phone: userData.phone_number,
         role: roleName,
         roleLevel: roleLevel,
@@ -142,7 +142,7 @@ export default function LoginScreen() {
         lastLogin: new Date().toISOString(),
       });
 
-      showToast(`Welcome back, ${userData.name}!`, 'success');
+      showToast(`Welcome back, ${userData.legal_name}!`, 'success');
 
       // Route based on role level
       setTimeout(() => {
