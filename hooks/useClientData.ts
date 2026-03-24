@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../app/integrations/supabase/client';
+import uuid from 'react-native-uuid';
 import { geocodeAddress, isValidCoordinates } from '../utils/geocoding';
 
 export interface Client {
@@ -552,6 +553,7 @@ export const useClientData = () => {
       const { data, error } = await supabase
         .from('cleaners')
         .insert({
+          id: uuid.v4() as string,
           legal_name: cleaner.legal_name || cleaner.name || null,
           go_by: cleaner.go_by || null,
           dob: cleaner.dob || null,
