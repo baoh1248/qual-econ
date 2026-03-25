@@ -72,6 +72,7 @@ interface WarehouseStock {
 interface CatalogEntry {
   name: string;
   item_number: string;
+  barcode: string;
   category: string;
   supply_type: string;
   image_url: string;
@@ -89,6 +90,7 @@ type CategoryFilter = 'all' | 'cleaning-supplies' | 'equipment' | 'safety';
 const BLANK_FORM = {
   name: '',
   item_number: '',
+  barcode: '',
   category: 'cleaning-supplies' as CategoryFilter,
   supply_type: '',
   image_url: '',
@@ -234,6 +236,7 @@ export default function InventoryCatalog() {
         return {
           name: master.name,
           item_number: master.item_number || '',
+          barcode: master.barcode || '',
           category: master.category || 'cleaning-supplies',
           supply_type: master.supply_type || '',
           image_url: master.image_url || '',
@@ -354,6 +357,7 @@ export default function InventoryCatalog() {
     setEditForm({
       name: entry.name,
       item_number: entry.item_number,
+      barcode: entry.barcode,
       category: entry.category as CategoryFilter,
       supply_type: entry.supply_type,
       image_url: entry.image_url,
@@ -384,6 +388,7 @@ export default function InventoryCatalog() {
         .update({
           name: editForm.name.trim(),
           item_number: editForm.item_number.trim() || null,
+          barcode: editForm.barcode.trim() || null,
           category: editForm.category,
           supply_type: editForm.supply_type.trim() || null,
           image_url: editForm.image_url.trim() || null,
@@ -428,6 +433,7 @@ export default function InventoryCatalog() {
         id: uuid.v4() as string,
         name: addForm.name.trim(),
         item_number: addForm.item_number.trim() || null,
+        barcode: addForm.barcode.trim() || null,
         category: addForm.category,
         supply_type: addForm.supply_type.trim() || null,
         image_url: addForm.image_url.trim() || null,
@@ -494,6 +500,7 @@ export default function InventoryCatalog() {
       const matchesSearch = !q ||
         entry.name.toLowerCase().includes(q) ||
         entry.item_number.toLowerCase().includes(q) ||
+        entry.barcode.toLowerCase().includes(q) ||
         entry.supplier.toLowerCase().includes(q) ||
         entry.supply_type.toLowerCase().includes(q) ||
         entry.buildings_serviced.some(b => b.toLowerCase().includes(q));
@@ -1117,6 +1124,15 @@ export default function InventoryCatalog() {
                 placeholderTextColor={colors.textSecondary}
               />
 
+              <Text style={styles.fieldLabel}>Barcode</Text>
+              <TextInput
+                style={commonStyles.textInput}
+                value={editForm.barcode}
+                onChangeText={v => setEditForm(f => ({ ...f, barcode: v }))}
+                placeholder="Scan or enter barcode"
+                placeholderTextColor={colors.textSecondary}
+              />
+
               {/* Supply type */}
               {renderSupplyTypePicker(
                 editForm.supply_type,
@@ -1294,6 +1310,15 @@ export default function InventoryCatalog() {
                 value={addForm.item_number}
                 onChangeText={v => setAddForm(f => ({ ...f, item_number: v }))}
                 placeholder="e.g. CLN-001"
+                placeholderTextColor={colors.textSecondary}
+              />
+
+              <Text style={styles.fieldLabel}>Barcode</Text>
+              <TextInput
+                style={commonStyles.textInput}
+                value={addForm.barcode}
+                onChangeText={v => setAddForm(f => ({ ...f, barcode: v }))}
+                placeholder="Scan or enter barcode"
                 placeholderTextColor={colors.textSecondary}
               />
 

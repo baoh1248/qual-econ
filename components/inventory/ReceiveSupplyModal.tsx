@@ -1,5 +1,5 @@
 
-import React, { memo, useState, useEffect } from 'react';
+import React, { memo, useState, useEffect, useCallback } from 'react';
 import { View, Text, Modal, ScrollView, TouchableOpacity, TextInput, StyleSheet, Platform, Alert } from 'react-native';
 import PropTypes from 'prop-types';
 import { colors, spacing, typography, commonStyles, buttonStyles, getContrastColor } from '../../styles/commonStyles';
@@ -8,11 +8,13 @@ import Button from '../Button';
 import IconButton from '../IconButton';
 import { logInventoryTransfer, type InventoryTransferItem, formatCurrency } from '../../utils/inventoryTracking';
 import SupplierPicker from './SupplierPicker';
+import BarcodeScanner from './BarcodeScanner';
 
 interface InventoryItem {
   id: string;
   name: string;
   item_number?: string;
+  barcode?: string;
   supply_type?: string;
   current_stock: number;
   unit: string;
@@ -60,6 +62,7 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
   const [editingTax, setEditingTax] = useState(false);
   const [taxRate, setTaxRate] = useState('');
   const [editingTaxRate, setEditingTaxRate] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
 
   // Local editing state so numeric fields can be freely typed without reformatting mid-keystroke
   const [editingQuantities, setEditingQuantities] = useState<Record<string, string>>({});
@@ -93,7 +96,8 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
   const filteredInventory = inventory.filter(item => {
     const q = searchQuery.toLowerCase();
     const matchesSearch = item.name.toLowerCase().includes(q) ||
-      (item.item_number ? item.item_number.toLowerCase().includes(q) : false);
+      (item.item_number ? item.item_number.toLowerCase().includes(q) : false) ||
+      (item.barcode ? item.barcode.toLowerCase().includes(q) : false);
     const notSelected = !selectedItems.some(selected => selected.id === item.id);
     const matchesWarehouse = !warehouses || !warehouses.length || item.location === selectedWarehouse;
     return matchesSearch && notSelected && matchesWarehouse;
@@ -112,6 +116,69 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
     setSearchQuery('');
     setShowItemSearch(false);
   };
+
+  const handleBarcodeScan = useCallback((barcode: string) => {
+    // Find item by barcode in inventory (match against warehouse filter)
+    const matchedItem = inventory.find(item => {
+      const matchesBarcode = item.barcode && item.barcode.toLowerCase() === barcode.toLowerCase();
+      const matchesWarehouse = !warehouses || !warehouses.length || item.location === selectedWarehouse;
+      return matchesBarcode && matchesWarehouse;
+    });
+
+    if (!matchedItem) {
+      // Try without warehouse filter as fallback
+      const anyMatch = inventory.find(item =>
+        item.barcode && item.barcode.toLowerCase() === barcode.toLowerCase()
+      );
+      if (anyMatch) {
+        Alert.alert(
+          'Item Not in Warehouse',
+          `"${anyMatch.name}" was found but is in ${anyMatch.location}, not ${selectedWarehouse}.`,
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert(
+          'Item Not Found',
+          `No item with barcode "${barcode}" was found. You can associate a barcode with an item in the inventory settings.`,
+          [{ text: 'OK' }]
+        );
+      }
+      return;
+    }
+
+    // Check if already in selected items — if so, increment quantity
+    const existingIndex = selectedItems.findIndex(si => si.id === matchedItem.id);
+    if (existingIndex >= 0) {
+      const existing = selectedItems[existingIndex];
+      const newQuantity = existing.quantity + 1;
+      setSelectedItems(prev => prev.map(item => {
+        if (item.id === matchedItem.id) {
+          return {
+            ...item,
+            quantity: newQuantity,
+            totalCost: (item.unitCost || 0) * newQuantity,
+          };
+        }
+        return item;
+      }));
+      // Update editing state too
+      setEditingQuantities(prev => ({ ...prev, [matchedItem.id]: String(newQuantity) }));
+    } else {
+      // Add new item with quantity 1
+      const newItem: SelectedItem = {
+        id: matchedItem.id,
+        name: matchedItem.name,
+        quantity: 1,
+        unit: matchedItem.unit,
+        unitCost: matchedItem.cost || 0,
+        totalCost: matchedItem.cost || 0,
+      };
+      setSelectedItems(prev => [...prev, newItem]);
+    }
+
+    // Brief vibration/feedback via alert showing what was scanned
+    // Don't close scanner — let user keep scanning
+  }, [inventory, selectedItems, selectedWarehouse, warehouses]);
 
   const removeItem = (itemId: string) => {
     setSelectedItems(prev => prev.filter(item => item.id !== itemId));
@@ -250,6 +317,7 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
   const totalValue = subtotal + totalTaxAmount;
 
   return (
+    <>
     <Modal
       visible={visible}
       animationType="slide"
@@ -524,15 +592,25 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
             <View style={{ marginBottom: spacing.md }}>
               <Text style={styles.sectionLabel}>Add Items</Text>
 
-              <TouchableOpacity
-                style={styles.addItemButton}
-                onPress={() => setShowItemSearch(!showItemSearch)}
-              >
-                <Icon name="add-circle" size={24} color={colors.success} />
-                <Text style={[typography.body, { color: colors.success, fontWeight: '600', marginLeft: spacing.sm }]}>
-                  Add Item to Order
-                </Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                <TouchableOpacity
+                  style={[styles.addItemButton, { flex: 1 }]}
+                  onPress={() => setShowItemSearch(!showItemSearch)}
+                >
+                  <Icon name="add-circle" size={24} color={colors.success} />
+                  <Text style={[typography.body, { color: colors.success, fontWeight: '600', marginLeft: spacing.sm }]}>
+                    Add Item
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.scanButton}
+                  onPress={() => setShowScanner(true)}
+                >
+                  <Icon name="barcode-outline" size={22} color={colors.background} />
+                  <Text style={styles.scanButtonText}>Scan</Text>
+                </TouchableOpacity>
+              </View>
 
               {showItemSearch && (
                 <View style={{ marginTop: spacing.sm }}>
@@ -745,6 +823,13 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
         </View>
       </View>
     </Modal>
+
+    <BarcodeScanner
+      visible={showScanner}
+      onClose={() => setShowScanner(false)}
+      onScan={handleBarcodeScan}
+    />
+    </>
   );
 });
 
@@ -827,6 +912,21 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.success,
     borderStyle: 'dashed',
+  },
+  scanButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+  },
+  scanButtonText: {
+    color: colors.background,
+    fontWeight: '700',
+    fontSize: typography.sizes.sm,
   },
   summaryCard: {
     backgroundColor: colors.success + '15',

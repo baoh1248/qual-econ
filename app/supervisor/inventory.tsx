@@ -28,6 +28,7 @@ interface InventoryItem {
   id: string;
   name: string;
   item_number?: string;
+  barcode?: string;
   category: 'cleaning-supplies' | 'equipment' | 'safety';
   supply_type?: string;
   image_url?: string;
@@ -63,6 +64,7 @@ interface RestockRequest {
 interface NewItemForm {
   name: string;
   item_number: string;
+  barcode: string;
   category: 'cleaning-supplies' | 'equipment' | 'safety';
   warehouseMode: 'single' | 'both';
   location: string; // used when warehouseMode === 'single'
@@ -84,6 +86,7 @@ interface NewItemForm {
 interface EditItemForm {
   name: string;
   item_number: string;
+  barcode: string;
   category: 'cleaning-supplies' | 'equipment' | 'safety';
   min_stock: string;
   unit: string;
@@ -665,6 +668,7 @@ export default function SupervisorInventoryScreen() {
   const [newItemForm, setNewItemForm] = useState<NewItemForm>({
     name: '',
     item_number: '',
+    barcode: '',
     category: 'cleaning-supplies',
     warehouseMode: 'single',
     location: 'Sparks Warehouse',
@@ -684,6 +688,7 @@ export default function SupervisorInventoryScreen() {
   const [editItemForm, setEditItemForm] = useState<EditItemForm>({
     name: '',
     item_number: '',
+    barcode: '',
     category: 'cleaning-supplies',
     min_stock: '10',
     unit: 'units',
@@ -804,6 +809,7 @@ export default function SupervisorInventoryScreen() {
       setNewItemForm({
         name: '',
         item_number: '',
+        barcode: '',
         category: 'cleaning-supplies',
         warehouseMode: 'single',
         location: 'Sparks Warehouse',
@@ -843,6 +849,7 @@ export default function SupervisorInventoryScreen() {
           id: uuid.v4() as string,
           name: newItemForm.name.trim(),
           item_number: sharedItemNumber,
+          barcode: newItemForm.barcode.trim() || undefined,
           category: newItemForm.category,
           current_stock: parseInt(newItemForm.current_stock) || 0,
           min_stock: parseInt(newItemForm.min_stock) || 10,
@@ -861,6 +868,7 @@ export default function SupervisorInventoryScreen() {
           id: uuid.v4() as string,
           name: newItemForm.name.trim(),
           item_number: sharedItemNumber,
+          barcode: newItemForm.barcode.trim() || undefined,
           category: newItemForm.category,
           current_stock: parseInt(newItemForm.regular_current_stock) || 0,
           min_stock: parseInt(newItemForm.regular_min_stock) || 10,
@@ -886,6 +894,7 @@ export default function SupervisorInventoryScreen() {
           id: uuid.v4() as string,
           name: newItemForm.name.trim(),
           item_number: sharedItemNumber,
+          barcode: newItemForm.barcode.trim() || undefined,
           category: newItemForm.category,
           current_stock: parseInt(newItemForm.current_stock) || 0,
           min_stock: parseInt(newItemForm.min_stock) || 10,
@@ -919,6 +928,7 @@ export default function SupervisorInventoryScreen() {
     setEditItemForm({
       name: item.name,
       item_number: item.item_number || '',
+      barcode: item.barcode || '',
       category: item.category,
       min_stock: item.min_stock.toString(),
       unit: item.unit,
@@ -946,6 +956,7 @@ export default function SupervisorInventoryScreen() {
       const updates = {
         name: editItemForm.name.trim(),
         item_number: editItemForm.item_number.trim() || undefined,
+        barcode: editItemForm.barcode.trim() || null,
         category: editItemForm.category,
         min_stock: parseInt(editItemForm.min_stock) || 10,
         unit: editItemForm.unit.trim(),
@@ -1131,6 +1142,7 @@ export default function SupervisorInventoryScreen() {
                 id: uuid.v4() as string,
                 name: sourceItem.name,
                 item_number: sourceItem.item_number,
+                barcode: sourceItem.barcode,
                 category: sourceItem.category,
                 current_stock: quantity,
                 min_stock: sourceItem.min_stock,
@@ -1367,6 +1379,7 @@ export default function SupervisorInventoryScreen() {
     const matchesSearch = item.name.toLowerCase().includes(q) ||
                          item.supplier.toLowerCase().includes(q) ||
                          (item.item_number ? item.item_number.toLowerCase().includes(q) : false) ||
+                         (item.barcode ? item.barcode.toLowerCase().includes(q) : false) ||
                          (item.supply_type ? item.supply_type.toLowerCase().includes(q) : false);
     const matchesCategory = filterCategory === 'all' || item.category === filterCategory;
     const matchesWarehouse = selectedWarehouse === 'all' || item.location === selectedWarehouse;
@@ -1397,7 +1410,7 @@ export default function SupervisorInventoryScreen() {
         if (!item.associated_buildings?.includes(b.destination)) return false;
         if (filterCategory !== 'all' && item.category !== filterCategory) return false;
         if (selectedWarehouse !== 'all' && item.location !== selectedWarehouse) return false;
-        if (searchQuery) { const q = searchQuery.toLowerCase(); if (!item.name.toLowerCase().includes(q) && !item.supplier?.toLowerCase().includes(q) && !(item.item_number ? item.item_number.toLowerCase().includes(q) : false)) return false; }
+        if (searchQuery) { const q = searchQuery.toLowerCase(); if (!item.name.toLowerCase().includes(q) && !item.supplier?.toLowerCase().includes(q) && !(item.item_number ? item.item_number.toLowerCase().includes(q) : false) && !(item.barcode ? item.barcode.toLowerCase().includes(q) : false)) return false; }
         return true;
       });
       if (!grouped[b.clientName]) grouped[b.clientName] = [];
@@ -1412,7 +1425,7 @@ export default function SupervisorInventoryScreen() {
       if (!item.associated_buildings || item.associated_buildings.length === 0) {
         if (filterCategory !== 'all' && item.category !== filterCategory) return false;
         if (selectedWarehouse !== 'all' && item.location !== selectedWarehouse) return false;
-        if (searchQuery) { const q = searchQuery.toLowerCase(); if (!item.name.toLowerCase().includes(q) && !(item.item_number ? item.item_number.toLowerCase().includes(q) : false)) return false; }
+        if (searchQuery) { const q = searchQuery.toLowerCase(); if (!item.name.toLowerCase().includes(q) && !(item.item_number ? item.item_number.toLowerCase().includes(q) : false) && !(item.barcode ? item.barcode.toLowerCase().includes(q) : false)) return false; }
         return true;
       }
       return false;
@@ -2019,6 +2032,17 @@ export default function SupervisorInventoryScreen() {
               </View>
 
               <View style={styles.formGroup}>
+                <Text style={styles.label}>Barcode (Optional)</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Scan or enter barcode number"
+                  placeholderTextColor={colors.textSecondary}
+                  value={newItemForm.barcode}
+                  onChangeText={(text) => setNewItemForm({ ...newItemForm, barcode: text })}
+                />
+              </View>
+
+              <View style={styles.formGroup}>
                 <Text style={styles.label}>Category</Text>
                 <View style={{ flexDirection: 'row', gap: spacing.sm }}>
                   {['cleaning-supplies', 'equipment', 'safety'].map((cat) => (
@@ -2305,6 +2329,17 @@ export default function SupervisorInventoryScreen() {
                     <Icon name="refresh" size={20} color="#FFFFFF" />
                   </TouchableOpacity>
                 </View>
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Barcode</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Scan or enter barcode number"
+                  placeholderTextColor={colors.textSecondary}
+                  value={editItemForm.barcode}
+                  onChangeText={(text) => setEditItemForm({ ...editItemForm, barcode: text })}
+                />
               </View>
 
               <View style={styles.formGroup}>
