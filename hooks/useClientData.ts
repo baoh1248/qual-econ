@@ -387,9 +387,8 @@ export const useClientData = () => {
       
       await refreshData();
     } catch (error) {
-      console.error('❌ Failed to add client to Supabase, saving locally:', error);
-      const updatedClients = [...clients, newClient];
-      await saveClients(updatedClients);
+      console.error('❌ Failed to add client to Supabase:', error);
+      throw error;
     }
   }, [clients, saveClients, refreshData]);
 
@@ -421,11 +420,8 @@ export const useClientData = () => {
       
       await refreshData();
     } catch (error) {
-      console.error('❌ Failed to update client in Supabase, updating locally:', error);
-      const updatedClients = clients.map(client =>
-        client.id === clientId ? { ...client, ...updates, updatedAt: new Date() } : client
-      );
-      await saveClients(updatedClients);
+      console.error('❌ Failed to update client in Supabase:', error);
+      throw error;
     }
   }, [clients, saveClients, refreshData]);
 
@@ -481,9 +477,8 @@ export const useClientData = () => {
 
       await refreshData();
     } catch (error) {
-      console.error('❌ Failed to add building to Supabase, saving locally:', error);
-      const updatedBuildings = [...clientBuildings, newBuilding];
-      await saveBuildings(updatedBuildings);
+      console.error('❌ Failed to add building to Supabase:', error);
+      throw error;
     }
   }, [clientBuildings, saveBuildings, refreshData]);
 
@@ -533,11 +528,8 @@ export const useClientData = () => {
 
       await refreshData();
     } catch (error) {
-      console.error('❌ Failed to update building in Supabase, updating locally:', error);
-      const updatedBuildings = clientBuildings.map(building =>
-        building.id === buildingId ? { ...building, ...updates, updatedAt: new Date() } : building
-      );
-      await saveBuildings(updatedBuildings);
+      console.error('❌ Failed to update building in Supabase:', error);
+      throw error;
     }
   }, [clientBuildings, saveBuildings, refreshData]);
 
