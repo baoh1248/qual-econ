@@ -46,7 +46,10 @@ const generateOrderNumber = (): string => {
 const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, inventory, onReceive, onSuccess, warehouses }) => {
   const [orderNumber, setOrderNumber] = useState('');
   const [supplierName, setSupplierName] = useState('');
-  const [receiveDate, setReceiveDate] = useState(new Date().toISOString().split('T')[0]);
+  const [receiveDate, setReceiveDate] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  });
   const [selectedWarehouse, setSelectedWarehouse] = useState(warehouses && warehouses.length > 0 ? warehouses[0] : 'Warehouse');
   const [selectedItems, setSelectedItems] = useState<SelectedItem[]>([]);
   const [notes, setNotes] = useState('');
@@ -66,13 +69,15 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
     if (visible) {
       // Auto-generate order number when modal opens
       setOrderNumber(generateOrderNumber());
-      setReceiveDate(new Date().toISOString().split('T')[0]);
+      const now1 = new Date();
+      setReceiveDate(`${now1.getFullYear()}-${String(now1.getMonth() + 1).padStart(2, '0')}-${String(now1.getDate()).padStart(2, '0')}`);
       setSelectedWarehouse(warehouses && warehouses.length > 0 ? warehouses[0] : 'Warehouse');
     } else {
       // Reset form when modal closes
       setOrderNumber('');
       setSupplierName('');
-      setReceiveDate(new Date().toISOString().split('T')[0]);
+      const now2 = new Date();
+      setReceiveDate(`${now2.getFullYear()}-${String(now2.getMonth() + 1).padStart(2, '0')}-${String(now2.getDate()).padStart(2, '0')}`);
       setSelectedWarehouse(warehouses && warehouses.length > 0 ? warehouses[0] : 'Warehouse');
       setSelectedItems([]);
       setNotes('');
@@ -186,7 +191,7 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
             };
           }),
           destination: selectedWarehouse,
-          timestamp: new Date(receiveDate).toISOString(),
+          timestamp: `${receiveDate}T12:00:00.000Z`,
           transferredBy: 'Supervisor',
           notes: notes.trim() || undefined,
           totalValue,

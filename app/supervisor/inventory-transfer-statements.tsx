@@ -784,7 +784,7 @@ export default function InventoryTransferStatementsScreen() {
     // For the selected year, also account for transfers from prior years
     // by processing them against the initial balance
     const priorYearTransfers = [...transfers]
-      .filter(t => new Date(t.timestamp).getFullYear() < selectedYear)
+      .filter(t => new Date(t.timestamp).getUTCFullYear() < selectedYear)
       .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
     priorYearTransfers.forEach(transfer => {
@@ -800,14 +800,14 @@ export default function InventoryTransferStatementsScreen() {
 
     // Sort transfers chronologically to calculate balances correctly
     const sortedTransfers = [...transfers]
-      .filter(t => new Date(t.timestamp).getFullYear() === selectedYear)
+      .filter(t => new Date(t.timestamp).getUTCFullYear() === selectedYear)
       .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
     // Group transfers by month
     const transfersByMonth: { [key: string]: InventoryTransfer[] } = {};
     sortedTransfers.forEach(transfer => {
       const date = new Date(transfer.timestamp);
-      const month = date.toLocaleString('default', { month: 'long' });
+      const month = date.toLocaleString('default', { month: 'long', timeZone: 'UTC' });
       const key = `${selectedYear}-${month}`;
 
       if (!transfersByMonth[key]) {
@@ -846,7 +846,7 @@ export default function InventoryTransferStatementsScreen() {
           }
 
           const transaction: ItemTransaction = {
-            date: new Date(transfer.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+            date: new Date(transfer.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }),
             type: transfer.type,
             quantity: item.quantity,
             location: transfer.destination,
@@ -899,7 +899,7 @@ export default function InventoryTransferStatementsScreen() {
   }, [transfers, selectedYear, inventoryStock]);
 
   const availableYears = Array.from(
-    new Set(transfers.map(t => new Date(t.timestamp).getFullYear()))
+    new Set(transfers.map(t => new Date(t.timestamp).getUTCFullYear()))
   ).sort((a, b) => b - a);
 
   // Extract unique buildings/locations from all transfers
@@ -907,7 +907,7 @@ export default function InventoryTransferStatementsScreen() {
     const buildings = new Map<string, { buildingName: string; clientName: string }>();
 
     transfers
-      .filter(t => new Date(t.timestamp).getFullYear() === selectedYear)
+      .filter(t => new Date(t.timestamp).getUTCFullYear() === selectedYear)
       .forEach(t => {
         const destination = t.destination;
         if (!destination) return;
@@ -1025,7 +1025,7 @@ export default function InventoryTransferStatementsScreen() {
 
       // Process all transfers BEFORE selected year to get opening balances
       sorted
-        .filter(t => new Date(t.timestamp).getFullYear() < selectedYear)
+        .filter(t => new Date(t.timestamp).getUTCFullYear() < selectedYear)
         .forEach(t => {
           t.items.forEach(item => {
             const cur = runningBalances.get(item.name) || { quantity: 0, unit: item.unit };
@@ -1036,7 +1036,7 @@ export default function InventoryTransferStatementsScreen() {
 
       // Process each month of the selected year
       const yearTransfers = sorted.filter(t =>
-        new Date(t.timestamp).getFullYear() === selectedYear
+        new Date(t.timestamp).getUTCFullYear() === selectedYear
       );
 
       const months: BuildingMonthData[] = [];
@@ -1044,7 +1044,7 @@ export default function InventoryTransferStatementsScreen() {
 
       monthOrder.forEach(monthName => {
         const monthTransfers = yearTransfers.filter(t =>
-          new Date(t.timestamp).toLocaleString('default', { month: 'long' }) === monthName
+          new Date(t.timestamp).toLocaleString('default', { month: 'long', timeZone: 'UTC' }) === monthName
         );
         if (monthTransfers.length === 0) return;
 
@@ -1066,7 +1066,7 @@ export default function InventoryTransferStatementsScreen() {
           converted.push({
             id: t.id,
             date: new Date(t.timestamp).toLocaleDateString('en-US', {
-              month: 'short', day: 'numeric', year: 'numeric'
+              month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC'
             }),
             timestamp: t.timestamp,
             items: t.items.map(item => ({
