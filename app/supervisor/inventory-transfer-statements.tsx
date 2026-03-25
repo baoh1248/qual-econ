@@ -693,6 +693,12 @@ const styles = StyleSheet.create({
     fontWeight: typography.weights.bold as any,
     color: colors.primary,
   },
+  printDateOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   printDatePickerContent: {
     backgroundColor: colors.background,
     borderRadius: 16,
@@ -2005,12 +2011,16 @@ export default function InventoryTransferStatementsScreen() {
         animationType="fade"
         onRequestClose={() => setShowPrintDatePicker(false)}
       >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setShowPrintDatePicker(false)}
-        >
-          <View style={styles.printDatePickerContent} onStartShouldSetResponder={() => true}>
+        <View style={styles.printDateOverlay}>
+          {/* Backdrop - closes modal on tap */}
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setShowPrintDatePicker(false)}
+          />
+
+          {/* Content - centered, doesn't close on tap */}
+          <View style={styles.printDatePickerContent}>
             <Text style={styles.printDatePickerTitle}>Print Date Range</Text>
             <Text style={{ fontSize: typography.sizes.sm, color: colors.textSecondary, marginBottom: spacing.lg }}>
               Choose a date range for the printed statement
@@ -2087,7 +2097,7 @@ export default function InventoryTransferStatementsScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
     </View>
   );
