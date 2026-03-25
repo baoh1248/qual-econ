@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Text, View, ScrollView, TouchableOpacity, StyleSheet, Modal, Platform } from 'react-native';
+import { Text, View, ScrollView, TouchableOpacity, StyleSheet, Modal, Platform, TextInput } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useToast } from '../../hooks/useToast';
 import { useDatabase } from '../../hooks/useDatabase';
@@ -693,6 +693,108 @@ const styles = StyleSheet.create({
     fontWeight: typography.weights.bold as any,
     color: colors.primary,
   },
+  printDateOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  printDatePickerContent: {
+    backgroundColor: colors.background,
+    borderRadius: 16,
+    padding: spacing.xl,
+    width: '90%',
+    maxWidth: 420,
+  },
+  printDatePickerTitle: {
+    fontSize: typography.sizes.lg,
+    fontWeight: typography.weights.bold as any,
+    color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  printRangeToggle: {
+    flexDirection: 'row',
+    backgroundColor: colors.surface,
+    borderRadius: 10,
+    padding: 3,
+    marginBottom: spacing.lg,
+  },
+  printRangeOption: {
+    flex: 1,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  printRangeOptionActive: {
+    backgroundColor: colors.primary,
+  },
+  printRangeOptionText: {
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.semibold as any,
+    color: colors.textSecondary,
+  },
+  printRangeOptionTextActive: {
+    color: colors.background,
+  },
+  printDateInputs: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  printDateField: {
+    flex: 1,
+  },
+  printDateLabel: {
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.semibold as any,
+    color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  printDateInputWrapper: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.background,
+  },
+  printDateInput: {
+    fontSize: 15,
+    color: colors.text,
+  },
+  printDateActions: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginTop: spacing.sm,
+  },
+  printDateCancelBtn: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  printDateCancelText: {
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.semibold as any,
+    color: colors.text,
+  },
+  printDateConfirmBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.md,
+    borderRadius: 12,
+  },
+  printDateConfirmText: {
+    color: colors.background,
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.bold as any,
+  },
 });
 
 export default function InventoryTransferStatementsScreen() {
@@ -710,6 +812,10 @@ export default function InventoryTransferStatementsScreen() {
   const [selectedBuilding, setSelectedBuilding] = useState<string>('all');
   const [showBuildingPicker, setShowBuildingPicker] = useState(false);
   const [expandedBuildings, setExpandedBuildings] = useState<Set<string>>(new Set());
+  const [showPrintDatePicker, setShowPrintDatePicker] = useState(false);
+  const [printRangeMode, setPrintRangeMode] = useState<'full' | 'custom'>('full');
+  const [printStartDate, setPrintStartDate] = useState('');
+  const [printEndDate, setPrintEndDate] = useState('');
 
   const loadTransfers = useCallback(async () => {
     try {
@@ -784,7 +890,7 @@ export default function InventoryTransferStatementsScreen() {
     // For the selected year, also account for transfers from prior years
     // by processing them against the initial balance
     const priorYearTransfers = [...transfers]
-      .filter(t => new Date(t.timestamp).getFullYear() < selectedYear)
+      .filter(t => new Date(t.timestamp).getUTCFullYear() < selectedYear)
       .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
     priorYearTransfers.forEach(transfer => {
@@ -800,14 +906,14 @@ export default function InventoryTransferStatementsScreen() {
 
     // Sort transfers chronologically to calculate balances correctly
     const sortedTransfers = [...transfers]
-      .filter(t => new Date(t.timestamp).getFullYear() === selectedYear)
+      .filter(t => new Date(t.timestamp).getUTCFullYear() === selectedYear)
       .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
     // Group transfers by month
     const transfersByMonth: { [key: string]: InventoryTransfer[] } = {};
     sortedTransfers.forEach(transfer => {
       const date = new Date(transfer.timestamp);
-      const month = date.toLocaleString('default', { month: 'long' });
+      const month = date.toLocaleString('default', { month: 'long', timeZone: 'UTC' });
       const key = `${selectedYear}-${month}`;
 
       if (!transfersByMonth[key]) {
@@ -846,7 +952,7 @@ export default function InventoryTransferStatementsScreen() {
           }
 
           const transaction: ItemTransaction = {
-            date: new Date(transfer.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+            date: new Date(transfer.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }),
             type: transfer.type,
             quantity: item.quantity,
             location: transfer.destination,
@@ -899,7 +1005,7 @@ export default function InventoryTransferStatementsScreen() {
   }, [transfers, selectedYear, inventoryStock]);
 
   const availableYears = Array.from(
-    new Set(transfers.map(t => new Date(t.timestamp).getFullYear()))
+    new Set(transfers.map(t => new Date(t.timestamp).getUTCFullYear()))
   ).sort((a, b) => b - a);
 
   // Extract unique buildings/locations from all transfers
@@ -907,7 +1013,7 @@ export default function InventoryTransferStatementsScreen() {
     const buildings = new Map<string, { buildingName: string; clientName: string }>();
 
     transfers
-      .filter(t => new Date(t.timestamp).getFullYear() === selectedYear)
+      .filter(t => new Date(t.timestamp).getUTCFullYear() === selectedYear)
       .forEach(t => {
         const destination = t.destination;
         if (!destination) return;
@@ -1025,7 +1131,7 @@ export default function InventoryTransferStatementsScreen() {
 
       // Process all transfers BEFORE selected year to get opening balances
       sorted
-        .filter(t => new Date(t.timestamp).getFullYear() < selectedYear)
+        .filter(t => new Date(t.timestamp).getUTCFullYear() < selectedYear)
         .forEach(t => {
           t.items.forEach(item => {
             const cur = runningBalances.get(item.name) || { quantity: 0, unit: item.unit };
@@ -1036,7 +1142,7 @@ export default function InventoryTransferStatementsScreen() {
 
       // Process each month of the selected year
       const yearTransfers = sorted.filter(t =>
-        new Date(t.timestamp).getFullYear() === selectedYear
+        new Date(t.timestamp).getUTCFullYear() === selectedYear
       );
 
       const months: BuildingMonthData[] = [];
@@ -1044,7 +1150,7 @@ export default function InventoryTransferStatementsScreen() {
 
       monthOrder.forEach(monthName => {
         const monthTransfers = yearTransfers.filter(t =>
-          new Date(t.timestamp).toLocaleString('default', { month: 'long' }) === monthName
+          new Date(t.timestamp).toLocaleString('default', { month: 'long', timeZone: 'UTC' }) === monthName
         );
         if (monthTransfers.length === 0) return;
 
@@ -1066,7 +1172,7 @@ export default function InventoryTransferStatementsScreen() {
           converted.push({
             id: t.id,
             date: new Date(t.timestamp).toLocaleDateString('en-US', {
-              month: 'short', day: 'numeric', year: 'numeric'
+              month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC'
             }),
             timestamp: t.timestamp,
             items: t.items.map(item => ({
@@ -1108,18 +1214,58 @@ export default function InventoryTransferStatementsScreen() {
     });
   }, [transfers, selectedYear, selectedBuilding, inventoryStock]);
 
+  const openPrintDialog = useCallback(() => {
+    if (Platform.OS !== 'web') return;
+    // Default custom range to first/last day of current month
+    const now = new Date();
+    const y = selectedYear;
+    const m = now.getMonth();
+    const firstDay = `${y}-${String(m + 1).padStart(2, '0')}-01`;
+    const lastDay = `${y}-${String(m + 1).padStart(2, '0')}-${String(new Date(y, m + 1, 0).getDate()).padStart(2, '0')}`;
+    setPrintStartDate(firstDay);
+    setPrintEndDate(lastDay);
+    setPrintRangeMode('full');
+    setShowPrintDatePicker(true);
+  }, [selectedYear]);
+
+  // Check if a transfer timestamp falls within the custom date range
+  const isInDateRange = useCallback((timestamp: string) => {
+    if (printRangeMode === 'full') return true;
+    // Extract UTC date from timestamp for comparison
+    const d = new Date(timestamp);
+    const dateStr = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+    return dateStr >= printStartDate && dateStr <= printEndDate;
+  }, [printRangeMode, printStartDate, printEndDate]);
+
   const handlePrint = useCallback(() => {
     if (Platform.OS !== 'web') return;
+    setShowPrintDatePicker(false);
 
     const esc = (s: string) => s.replace(/&/g, '&amp;').replace(new RegExp('<', 'g'), '&lt;').replace(new RegExp('>', 'g'), '&gt;');
     const fmtCost = (v?: number) => v && v > 0 ? `$${v.toFixed(2)}` : '-';
     const generated = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+
+    const isCustom = printRangeMode === 'custom' && printStartDate && printEndDate;
+    const rangeLabel = isCustom
+      ? `${new Date(printStartDate + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })} &ndash; ${new Date(printEndDate + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}, ${selectedYear}`
+      : String(selectedYear);
 
     let tableHtml = '';
 
     if (viewMode === 'item') {
       // Item View: one table per month, each row is a transaction with item name
       monthlyStatements.forEach(statement => {
+        // Filter transactions by date range
+        const filteredLedgers = statement.itemLedgers.map(ledger => {
+          const filteredTxs = ledger.transactions.filter(tx => {
+            const transfer = transfers.find(t => t.id === tx.transferId);
+            return transfer ? isInDateRange(transfer.timestamp) : true;
+          });
+          return { ...ledger, transactions: filteredTxs };
+        }).filter(ledger => ledger.transactions.length > 0);
+
+        if (filteredLedgers.length === 0) return;
+
         tableHtml += `<h3 style="margin:18px 0 6px;border-bottom:2px solid #333;padding-bottom:4px;">${esc(statement.month)} ${statement.year}</h3>`;
         tableHtml += `<table><thead><tr>
           <th>Date</th><th>Order #</th><th>Item</th><th>Qty</th>
@@ -1127,7 +1273,7 @@ export default function InventoryTransferStatementsScreen() {
           <th>Notes</th><th>Price/Unit</th><th>Total</th>
         </tr></thead><tbody>`;
 
-        statement.itemLedgers.forEach(ledger => {
+        filteredLedgers.forEach(ledger => {
           ledger.transactions.forEach(tx => {
             const typeLabel = tx.type === 'incoming' ? 'Received' : 'Sent Out';
             const typeClass = tx.type === 'incoming' ? 'received' : 'sent';
@@ -1150,13 +1296,15 @@ export default function InventoryTransferStatementsScreen() {
 
         // Item summary below the table
         tableHtml += '<table style="width:auto;margin-bottom:20px;"><tbody>';
-        statement.itemLedgers.forEach(ledger => {
+        filteredLedgers.forEach(ledger => {
+          const incoming = ledger.transactions.filter(tx => tx.type === 'incoming').reduce((s, tx) => s + tx.quantity, 0);
+          const outgoing = ledger.transactions.filter(tx => tx.type === 'outgoing').reduce((s, tx) => s + tx.quantity, 0);
           tableHtml += `<tr>
             <td style="padding-right:24px;"><strong>${esc(ledger.itemName)}</strong></td>
-            <td style="padding-right:16px;">Begin: ${ledger.beginningBalance} ${esc(ledger.unit)}</td>
-            <td style="padding-right:16px;color:green;">+${ledger.totalIncoming}</td>
-            <td style="padding-right:16px;color:red;">-${ledger.totalOutgoing}</td>
-            <td><strong>End: ${ledger.endingBalance} ${esc(ledger.unit)}</strong></td>
+            ${!isCustom ? `<td style="padding-right:16px;">Begin: ${ledger.beginningBalance} ${esc(ledger.unit)}</td>` : ''}
+            <td style="padding-right:16px;color:green;">+${incoming}</td>
+            <td style="padding-right:16px;color:red;">-${outgoing}</td>
+            ${!isCustom ? `<td><strong>End: ${ledger.endingBalance} ${esc(ledger.unit)}</strong></td>` : ''}
           </tr>`;
         });
         tableHtml += '</tbody></table>';
@@ -1164,26 +1312,29 @@ export default function InventoryTransferStatementsScreen() {
     } else {
       // Building View: one section per building, one table per month
       buildingLedgers.forEach(ledger => {
-        const yearTotal = ledger.months.reduce((sum, m) => m.totalValue + sum, 0);
-        tableHtml += `<h3 style="margin:18px 0 2px;">${esc(ledger.buildingName)}</h3>`;
-        tableHtml += `<p style="margin:0 0 8px;color:#666;font-size:9pt;">${esc(ledger.clientName)} &mdash; ${ledger.totalTransfers} transfer${ledger.totalTransfers !== 1 ? 's' : ''}${yearTotal > 0 ? ` &mdash; Year Total: $${yearTotal.toFixed(2)}` : ''}</p>`;
+        let ledgerHasData = false;
+        let ledgerHtml = '';
 
         ledger.months.forEach(monthData => {
-          tableHtml += `<h4 style="margin:12px 0 4px;border-bottom:1px solid #999;padding-bottom:2px;">${esc(monthData.month)}</h4>`;
-          tableHtml += `<table><thead><tr>
+          const filteredTransfers = monthData.transfers.filter(t => isInDateRange(t.timestamp));
+          if (filteredTransfers.length === 0) return;
+          ledgerHasData = true;
+
+          ledgerHtml += `<h4 style="margin:12px 0 4px;border-bottom:1px solid #999;padding-bottom:2px;">${esc(monthData.month)}</h4>`;
+          ledgerHtml += `<table><thead><tr>
             <th>Date</th><th>Order #</th><th>Item</th><th>Qty</th>
             <th>Type</th><th>From</th><th>To</th>
             <th>Notes</th><th>Price/Unit</th><th>Total</th>
           </tr></thead><tbody>`;
 
-          monthData.transfers.forEach(transfer => {
+          filteredTransfers.forEach(transfer => {
             const typeLabel = transfer.type === 'incoming' ? 'Received' : 'Sent Out';
             const typeClass = transfer.type === 'incoming' ? 'received' : 'sent';
             const to = `${ledger.clientName} - ${ledger.buildingName}`;
             const from = transfer.sentFrom || (transfer.type === 'incoming' ? 'Supplier' : '-');
 
             transfer.items.forEach(item => {
-              tableHtml += `<tr>
+              ledgerHtml += `<tr>
                 <td>${esc(transfer.date)}</td>
                 <td>${esc(transfer.orderNumber || '-')}</td>
                 <td><strong>${esc(item.name)}</strong></td>
@@ -1198,22 +1349,34 @@ export default function InventoryTransferStatementsScreen() {
             });
           });
 
-          const monthTotal = monthData.transfers.reduce((sum, t) =>
+          const monthTotal = filteredTransfers.reduce((sum, t) =>
             sum + t.items.reduce((s, i) => s + (i.totalCost || 0), 0), 0);
           if (monthTotal > 0) {
-            tableHtml += `<tr class="total-row">
+            ledgerHtml += `<tr class="total-row">
               <td colspan="9" class="text-right"><strong>Monthly Total</strong></td>
               <td class="text-right"><strong>$${monthTotal.toFixed(2)}</strong></td>
             </tr>`;
           }
-          tableHtml += '</tbody></table>';
+          ledgerHtml += '</tbody></table>';
         });
+
+        if (!ledgerHasData) return;
+
+        const filteredTotal = ledger.months.reduce((sum, m) =>
+          sum + m.transfers.filter(t => isInDateRange(t.timestamp)).reduce((s, t) =>
+            s + t.items.reduce((is, i) => is + (i.totalCost || 0), 0), 0), 0);
+        const filteredCount = ledger.months.reduce((sum, m) =>
+          sum + m.transfers.filter(t => isInDateRange(t.timestamp)).length, 0);
+
+        tableHtml += `<h3 style="margin:18px 0 2px;">${esc(ledger.buildingName)}</h3>`;
+        tableHtml += `<p style="margin:0 0 8px;color:#666;font-size:9pt;">${esc(ledger.clientName)} &mdash; ${filteredCount} transfer${filteredCount !== 1 ? 's' : ''}${filteredTotal > 0 ? ` &mdash; Total: $${filteredTotal.toFixed(2)}` : ''}</p>`;
+        tableHtml += ledgerHtml;
       });
     }
 
     const viewLabel = viewMode === 'item' ? 'Item View' : 'Building View';
     const html = `<!DOCTYPE html><html><head>
-      <title>Inventory Statement - ${selectedYear}</title>
+      <title>Inventory Statement - ${rangeLabel}</title>
       <style>
         body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; margin: 24px; color: #222; }
         h2 { margin: 0 0 4px; font-size: 16pt; }
@@ -1235,7 +1398,7 @@ export default function InventoryTransferStatementsScreen() {
         }
       </style>
     </head><body>
-      <h2>Monthly Inventory Statement &mdash; ${selectedYear}</h2>
+      <h2>Inventory Statement &mdash; ${rangeLabel}</h2>
       <p class="meta">${viewLabel} &bull; Generated ${esc(generated)}</p>
       ${tableHtml}
     </body></html>`;
@@ -1247,7 +1410,7 @@ export default function InventoryTransferStatementsScreen() {
       printWindow.focus();
       printWindow.print();
     }
-  }, [viewMode, selectedYear, monthlyStatements, buildingLedgers]);
+  }, [viewMode, selectedYear, monthlyStatements, buildingLedgers, printRangeMode, printStartDate, printEndDate, isInDateRange, transfers]);
 
   const expandAllBuildings = useCallback(() => {
     const allKeys = new Set(
@@ -1431,7 +1594,7 @@ export default function InventoryTransferStatementsScreen() {
                   </Text>
                 </TouchableOpacity>
                 {Platform.OS === 'web' && (
-                  <TouchableOpacity style={styles.printButton} onPress={handlePrint}>
+                  <TouchableOpacity style={styles.printButton} onPress={openPrintDialog}>
                     <Icon name="print" size={18} color={colors.background} />
                     <Text style={styles.printButtonText}>Print Statement</Text>
                   </TouchableOpacity>
@@ -1576,7 +1739,7 @@ export default function InventoryTransferStatementsScreen() {
                   </Text>
                 </TouchableOpacity>
                 {Platform.OS === 'web' && (
-                  <TouchableOpacity style={styles.printButton} onPress={handlePrint}>
+                  <TouchableOpacity style={styles.printButton} onPress={openPrintDialog}>
                     <Icon name="print" size={18} color={colors.background} />
                     <Text style={styles.printButtonText}>Print Statement</Text>
                   </TouchableOpacity>
@@ -1839,6 +2002,102 @@ export default function InventoryTransferStatementsScreen() {
             </ScrollView>
           </View>
         </TouchableOpacity>
+      </Modal>
+
+      {/* Print Date Range Picker Modal */}
+      <Modal
+        visible={showPrintDatePicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowPrintDatePicker(false)}
+      >
+        <View style={styles.printDateOverlay}>
+          {/* Backdrop - closes modal on tap */}
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setShowPrintDatePicker(false)}
+          />
+
+          {/* Content - centered, doesn't close on tap */}
+          <View style={styles.printDatePickerContent}>
+            <Text style={styles.printDatePickerTitle}>Print Date Range</Text>
+            <Text style={{ fontSize: typography.sizes.sm, color: colors.textSecondary, marginBottom: spacing.lg }}>
+              Choose a date range for the printed statement
+            </Text>
+
+            {/* Full Year / Custom toggle */}
+            <View style={styles.printRangeToggle}>
+              <TouchableOpacity
+                style={[styles.printRangeOption, printRangeMode === 'full' && styles.printRangeOptionActive]}
+                onPress={() => setPrintRangeMode('full')}
+              >
+                <Text style={[styles.printRangeOptionText, printRangeMode === 'full' && styles.printRangeOptionTextActive]}>
+                  Full Year
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.printRangeOption, printRangeMode === 'custom' && styles.printRangeOptionActive]}
+                onPress={() => setPrintRangeMode('custom')}
+              >
+                <Text style={[styles.printRangeOptionText, printRangeMode === 'custom' && styles.printRangeOptionTextActive]}>
+                  Custom Range
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Custom date inputs */}
+            {printRangeMode === 'custom' && (
+              <View style={styles.printDateInputs}>
+                <View style={styles.printDateField}>
+                  <Text style={styles.printDateLabel}>From</Text>
+                  <View style={styles.printDateInputWrapper}>
+                    <TextInput
+                      value={printStartDate}
+                      onChangeText={setPrintStartDate}
+                      placeholder="YYYY-MM-DD"
+                      placeholderTextColor={colors.textSecondary}
+                      style={styles.printDateInput}
+                    />
+                  </View>
+                </View>
+                <View style={styles.printDateField}>
+                  <Text style={styles.printDateLabel}>To</Text>
+                  <View style={styles.printDateInputWrapper}>
+                    <TextInput
+                      value={printEndDate}
+                      onChangeText={setPrintEndDate}
+                      placeholder="YYYY-MM-DD"
+                      placeholderTextColor={colors.textSecondary}
+                      style={styles.printDateInput}
+                    />
+                  </View>
+                </View>
+              </View>
+            )}
+
+            {/* Action buttons */}
+            <View style={styles.printDateActions}>
+              <TouchableOpacity
+                style={styles.printDateCancelBtn}
+                onPress={() => setShowPrintDatePicker(false)}
+              >
+                <Text style={styles.printDateCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.printDateConfirmBtn,
+                  printRangeMode === 'custom' && (!printStartDate || !printEndDate) && { opacity: 0.5 },
+                ]}
+                onPress={handlePrint}
+                disabled={printRangeMode === 'custom' && (!printStartDate || !printEndDate)}
+              >
+                <Icon name="print" size={18} color={colors.background} />
+                <Text style={styles.printDateConfirmText}>Print</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </Modal>
     </View>
   );
