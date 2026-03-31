@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, TouchableOpacity, Modal, StyleSheet, Platform, TextInput, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, Modal, StyleSheet, Platform, TextInput } from 'react-native';
 import { colors, spacing, typography } from '../../styles/commonStyles';
 import Icon from '../Icon';
 
@@ -10,96 +10,111 @@ interface BarcodeScannerProps {
   onScan: (barcode: string) => void;
 }
 
-// ─── Web Scanner using getUserMedia + BarcodeDetector / manual entry ────────
+// ─── Web Scanner using Quagga2 for auto-detection ───────────────────────────
 
 const WebBarcodeScanner: React.FC<BarcodeScannerProps> = ({ visible, onClose, onScan }) => {
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const animFrameRef = useRef<number>(0);
-  const [cameraReady, setCameraReady] = useState(false);
+  const scannerRef = useRef<HTMLDivElement | null>(null);
   const [cameraError, setCameraError] = useState('');
   const [manualBarcode, setManualBarcode] = useState('');
   const [scanned, setScanned] = useState(false);
-  const [autoDetecting, setAutoDetecting] = useState(false);
+  const [initializing, setInitializing] = useState(true);
   const lastScannedRef = useRef('');
+  const quaggaRef = useRef<any>(null);
 
   useEffect(() => {
     if (!visible) return;
     setScanned(false);
     setCameraError('');
-    setCameraReady(false);
     setManualBarcode('');
-    setAutoDetecting(false);
+    setInitializing(true);
     lastScannedRef.current = '';
 
     let cancelled = false;
 
-    const startCamera = async () => {
+    const initQuagga = async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+        const Quagga = (await import('@ericblade/quagga2')).default;
+        quaggaRef.current = Quagga;
+        if (cancelled) return;
+
+        // Wait for the DOM ref to be available
+        await new Promise<void>(resolve => {
+          const check = () => {
+            if (scannerRef.current || cancelled) return resolve();
+            setTimeout(check, 50);
+          };
+          check();
         });
-        if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.play();
-        }
-        setCameraReady(true);
+        if (cancelled || !scannerRef.current) return;
 
-        // Try to start auto-detection if BarcodeDetector is available
-        const hasBD = typeof (window as any).BarcodeDetector !== 'undefined';
-        if (hasBD) {
-          setAutoDetecting(true);
-          startDetection();
-        }
-      } catch (err: any) {
-        if (!cancelled) setCameraError(err.message || 'Could not access camera');
-      }
-    };
-
-    const startDetection = () => {
-      try {
-        const detector = new (window as any).BarcodeDetector({
-          formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'code_93', 'qr_code', 'data_matrix'],
-        });
-
-        const detect = async () => {
-          if (cancelled || !videoRef.current || videoRef.current.readyState < 2) {
-            if (!cancelled) animFrameRef.current = requestAnimationFrame(detect);
+        Quagga.init({
+          inputStream: {
+            name: 'Live',
+            type: 'LiveStream',
+            target: scannerRef.current,
+            constraints: {
+              facingMode: 'environment',
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+            },
+          },
+          decoder: {
+            readers: [
+              'ean_reader',
+              'ean_8_reader',
+              'upc_reader',
+              'upc_e_reader',
+              'code_128_reader',
+              'code_39_reader',
+              'code_93_reader',
+            ],
+          },
+          locate: true,
+          frequency: 10,
+        }, (err: any) => {
+          if (cancelled) return;
+          if (err) {
+            setCameraError(err.message || 'Could not start camera');
+            setInitializing(false);
             return;
           }
-          try {
-            const barcodes = await detector.detect(videoRef.current);
-            if (barcodes.length > 0 && !cancelled) {
-              const data = barcodes[0].rawValue;
-              if (data && data !== lastScannedRef.current) {
-                lastScannedRef.current = data;
-                setScanned(true);
-                onScan(data);
-                setTimeout(() => { if (!cancelled) setScanned(false); }, 1500);
-              }
-            }
-          } catch (_) { /* detection failed this frame */ }
-          if (!cancelled) animFrameRef.current = requestAnimationFrame(detect);
-        };
+          Quagga.start();
+          setInitializing(false);
+        });
 
-        animFrameRef.current = requestAnimationFrame(detect);
-      } catch (_) {
-        // BarcodeDetector constructor failed
-        if (!cancelled) setAutoDetecting(false);
+        Quagga.onDetected((result: any) => {
+          if (cancelled) return;
+          const code = result?.codeResult?.code;
+          if (code && code !== lastScannedRef.current) {
+            lastScannedRef.current = code;
+            setScanned(true);
+            onScan(code);
+            setTimeout(() => {
+              if (!cancelled) {
+                setScanned(false);
+                lastScannedRef.current = '';
+              }
+            }, 1500);
+          }
+        });
+      } catch (err: any) {
+        if (!cancelled) {
+          setCameraError(err.message || 'Failed to initialize scanner');
+          setInitializing(false);
+        }
       }
     };
 
-    startCamera();
+    initQuagga();
 
     return () => {
       cancelled = true;
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(t => t.stop());
-        streamRef.current = null;
-      }
+      try {
+        if (quaggaRef.current) {
+          quaggaRef.current.offDetected();
+          quaggaRef.current.stop();
+        }
+      } catch (_) { /* ignore cleanup errors */ }
     };
   }, [visible, onScan]);
 
@@ -151,21 +166,31 @@ const WebBarcodeScanner: React.FC<BarcodeScannerProps> = ({ visible, onClose, on
     );
   }
 
-  // Camera view (always shown, with or without auto-detection)
+  // Camera view with auto-detection
   return (
     <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
       <View style={styles.scannerContainer}>
-        {/* Camera feed */}
-        <video
-          ref={videoRef as any}
+        {/* Quagga renders the video + canvas inside this div */}
+        <div
+          ref={scannerRef as any}
           style={{
             position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
-            objectFit: 'cover', background: '#000',
+            overflow: 'hidden', background: '#000',
           } as any}
-          playsInline
-          muted
-          autoPlay
         />
+
+        {/* Style the Quagga video/canvas to fill the container */}
+        <style dangerouslySetInnerHTML={{ __html: `
+          .scannerTarget video, .scannerTarget canvas {
+            position: absolute; top: 0; left: 0;
+            width: 100% !important; height: 100% !important;
+            object-fit: cover !important;
+          }
+          .scannerTarget canvas.drawingBuffer {
+            display: none;
+          }
+        `}} />
+
         {/* Header */}
         <View style={styles.scannerHeader}>
           <TouchableOpacity style={styles.scannerCloseBtn} onPress={onClose}>
@@ -184,9 +209,9 @@ const WebBarcodeScanner: React.FC<BarcodeScannerProps> = ({ visible, onClose, on
             <View style={[styles.corner, styles.cornerBR]} />
           </View>
           <Text style={styles.viewfinderHint}>
-            {scanned ? 'Scanned! Processing...'
-              : autoDetecting ? 'Point camera at barcode'
-              : 'Point camera at barcode, then type the number below'}
+            {initializing ? 'Starting camera...'
+              : scanned ? 'Scanned!'
+              : 'Point camera at barcode'}
           </Text>
         </View>
 
@@ -194,7 +219,7 @@ const WebBarcodeScanner: React.FC<BarcodeScannerProps> = ({ visible, onClose, on
         <View style={styles.manualEntryBar}>
           <TextInput
             style={styles.manualInput}
-            placeholder={autoDetecting ? 'Or type barcode manually...' : 'Type barcode number here...'}
+            placeholder="Or type barcode manually..."
             placeholderTextColor="rgba(255,255,255,0.5)"
             value={manualBarcode}
             onChangeText={setManualBarcode}
@@ -340,7 +365,7 @@ const NativeBarcodeScanner: React.FC<BarcodeScannerProps> = ({ visible, onClose,
             <View style={[styles.corner, styles.cornerBR]} />
           </View>
           <Text style={styles.viewfinderHint}>
-            {scanned ? 'Scanned! Processing...' : 'Point camera at barcode'}
+            {scanned ? 'Scanned!' : 'Point camera at barcode'}
           </Text>
         </View>
 
