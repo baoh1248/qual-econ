@@ -173,6 +173,7 @@ const WebBarcodeScanner: React.FC<BarcodeScannerProps> = ({ visible, onClose, on
         {/* Quagga renders the video + canvas inside this div */}
         <div
           ref={scannerRef as any}
+          className="scannerTarget"
           style={{
             position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
             overflow: 'hidden', background: '#000',
