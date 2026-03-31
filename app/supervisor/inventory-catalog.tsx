@@ -16,6 +16,7 @@ import Button from '../../components/Button';
 import { commonStyles, colors, spacing, typography } from '../../styles/commonStyles';
 import { formatCurrency } from '../../utils/inventoryTracking';
 import uuid from 'react-native-uuid';
+import BarcodeScanner from '../../components/inventory/BarcodeScanner';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -137,6 +138,8 @@ export default function InventoryCatalog() {
   const [editWarehouseTab, setEditWarehouseTab] = useState<string>('');
   const [availableBuildings, setAvailableBuildings] = useState<Array<{ clientName: string; buildingName: string; destination: string }>>([]);
   const [buildingSearchQuery, setBuildingSearchQuery] = useState('');
+  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
+  const [barcodeScanTarget, setBarcodeScanTarget] = useState<'edit' | 'add'>('edit');
 
   // Buildings popup (for +N more in table cells)
   const [buildingsPopup, setBuildingsPopup] = useState<{ title: string; items: string[] } | null>(null);
@@ -1125,13 +1128,27 @@ export default function InventoryCatalog() {
               />
 
               <Text style={styles.fieldLabel}>Barcode</Text>
-              <TextInput
-                style={commonStyles.textInput}
-                value={editForm.barcode}
-                onChangeText={v => setEditForm(f => ({ ...f, barcode: v }))}
-                placeholder="Scan or enter barcode"
-                placeholderTextColor={colors.textSecondary}
-              />
+              <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                <TextInput
+                  style={[commonStyles.textInput, { flex: 1 }]}
+                  value={editForm.barcode}
+                  onChangeText={v => setEditForm(f => ({ ...f, barcode: v }))}
+                  placeholder="Enter barcode number"
+                  placeholderTextColor={colors.textSecondary}
+                />
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: colors.primary,
+                    paddingHorizontal: spacing.md,
+                    borderRadius: 8,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  onPress={() => { setBarcodeScanTarget('edit'); setShowBarcodeScanner(true); }}
+                >
+                  <Icon name="barcode-outline" size={20} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
 
               {/* Supply type */}
               {renderSupplyTypePicker(
@@ -1314,13 +1331,27 @@ export default function InventoryCatalog() {
               />
 
               <Text style={styles.fieldLabel}>Barcode</Text>
-              <TextInput
-                style={commonStyles.textInput}
-                value={addForm.barcode}
-                onChangeText={v => setAddForm(f => ({ ...f, barcode: v }))}
-                placeholder="Scan or enter barcode"
-                placeholderTextColor={colors.textSecondary}
-              />
+              <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                <TextInput
+                  style={[commonStyles.textInput, { flex: 1 }]}
+                  value={addForm.barcode}
+                  onChangeText={v => setAddForm(f => ({ ...f, barcode: v }))}
+                  placeholder="Enter barcode number"
+                  placeholderTextColor={colors.textSecondary}
+                />
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: colors.primary,
+                    paddingHorizontal: spacing.md,
+                    borderRadius: 8,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  onPress={() => { setBarcodeScanTarget('add'); setShowBarcodeScanner(true); }}
+                >
+                  <Icon name="barcode-outline" size={20} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
 
               {/* Supply type */}
               {renderSupplyTypePicker(
@@ -1440,6 +1471,19 @@ export default function InventoryCatalog() {
           />
         </View>
       )}
+
+      <BarcodeScanner
+        visible={showBarcodeScanner}
+        onClose={() => setShowBarcodeScanner(false)}
+        onScan={(code) => {
+          setShowBarcodeScanner(false);
+          if (barcodeScanTarget === 'edit') {
+            setEditForm(f => ({ ...f, barcode: code }));
+          } else {
+            setAddForm(f => ({ ...f, barcode: code }));
+          }
+        }}
+      />
     </View>
   );
 }

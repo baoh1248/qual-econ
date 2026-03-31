@@ -17,6 +17,7 @@ import SendItemsModal from '../../components/inventory/SendItemsModal';
 import TransferHistoryModal from '../../components/inventory/TransferHistoryModal';
 import ReceiveSupplyModal from '../../components/inventory/ReceiveSupplyModal';
 import SupplierPicker from '../../components/inventory/SupplierPicker';
+import BarcodeScanner from '../../components/inventory/BarcodeScanner';
 import uuid from 'react-native-uuid';
 import { formatCurrency } from '../../utils/inventoryTracking';
 import { commonStyles, colors, spacing, typography, buttonStyles, getContrastColor } from '../../styles/commonStyles';
@@ -664,6 +665,8 @@ export default function SupervisorInventoryScreen() {
   const [showTransferHistoryModal, setShowTransferHistoryModal] = useState(false);
   const [showReceiveSupplyModal, setShowReceiveSupplyModal] = useState(false);
   const [deleteConfirmItem, setDeleteConfirmItem] = useState<{ id: string; name: string } | null>(null);
+  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
+  const [barcodeScanTarget, setBarcodeScanTarget] = useState<'new' | 'edit'>('new');
 
   const [newItemForm, setNewItemForm] = useState<NewItemForm>({
     name: '',
@@ -2033,13 +2036,27 @@ export default function SupervisorInventoryScreen() {
 
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Barcode (Optional)</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Scan or enter barcode number"
-                  placeholderTextColor={colors.textSecondary}
-                  value={newItemForm.barcode}
-                  onChangeText={(text) => setNewItemForm({ ...newItemForm, barcode: text })}
-                />
+                <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                  <TextInput
+                    style={[styles.input, { flex: 1 }]}
+                    placeholder="Enter barcode number"
+                    placeholderTextColor={colors.textSecondary}
+                    value={newItemForm.barcode}
+                    onChangeText={(text) => setNewItemForm({ ...newItemForm, barcode: text })}
+                  />
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: themeColor,
+                      paddingHorizontal: spacing.md,
+                      borderRadius: 8,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                    onPress={() => { setBarcodeScanTarget('new'); setShowBarcodeScanner(true); }}
+                  >
+                    <Icon name="barcode-outline" size={20} color="#FFFFFF" />
+                  </TouchableOpacity>
+                </View>
               </View>
 
               <View style={styles.formGroup}>
@@ -2333,13 +2350,27 @@ export default function SupervisorInventoryScreen() {
 
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Barcode</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Scan or enter barcode number"
-                  placeholderTextColor={colors.textSecondary}
-                  value={editItemForm.barcode}
-                  onChangeText={(text) => setEditItemForm({ ...editItemForm, barcode: text })}
-                />
+                <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                  <TextInput
+                    style={[styles.input, { flex: 1 }]}
+                    placeholder="Enter barcode number"
+                    placeholderTextColor={colors.textSecondary}
+                    value={editItemForm.barcode}
+                    onChangeText={(text) => setEditItemForm({ ...editItemForm, barcode: text })}
+                  />
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: themeColor,
+                      paddingHorizontal: spacing.md,
+                      borderRadius: 8,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                    onPress={() => { setBarcodeScanTarget('edit'); setShowBarcodeScanner(true); }}
+                  >
+                    <Icon name="barcode-outline" size={20} color="#FFFFFF" />
+                  </TouchableOpacity>
+                </View>
               </View>
 
               <View style={styles.formGroup}>
@@ -2586,6 +2617,19 @@ export default function SupervisorInventoryScreen() {
           />
         </View>
       )}
+
+      <BarcodeScanner
+        visible={showBarcodeScanner}
+        onClose={() => setShowBarcodeScanner(false)}
+        onScan={(code) => {
+          setShowBarcodeScanner(false);
+          if (barcodeScanTarget === 'new') {
+            setNewItemForm(prev => ({ ...prev, barcode: code }));
+          } else {
+            setEditItemForm(prev => ({ ...prev, barcode: code }));
+          }
+        }}
+      />
     </View>
   );
 }
