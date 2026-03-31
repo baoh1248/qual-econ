@@ -832,9 +832,9 @@ export default function SupervisorInventoryScreen() {
 
     const insertItem = async (item: InventoryItem) => {
       let { error } = await supabase.from('inventory_items').insert(item);
-      if (error && (error.code === '42703' || error.message?.includes('item_number'))) {
-        console.warn('⚠️ item_number column not found — retrying without it');
-        const { item_number: _itemNum, ...fallback } = item;
+      if (error && (error.code === '42703' || error.message?.includes('column'))) {
+        console.warn('⚠️ Column not found — retrying without migration-dependent columns:', error.message);
+        const { item_number: _a, barcode: _b, ...fallback } = item;
         const { error: fallbackError } = await supabase.from('inventory_items').insert(fallback);
         error = fallbackError;
       }
@@ -977,10 +977,10 @@ export default function SupervisorInventoryScreen() {
         .update(updates)
         .eq('id', selectedItem.id);
 
-      // If the item_number column doesn't exist yet (migration pending), retry without it
-      if (error && (error.code === '42703' || error.message?.includes('item_number'))) {
-        console.warn('⚠️ item_number column not found — retrying without it (apply migration to enable)');
-        const { item_number: _itemNum, ...updatesFallback } = updates;
+      // If a column doesn't exist yet (migration pending), retry without it
+      if (error && (error.code === '42703' || error.message?.includes('column'))) {
+        console.warn('⚠️ Column not found — retrying without migration-dependent columns:', error.message);
+        const { item_number: _itemNum, barcode: _barcode, ...updatesFallback } = updates;
         const { error: fallbackError } = await supabase
           .from('inventory_items')
           .update(updatesFallback)

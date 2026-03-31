@@ -386,20 +386,33 @@ export default function InventoryCatalog() {
     try {
       setSaving(true);
       // Update shared fields (name, unit, etc.) across all warehouse rows
-      const { error } = await supabase
+      const updateFields = {
+        name: editForm.name.trim(),
+        item_number: editForm.item_number.trim() || null,
+        barcode: editForm.barcode.trim() || null,
+        category: editForm.category,
+        supply_type: editForm.supply_type.trim() || null,
+        image_url: editForm.image_url.trim() || null,
+        unit: editForm.unit.trim(),
+        supplier: editForm.supplier.trim(),
+        updated_at: new Date().toISOString(),
+      };
+
+      let { error } = await supabase
         .from('inventory_items')
-        .update({
-          name: editForm.name.trim(),
-          item_number: editForm.item_number.trim() || null,
-          barcode: editForm.barcode.trim() || null,
-          category: editForm.category,
-          supply_type: editForm.supply_type.trim() || null,
-          image_url: editForm.image_url.trim() || null,
-          unit: editForm.unit.trim(),
-          supplier: editForm.supplier.trim(),
-          updated_at: new Date().toISOString(),
-        })
+        .update(updateFields)
         .ilike('name', editingEntry.name);
+
+      // If a column doesn't exist yet (migration pending), retry without migration-dependent columns
+      if (error && (error.code === '42703' || error.message?.includes('column'))) {
+        console.warn('⚠️ Column not found — retrying without migration-dependent columns:', error.message);
+        const { item_number: _a, barcode: _b, supply_type: _c, image_url: _d, ...fallbackFields } = updateFields;
+        const { error: fallbackError } = await supabase
+          .from('inventory_items')
+          .update(fallbackFields)
+          .ilike('name', editingEntry.name);
+        error = fallbackError;
+      }
 
       if (error) throw error;
 
@@ -432,7 +445,7 @@ export default function InventoryCatalog() {
     }
     try {
       setAdding(true);
-      const { error } = await supabase.from('inventory_items').insert({
+      const insertFields = {
         id: uuid.v4() as string,
         name: addForm.name.trim(),
         item_number: addForm.item_number.trim() || null,
@@ -451,7 +464,17 @@ export default function InventoryCatalog() {
         reorder_quantity: 0,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-      });
+      };
+
+      let { error } = await supabase.from('inventory_items').insert(insertFields);
+
+      // If a column doesn't exist yet (migration pending), retry without migration-dependent columns
+      if (error && (error.code === '42703' || error.message?.includes('column'))) {
+        console.warn('⚠️ Column not found — retrying without migration-dependent columns:', error.message);
+        const { item_number: _a, barcode: _b, supply_type: _c, image_url: _d, ...fallbackFields } = insertFields;
+        const { error: fallbackError } = await supabase.from('inventory_items').insert(fallbackFields);
+        error = fallbackError;
+      }
 
       if (error) throw error;
       showToast(`"${addForm.name.trim()}" added to ${addForm.warehouse}`, 'success');
