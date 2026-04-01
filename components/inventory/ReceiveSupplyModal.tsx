@@ -1,5 +1,5 @@
 
-import React, { memo, useState, useEffect, useCallback } from 'react';
+import React, { memo, useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, Modal, ScrollView, TouchableOpacity, TextInput, StyleSheet, Platform, Alert } from 'react-native';
 import PropTypes from 'prop-types';
 import { colors, spacing, typography, commonStyles, buttonStyles, getContrastColor } from '../../styles/commonStyles';
@@ -63,6 +63,8 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
   const [taxRate, setTaxRate] = useState('');
   const [editingTaxRate, setEditingTaxRate] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
+  const [scanFeedback, setScanFeedback] = useState<string | null>(null);
+  const scanFeedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Local editing state so numeric fields can be freely typed without reformatting mid-keystroke
   const [editingQuantities, setEditingQuantities] = useState<Record<string, string>>({});
@@ -117,7 +119,20 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
     setShowItemSearch(false);
   };
 
+  const showScanFeedback = useCallback((message: string) => {
+    // Clear any existing timer
+    if (scanFeedbackTimer.current) clearTimeout(scanFeedbackTimer.current);
+    setScanFeedback(message);
+    scanFeedbackTimer.current = setTimeout(() => {
+      setScanFeedback(null);
+      scanFeedbackTimer.current = null;
+    }, 2000);
+  }, []);
+
   const handleBarcodeScan = useCallback((barcode: string) => {
+    // Ignore scans while feedback is showing (scanner is paused)
+    if (scanFeedback) return;
+
     // Find item by barcode in inventory (match against warehouse filter)
     const matchedItem = inventory.find(item => {
       const matchesBarcode = item.barcode && item.barcode.toLowerCase() === barcode.toLowerCase();
@@ -131,17 +146,9 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
         item.barcode && item.barcode.toLowerCase() === barcode.toLowerCase()
       );
       if (anyMatch) {
-        Alert.alert(
-          'Item Not in Warehouse',
-          `"${anyMatch.name}" was found but is in ${anyMatch.location}, not ${selectedWarehouse}.`,
-          [{ text: 'OK' }]
-        );
+        showScanFeedback(`"${anyMatch.name}" is in ${anyMatch.location}, not ${selectedWarehouse}`);
       } else {
-        Alert.alert(
-          'Item Not Found',
-          `No item with barcode "${barcode}" was found. You can associate a barcode with an item in the inventory settings.`,
-          [{ text: 'OK' }]
-        );
+        showScanFeedback(`No item found for barcode "${barcode}"`);
       }
       return;
     }
@@ -161,8 +168,8 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
         }
         return item;
       }));
-      // Update editing state too
       setEditingQuantities(prev => ({ ...prev, [matchedItem.id]: String(newQuantity) }));
+      showScanFeedback(`Added ${newQuantity} ${matchedItem.name}`);
     } else {
       // Add new item with quantity 1
       const newItem: SelectedItem = {
@@ -174,11 +181,9 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
         totalCost: matchedItem.cost || 0,
       };
       setSelectedItems(prev => [...prev, newItem]);
+      showScanFeedback(`Added 1 ${matchedItem.name}`);
     }
-
-    // Brief vibration/feedback via alert showing what was scanned
-    // Don't close scanner — let user keep scanning
-  }, [inventory, selectedItems, selectedWarehouse, warehouses]);
+  }, [inventory, selectedItems, selectedWarehouse, warehouses, scanFeedback, showScanFeedback]);
 
   const removeItem = (itemId: string) => {
     setSelectedItems(prev => prev.filter(item => item.id !== itemId));
@@ -826,8 +831,9 @@ const ReceiveSupplyModal = memo<ReceiveSupplyModalProps>(({ visible, onClose, in
 
     <BarcodeScanner
       visible={showScanner}
-      onClose={() => setShowScanner(false)}
+      onClose={() => { setShowScanner(false); setScanFeedback(null); }}
       onScan={handleBarcodeScan}
+      scanFeedback={scanFeedback}
     />
     </>
   );

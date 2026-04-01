@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, TouchableOpacity, Modal, StyleSheet, Platform, TextInput } from 'react-native';
+import { View, Text, TouchableOpacity, Modal, StyleSheet, Platform, TextInput, Animated } from 'react-native';
 import { colors, spacing, typography } from '../../styles/commonStyles';
 import Icon from '../Icon';
 
@@ -8,26 +8,37 @@ interface BarcodeScannerProps {
   visible: boolean;
   onClose: () => void;
   onScan: (barcode: string) => void;
+  /** Feedback message to display after a scan (e.g. "Added 1 Paper Towels"). Pauses scanning while shown. */
+  scanFeedback?: string | null;
 }
 
 // ─── Web Scanner using Quagga2 for auto-detection ───────────────────────────
 
-const WebBarcodeScanner: React.FC<BarcodeScannerProps> = ({ visible, onClose, onScan }) => {
+const WebBarcodeScanner: React.FC<BarcodeScannerProps> = ({ visible, onClose, onScan, scanFeedback }) => {
   const scannerRef = useRef<HTMLDivElement | null>(null);
   const [cameraError, setCameraError] = useState('');
   const [manualBarcode, setManualBarcode] = useState('');
-  const [scanned, setScanned] = useState(false);
   const [initializing, setInitializing] = useState(true);
-  const lastScannedRef = useRef('');
+  const pausedRef = useRef(false);
   const quaggaRef = useRef<any>(null);
+  const feedbackAnim = useRef(new Animated.Value(0)).current;
+
+  // Pause/resume scanning based on scanFeedback
+  useEffect(() => {
+    pausedRef.current = !!scanFeedback;
+    if (scanFeedback) {
+      Animated.timing(feedbackAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+    } else {
+      Animated.timing(feedbackAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start();
+    }
+  }, [scanFeedback, feedbackAnim]);
 
   useEffect(() => {
     if (!visible) return;
-    setScanned(false);
     setCameraError('');
     setManualBarcode('');
     setInitializing(true);
-    lastScannedRef.current = '';
+    pausedRef.current = false;
 
     let cancelled = false;
 
@@ -83,18 +94,10 @@ const WebBarcodeScanner: React.FC<BarcodeScannerProps> = ({ visible, onClose, on
         });
 
         Quagga.onDetected((result: any) => {
-          if (cancelled) return;
+          if (cancelled || pausedRef.current) return;
           const code = result?.codeResult?.code;
-          if (code && code !== lastScannedRef.current) {
-            lastScannedRef.current = code;
-            setScanned(true);
+          if (code) {
             onScan(code);
-            setTimeout(() => {
-              if (!cancelled) {
-                setScanned(false);
-                lastScannedRef.current = '';
-              }
-            }, 1500);
           }
         });
       } catch (err: any) {
@@ -192,6 +195,14 @@ const WebBarcodeScanner: React.FC<BarcodeScannerProps> = ({ visible, onClose, on
           }
         `}} />
 
+        {/* Feedback banner — slides down from top */}
+        {scanFeedback ? (
+          <Animated.View style={[styles.feedbackBanner, { opacity: feedbackAnim }]}>
+            <Icon name="checkmark-circle" size={22} color="#FFFFFF" />
+            <Text style={styles.feedbackText}>{scanFeedback}</Text>
+          </Animated.View>
+        ) : null}
+
         {/* Header */}
         <View style={styles.scannerHeader}>
           <TouchableOpacity style={styles.scannerCloseBtn} onPress={onClose}>
@@ -211,7 +222,7 @@ const WebBarcodeScanner: React.FC<BarcodeScannerProps> = ({ visible, onClose, on
           </View>
           <Text style={styles.viewfinderHint}>
             {initializing ? 'Starting camera...'
-              : scanned ? 'Scanned!'
+              : scanFeedback ? ''
               : 'Point camera at barcode'}
           </Text>
         </View>
@@ -255,33 +266,22 @@ if (Platform.OS !== 'web') {
   } catch (_) { /* expo-camera not available */ }
 }
 
-const NativeBarcodeScanner: React.FC<BarcodeScannerProps> = ({ visible, onClose, onScan }) => {
+const NativeBarcodeScanner: React.FC<BarcodeScannerProps> = ({ visible, onClose, onScan, scanFeedback }) => {
   const [permission, requestPermission] = useCameraPermissions ? useCameraPermissions() : [null, () => {}];
-  const [scanned, setScanned] = useState(false);
-  const lastScannedRef = useRef<string>('');
-  const cooldownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const feedbackAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    if (visible) {
-      setScanned(false);
-      lastScannedRef.current = '';
+    if (scanFeedback) {
+      Animated.timing(feedbackAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+    } else {
+      Animated.timing(feedbackAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start();
     }
-    return () => {
-      if (cooldownRef.current) clearTimeout(cooldownRef.current);
-    };
-  }, [visible]);
+  }, [scanFeedback, feedbackAnim]);
 
   const handleBarCodeScanned = useCallback(({ data }: { type: string; data: string }) => {
-    if (scanned || data === lastScannedRef.current) return;
-
-    setScanned(true);
-    lastScannedRef.current = data;
+    if (scanFeedback) return; // Paused while feedback is showing
     onScan(data);
-
-    cooldownRef.current = setTimeout(() => {
-      setScanned(false);
-    }, 1500);
-  }, [scanned, onScan]);
+  }, [scanFeedback, onScan]);
 
   if (!visible) return null;
 
@@ -347,8 +347,16 @@ const NativeBarcodeScanner: React.FC<BarcodeScannerProps> = ({ visible, onClose,
               'itf14', 'codabar', 'qr', 'datamatrix',
             ],
           }}
-          onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
+          onBarcodeScanned={scanFeedback ? undefined : handleBarCodeScanned}
         />
+
+        {/* Feedback banner */}
+        {scanFeedback ? (
+          <Animated.View style={[styles.feedbackBanner, { opacity: feedbackAnim }]}>
+            <Icon name="checkmark-circle" size={22} color="#FFFFFF" />
+            <Text style={styles.feedbackText}>{scanFeedback}</Text>
+          </Animated.View>
+        ) : null}
 
         <View style={styles.scannerHeader}>
           <TouchableOpacity style={styles.scannerCloseBtn} onPress={onClose}>
@@ -366,7 +374,7 @@ const NativeBarcodeScanner: React.FC<BarcodeScannerProps> = ({ visible, onClose,
             <View style={[styles.corner, styles.cornerBR]} />
           </View>
           <Text style={styles.viewfinderHint}>
-            {scanned ? 'Scanned!' : 'Point camera at barcode'}
+            {scanFeedback ? '' : 'Point camera at barcode'}
           </Text>
         </View>
 
@@ -393,6 +401,31 @@ const CORNER_SIZE = 24;
 const CORNER_WIDTH = 3;
 
 const styles = StyleSheet.create({
+  feedbackBanner: {
+    position: 'absolute',
+    top: 100,
+    left: spacing.lg,
+    right: spacing.lg,
+    backgroundColor: 'rgba(34, 139, 34, 0.92)',
+    borderRadius: 12,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    zIndex: 100,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  feedbackText: {
+    color: '#FFFFFF',
+    fontSize: typography.sizes.md,
+    fontWeight: '700',
+    flex: 1,
+  },
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
