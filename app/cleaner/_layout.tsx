@@ -39,6 +39,10 @@ export default function CleanerLayout() {
         <Stack.Screen name="task/[id]" />
         <Stack.Screen name="settings" />
         <Stack.Screen name="time-off" />
+        <Stack.Screen name="pay-stubs" />
+        <Stack.Screen name="hours" />
+        <Stack.Screen name="schedule-requests" />
+        <Stack.Screen name="profile" />
       </Stack>
       <BottomNavigation role="cleaner" />
     </View>

@@ -157,6 +157,26 @@ const styles = StyleSheet.create({
     ...typography.small,
     color: colors.textSecondary,
   },
+  quickLinksRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  quickLinkCard: {
+    flex: 1,
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 12,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+    gap: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  quickLinkText: {
+    ...typography.small,
+    color: colors.text,
+    fontWeight: '500',
+  },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1005,6 +1025,25 @@ export default function CleanerDashboard() {
                 <Icon name="chevron-forward" size={20} color={colors.textSecondary} />
               </View>
             </TouchableOpacity>
+
+            <View style={styles.quickLinksRow}>
+              <TouchableOpacity style={styles.quickLinkCard} onPress={() => router.push('/cleaner/hours' as any)}>
+                <Icon name="time" size={22} color={themeColor} />
+                <Text style={styles.quickLinkText}>My Hours</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.quickLinkCard} onPress={() => router.push('/cleaner/pay-stubs' as any)}>
+                <Icon name="wallet-outline" size={22} color={themeColor} />
+                <Text style={styles.quickLinkText}>Pay Stubs</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.quickLinkCard} onPress={() => router.push('/cleaner/schedule-requests' as any)}>
+                <Icon name="swap-horizontal" size={22} color={themeColor} />
+                <Text style={styles.quickLinkText}>Schedule</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.quickLinkCard} onPress={() => router.push('/cleaner/profile' as any)}>
+                <Icon name="person-outline" size={22} color={themeColor} />
+                <Text style={styles.quickLinkText}>Profile</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* Today's Schedule */}

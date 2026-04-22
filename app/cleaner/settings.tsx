@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, Switch, StyleSheet, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { commonStyles, colors, spacing, typography, buttonStyles } from '../../styles/commonStyles';
 import Icon from '../../components/Icon';
@@ -11,6 +11,7 @@ import { useToast } from '../../hooks/useToast';
 import Toast from '../../components/Toast';
 import AnimatedCard from '../../components/AnimatedCard';
 import { supabase } from '../integrations/supabase/client';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const PRESET_COLORS = [
   { name: 'Blue', color: '#0066FF' },
@@ -31,6 +32,32 @@ export default function SettingsScreen() {
   const { themeColor, setThemeColor } = useTheme();
   const { toast, showToast } = useToast();
   const [selectedColor, setSelectedColor] = useState(themeColor);
+  const [notifShifts, setNotifShifts] = useState(true);
+  const [notifMessages, setNotifMessages] = useState(true);
+  const [notifReminders, setNotifReminders] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const stored = await AsyncStorage.getItem('cleaner_notification_prefs');
+        if (stored) {
+          const prefs = JSON.parse(stored);
+          setNotifShifts(prefs.shifts ?? true);
+          setNotifMessages(prefs.messages ?? true);
+          setNotifReminders(prefs.reminders ?? true);
+        }
+      } catch (_) {}
+    })();
+  }, []);
+
+  const updateNotifPref = async (key: string, value: boolean) => {
+    const updates = { shifts: notifShifts, messages: notifMessages, reminders: notifReminders, [key]: value };
+    if (key === 'shifts') setNotifShifts(value);
+    if (key === 'messages') setNotifMessages(value);
+    if (key === 'reminders') setNotifReminders(value);
+    await AsyncStorage.setItem('cleaner_notification_prefs', JSON.stringify(updates));
+    showToast('Notification preference updated', 'success');
+  };
 
   const handleColorSelect = async (color: string) => {
     setSelectedColor(color);
@@ -132,7 +159,7 @@ export default function SettingsScreen() {
 
             <TouchableOpacity
               style={styles.settingItem}
-              onPress={() => Alert.alert('Profile', 'To update your profile details, please contact your supervisor.')}
+              onPress={() => router.push('/cleaner/profile' as any)}
             >
               <View style={styles.settingItemLeft}>
                 <Icon name="user" size={20} color={colors.textSecondary} />
@@ -154,24 +181,71 @@ export default function SettingsScreen() {
           </View>
         </AnimatedCard>
 
-        {/* App Settings Section */}
+        {/* Notifications Section */}
         <AnimatedCard delay={200}>
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Icon name="notifications-outline" size={24} color={themeColor} />
+              <Text style={styles.sectionTitle}>Notifications</Text>
+            </View>
+
+            <View style={styles.settingItem}>
+              <View style={styles.settingItemLeft}>
+                <Icon name="calendar" size={20} color={colors.textSecondary} />
+                <View>
+                  <Text style={styles.settingItemText}>Shift Assignments</Text>
+                  <Text style={styles.settingItemSubtext}>New shifts and schedule changes</Text>
+                </View>
+              </View>
+              <Switch
+                value={notifShifts}
+                onValueChange={(v) => updateNotifPref('shifts', v)}
+                trackColor={{ false: colors.border, true: themeColor + '60' }}
+                thumbColor={notifShifts ? themeColor : colors.textTertiary}
+              />
+            </View>
+
+            <View style={styles.settingItem}>
+              <View style={styles.settingItemLeft}>
+                <Icon name="chatbubble" size={20} color={colors.textSecondary} />
+                <View>
+                  <Text style={styles.settingItemText}>Messages</Text>
+                  <Text style={styles.settingItemSubtext}>Chat messages from team</Text>
+                </View>
+              </View>
+              <Switch
+                value={notifMessages}
+                onValueChange={(v) => updateNotifPref('messages', v)}
+                trackColor={{ false: colors.border, true: themeColor + '60' }}
+                thumbColor={notifMessages ? themeColor : colors.textTertiary}
+              />
+            </View>
+
+            <View style={styles.settingItem}>
+              <View style={styles.settingItemLeft}>
+                <Icon name="alarm" size={20} color={colors.textSecondary} />
+                <View>
+                  <Text style={styles.settingItemText}>Shift Reminders</Text>
+                  <Text style={styles.settingItemSubtext}>Reminders before shifts start</Text>
+                </View>
+              </View>
+              <Switch
+                value={notifReminders}
+                onValueChange={(v) => updateNotifPref('reminders', v)}
+                trackColor={{ false: colors.border, true: themeColor + '60' }}
+                thumbColor={notifReminders ? themeColor : colors.textTertiary}
+              />
+            </View>
+          </View>
+        </AnimatedCard>
+
+        {/* App Settings Section */}
+        <AnimatedCard delay={250}>
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Icon name="settings" size={24} color={themeColor} />
               <Text style={styles.sectionTitle}>App Settings</Text>
             </View>
-
-            <TouchableOpacity
-              style={styles.settingItem}
-              onPress={() => Alert.alert('Notifications', 'Push notifications will alert you to new shift assignments and messages from your supervisor.')}
-            >
-              <View style={styles.settingItemLeft}>
-                <Icon name="bell" size={20} color={colors.textSecondary} />
-                <Text style={styles.settingItemText}>Notifications</Text>
-              </View>
-              <Icon name="chevron-right" size={20} color={colors.textSecondary} />
-            </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.settingItem}
@@ -295,5 +369,10 @@ const styles = StyleSheet.create({
   settingItemText: {
     ...typography.body,
     color: colors.text,
+  },
+  settingItemSubtext: {
+    ...typography.small,
+    color: colors.textTertiary,
+    marginTop: 1,
   },
 });
