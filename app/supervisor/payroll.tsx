@@ -1135,6 +1135,14 @@ export default function PayrollScreen() {
         records.push(record);
       }
       
+      // Remove any existing draft records for this week before inserting
+      const { error: deleteError } = await supabase
+        .from('payroll_records')
+        .delete()
+        .eq('week_id', currentWeekId)
+        .eq('status', 'draft');
+      if (deleteError) console.warn('Could not clear previous drafts:', deleteError);
+
       // Save to database
       for (const record of records) {
         const recordWithId = {
@@ -1143,7 +1151,7 @@ export default function PayrollScreen() {
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         };
-        
+
         await executeQuery('insert', 'payroll_records', recordWithId);
       }
       

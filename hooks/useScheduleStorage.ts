@@ -159,15 +159,15 @@ const convertToDatabaseEntry = (entry: ScheduleEntry): any => {
     payment_type: entry.paymentType || 'hourly',
     flat_rate_amount: entry.flatRateAmount || 0,
     hourly_rate: entry.hourlyRate || 15,
+    overtime_rate: entry.overtimeRate || 1.5,
+    bonus_amount: entry.bonusAmount || 0,
+    deductions: entry.deductions || 0,
     created_at: entry.created_at || new Date().toISOString(),
     updated_at: new Date().toISOString(),
     is_project: entry.isProject || false,
     project_id: entry.projectId || null,
     project_name: entry.projectName || null,
   };
-
-  // Don't send these columns - they're causing the schema cache error
-  // overtime_rate, bonus_amount, deductions, address
 
   return dbEntry;
 };
@@ -290,6 +290,21 @@ const syncEntryToSupabase = async (
       if (error?.code === '23505') {
         console.log('⚠️ Duplicate key error, entry already exists:', entry.id);
         return true;
+      }
+
+      // If a column doesn't exist yet (migration pending), retry without it
+      if (error?.code === '42703' || error?.message?.includes('column')) {
+        console.warn('⚠️ Column not found — retrying without payment columns:', error.message);
+        const { overtime_rate, bonus_amount, deductions, ...fallbackEntry } = convertToDatabaseEntry(entry);
+        try {
+          if (operation === 'insert') {
+            const { error: fbErr } = await supabase.from('schedule_entries').insert(fallbackEntry).select();
+            if (!fbErr) return true;
+          } else if (operation === 'update') {
+            const { error: fbErr } = await supabase.from('schedule_entries').update(fallbackEntry).eq('id', entry.id).select();
+            if (!fbErr) return true;
+          }
+        } catch (_) { /* fall through to normal retry */ }
       }
 
       // If it's an invalid UUID format error, log it clearly
