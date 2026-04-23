@@ -134,7 +134,7 @@ export default function PayStubsScreen() {
             Pay Stubs
           </Text>
         </View>
-        <CompanyLogo size={40} />
+        <CompanyLogo size="small" />
       </View>
 
       <ScrollView

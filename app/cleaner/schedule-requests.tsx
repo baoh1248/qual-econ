@@ -95,7 +95,7 @@ export default function ScheduleRequestsScreen() {
       const { data: shifts } = await supabase
         .from('schedule_entries')
         .select('id, client_name, building_name, date, start_time, hours')
-        .or(`cleaner_name.ilike.%${cleaner.name}%,cleaner_names.cs.{${cleaner.name}}`)
+        .ilike('cleaner_name', `%${cleaner.name}%`)
         .gte('date', today)
         .order('date', { ascending: true })
         .limit(14);
@@ -215,7 +215,7 @@ export default function ScheduleRequestsScreen() {
             Schedule Requests
           </Text>
         </View>
-        <CompanyLogo size={40} />
+        <CompanyLogo size="small" />
       </View>
 
       <ScrollView

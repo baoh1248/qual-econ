@@ -173,7 +173,7 @@ export default function ProfileScreen() {
             My Profile
           </Text>
         </View>
-        <CompanyLogo size={40} />
+        <CompanyLogo size="small" />
       </View>
 
       <ScrollView style={commonStyles.content}>

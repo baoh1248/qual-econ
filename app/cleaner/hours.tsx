@@ -173,7 +173,7 @@ export default function HoursScreen() {
             My Hours
           </Text>
         </View>
-        <CompanyLogo size={40} />
+        <CompanyLogo size="small" />
       </View>
 
       <ScrollView
@@ -253,8 +253,8 @@ export default function HoursScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.dayLabel}>{day.dayLabel}</Text>
                   {day.records.length > 0 ? (
-                    day.records.map((rec, ri) => (
-                      <View key={ri} style={styles.clockEntry}>
+                    day.records.map((rec) => (
+                      <View key={rec.id} style={styles.clockEntry}>
                         <Icon name="time-outline" size={14} color={colors.textTertiary} />
                         <Text style={styles.clockEntryText}>
                           {formatTime(rec.clock_in_time)}
