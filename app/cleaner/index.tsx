@@ -18,6 +18,7 @@ import { useTheme } from '../../hooks/useTheme';
 import { useGeofenceClockInOut } from '../../hooks/useGeofenceClockInOut';
 import { GeofenceShiftInfo } from '../../types/clockRecord';
 import { formatDistance } from '../../utils/geofence';
+import { useNotifications } from '../../hooks/useNotifications';
 
 interface Task {
   id: string;
@@ -488,6 +489,7 @@ export default function CleanerDashboard() {
   const { isConnected } = useRealtimeSync();
   const { toast, showToast, hideToast } = useToast();
   const { getScheduleForCleaner } = useScheduleStorage();
+  const { expoPushToken } = useNotifications();
 
   // Geofence clock-in/out hook
   const {
@@ -707,6 +709,20 @@ export default function CleanerDashboard() {
       loadShifts();
     }
   }, [profile.name, loadShifts]);
+
+  useEffect(() => {
+    if (expoPushToken && profile.id && profile.id !== '1') {
+      supabase
+        .from('cleaners')
+        .update({ push_token: expoPushToken })
+        .eq('id', profile.id)
+        .then(({ error }) => {
+          if (error && (error.code === '42703' || error.message?.includes('column'))) {
+            console.log('push_token column not yet available in cleaners table');
+          }
+        });
+    }
+  }, [expoPushToken, profile.id]);
 
   // Refresh data when screen comes into focus (e.g. returning from task detail)
   useFocusEffect(

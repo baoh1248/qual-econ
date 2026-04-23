@@ -1,0 +1,1 @@
+ALTER TABLE cleaners ADD COLUMN IF NOT EXISTS push_token TEXT;

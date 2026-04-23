@@ -53,6 +53,7 @@ export default function SupervisorLayout() {
         <Stack.Screen name="invoice-detail" />
         <Stack.Screen name="invoice-statements" />
         <Stack.Screen name="admin-setup" />
+        <Stack.Screen name="schedule-requests" />
       </Stack>
       <BottomNavigation role="supervisor" />
     </View>

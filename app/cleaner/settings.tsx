@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Switch, StyleSheet, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { commonStyles, colors, spacing, typography, buttonStyles } from '../../styles/commonStyles';
@@ -11,7 +11,8 @@ import { useToast } from '../../hooks/useToast';
 import Toast from '../../components/Toast';
 import AnimatedCard from '../../components/AnimatedCard';
 import { supabase } from '../integrations/supabase/client';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useNotifications } from '../../hooks/useNotifications';
+import { useCallback } from 'react';
 
 const PRESET_COLORS = [
   { name: 'Blue', color: '#0066FF' },
@@ -31,33 +32,14 @@ const PRESET_COLORS = [
 export default function SettingsScreen() {
   const { themeColor, setThemeColor } = useTheme();
   const { toast, showToast } = useToast();
+  const { settings: notifSettings, saveSettings: saveNotifSettings } = useNotifications();
   const [selectedColor, setSelectedColor] = useState(themeColor);
-  const [notifShifts, setNotifShifts] = useState(true);
-  const [notifMessages, setNotifMessages] = useState(true);
-  const [notifReminders, setNotifReminders] = useState(true);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const stored = await AsyncStorage.getItem('cleaner_notification_prefs');
-        if (stored) {
-          const prefs = JSON.parse(stored);
-          setNotifShifts(prefs.shifts ?? true);
-          setNotifMessages(prefs.messages ?? true);
-          setNotifReminders(prefs.reminders ?? true);
-        }
-      } catch (_) {}
-    })();
-  }, []);
-
-  const updateNotifPref = async (key: string, value: boolean) => {
-    const updates = { shifts: notifShifts, messages: notifMessages, reminders: notifReminders, [key]: value };
-    if (key === 'shifts') setNotifShifts(value);
-    if (key === 'messages') setNotifMessages(value);
-    if (key === 'reminders') setNotifReminders(value);
-    await AsyncStorage.setItem('cleaner_notification_prefs', JSON.stringify(updates));
+  const updateNotifPref = useCallback(async (key: string, value: boolean) => {
+    const updated = { ...notifSettings, [key]: value };
+    await saveNotifSettings(updated);
     showToast('Notification preference updated', 'success');
-  };
+  }, [notifSettings, saveNotifSettings, showToast]);
 
   const handleColorSelect = async (color: string) => {
     setSelectedColor(color);
@@ -198,10 +180,10 @@ export default function SettingsScreen() {
                 </View>
               </View>
               <Switch
-                value={notifShifts}
-                onValueChange={(v) => updateNotifPref('shifts', v)}
+                value={notifSettings.enableScheduleAlerts}
+                onValueChange={(v) => updateNotifPref('enableScheduleAlerts', v)}
                 trackColor={{ false: colors.border, true: themeColor + '60' }}
-                thumbColor={notifShifts ? themeColor : colors.textTertiary}
+                thumbColor={notifSettings.enableScheduleAlerts ? themeColor : colors.textTertiary}
               />
             </View>
 
@@ -214,10 +196,10 @@ export default function SettingsScreen() {
                 </View>
               </View>
               <Switch
-                value={notifMessages}
-                onValueChange={(v) => updateNotifPref('messages', v)}
+                value={notifSettings.enableTaskAlerts}
+                onValueChange={(v) => updateNotifPref('enableTaskAlerts', v)}
                 trackColor={{ false: colors.border, true: themeColor + '60' }}
-                thumbColor={notifMessages ? themeColor : colors.textTertiary}
+                thumbColor={notifSettings.enableTaskAlerts ? themeColor : colors.textTertiary}
               />
             </View>
 
@@ -230,10 +212,10 @@ export default function SettingsScreen() {
                 </View>
               </View>
               <Switch
-                value={notifReminders}
-                onValueChange={(v) => updateNotifPref('reminders', v)}
+                value={notifSettings.enablePayrollAlerts}
+                onValueChange={(v) => updateNotifPref('enablePayrollAlerts', v)}
                 trackColor={{ false: colors.border, true: themeColor + '60' }}
-                thumbColor={notifReminders ? themeColor : colors.textTertiary}
+                thumbColor={notifSettings.enablePayrollAlerts ? themeColor : colors.textTertiary}
               />
             </View>
           </View>
